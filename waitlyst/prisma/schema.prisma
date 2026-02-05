@@ -1,0 +1,107 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+// NextAuth required models
+model Account {
+  id                String  @id @default(auto()) @map("_id") @db.ObjectId
+  userId            String  @db.ObjectId
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  sessionToken String   @unique
+  userId       String   @db.ObjectId
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String         @id @default(auto()) @map("_id") @db.ObjectId
+  name          String?
+  email         String?        @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+  createdLines  Line[]         @relation("LineCreator")
+  positions     LinePosition[]
+  createdAt     DateTime       @default(now())
+}
+
+model VerificationToken {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// Waitlyst app models
+model Line {
+  id          String         @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  description String?
+  createdById String         @db.ObjectId
+  createdBy   User           @relation("LineCreator", fields: [createdById], references: [id])
+  positions   LinePosition[]
+  isActive    Boolean        @default(true)
+  isPublic    Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+model LinePosition {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  lineId      String    @db.ObjectId
+  line        Line      @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  userId      String    @db.ObjectId
+  user        User      @relation(fields: [userId], references: [id])
+  position    Int       // 1 = first in line
+  askingPrice Float?    // null = not for sale
+  lockedUntil DateTime? // Position is locked for swap until this time
+  lockedBy    String?   // Transaction ID that locked this position
+  joinedAt    DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([lineId, userId])    // User can only be in a line once
+  @@unique([lineId, position])  // Each position is unique per line
+}
+
+model Transaction {
+  id              String            @id @default(auto()) @map("_id") @db.ObjectId
+  buyerId         String            @db.ObjectId
+  sellerId        String            @db.ObjectId
+  lineId          String            @db.ObjectId
+  amount          Float
+  stripePaymentId String?
+  status          TransactionStatus @default(PENDING)
+  settledAt       DateTime?         // Set when both buyer and seller have left the line
+  createdAt       DateTime          @default(now())
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
