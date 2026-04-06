@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useSession, signIn } from "next-auth/react"
+import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { Button } from "@/components/ui/Button"
 import { Card, CardContent, CardHeader } from "@/components/ui/Card"
@@ -44,6 +45,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [joining, setJoining] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notificationsEnabled, setNotificationsEnabled] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const router = useRouter()
   const { requestPermission, sendNotification } = useNotifications()
 
   useEffect(() => {
@@ -123,6 +126,23 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     }
   }
 
+  async function handleDelete() {
+    if (!confirm("Are you sure you want to delete this line? This cannot be undone.")) return
+
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/lines/${lineId}`, { method: "DELETE" })
+      if (res.ok) {
+        router.push("/dashboard")
+      } else {
+        const data = await res.json()
+        alert(data.error || "Failed to delete line")
+      }
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-8">
@@ -168,9 +188,14 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
               </Button>
             )}
             {isCreator && (
-              <span className="text-sm text-blue-600 font-medium bg-blue-50 px-3 py-1 rounded-full">
-                Your Line
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-blue-600 font-medium bg-blue-50 px-3 py-1 rounded-full">
+                  Your Line
+                </span>
+                <Button variant="danger" size="sm" onClick={handleDelete} isLoading={deleting}>
+                  Delete
+                </Button>
+              </div>
             )}
           </div>
         </CardHeader>

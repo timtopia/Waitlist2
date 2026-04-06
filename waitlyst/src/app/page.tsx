@@ -1,22 +1,10 @@
 import Link from "next/link"
-import { prisma } from "@/lib/prisma"
-import { LineCard } from "@/components/LineCard"
-import { Button } from "@/components/ui/Button"
 import { auth } from "@/auth"
 
 export const dynamic = "force-dynamic"
 
 export default async function HomePage() {
   const session = await auth()
-  const lines = await prisma.line.findMany({
-    where: { isActive: true, isPublic: true },
-    include: {
-      createdBy: { select: { name: true, image: true } },
-      _count: { select: { positions: true } },
-    },
-    orderBy: { createdAt: "desc" },
-    take: 6,
-  })
 
   return (
     <div>
@@ -49,7 +37,7 @@ export default async function HomePage() {
                 </>
               ) : (
                 <>
-                  <Link href="#browse">
+                  <Link href="/browse">
                     <button className="w-full sm:w-auto px-8 py-3 text-base font-semibold rounded-lg bg-white text-blue-700 hover:bg-blue-50 transition-colors">
                       Browse Lines
                     </button>
@@ -237,47 +225,6 @@ export default async function HomePage() {
               </div>
             </div>
           </div>
-        </div>
-      </section>
-
-      {/* Browse Lines */}
-      <section id="browse" className="bg-gray-50 py-16 sm:py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between mb-8">
-            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900">Active Lines</h2>
-            {session && (
-              <Link href="/lines/new">
-                <Button>Create a Line</Button>
-              </Link>
-            )}
-          </div>
-
-          {lines.length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-              <p className="text-gray-500 mb-4">No active lines yet. Be the first!</p>
-              {session ? (
-                <Link href="/lines/new">
-                  <Button>Create the First Line</Button>
-                </Link>
-              ) : (
-                <p className="text-sm text-gray-400">Sign in to create a line</p>
-              )}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {lines.map((line) => (
-                <LineCard
-                  key={line.id}
-                  line={{
-                    ...line,
-                    createdAt: line.createdAt.toISOString(),
-                    opensAt: line.opensAt?.toISOString() || null,
-                    closesAt: line.closesAt?.toISOString() || null,
-                  }}
-                />
-              ))}
-            </div>
-          )}
         </div>
       </section>
 
