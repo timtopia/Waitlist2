@@ -14,11 +14,10 @@ export function Header() {
     <header className="bg-white border-b border-gray-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
-          <div className="flex items-center">
+          <div className="flex items-center space-x-6">
             <Link href="/" className="flex items-center space-x-2">
               <span className="text-2xl font-bold text-blue-600">Waitlyst</span>
             </Link>
-          </div>
 
           <nav className="hidden md:flex items-center space-x-4">
             <Link
@@ -35,15 +34,10 @@ export function Header() {
                 >
                   Dashboard
                 </Link>
-                <Link
-                  href="/lines/new"
-                  className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
-                >
-                  Create Line
-                </Link>
               </>
             )}
           </nav>
+          </div>
 
           <div className="flex items-center space-x-4">
             {status === "loading" ? (
