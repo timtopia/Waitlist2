@@ -42,3 +42,4 @@ next-env.d.ts
 dev-log/
 .claude/
 LineUp-Development-Plan.md
+package-lock.json

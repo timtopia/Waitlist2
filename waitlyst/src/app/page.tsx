@@ -37,27 +37,27 @@ export default async function HomePage() {
               {session ? (
                 <>
                   <Link href="/lines/new">
-                    <Button size="lg" className="w-full sm:w-auto bg-white text-blue-700 hover:bg-blue-50 font-semibold px-8">
+                    <button className="w-full sm:w-auto px-8 py-3 text-base font-semibold rounded-lg bg-white text-blue-700 hover:bg-blue-50 transition-colors">
                       Create a Line
-                    </Button>
+                    </button>
                   </Link>
                   <Link href="/dashboard">
-                    <Button size="lg" variant="secondary" className="w-full sm:w-auto border-blue-300 text-white hover:bg-blue-600 px-8">
+                    <button className="w-full sm:w-auto px-8 py-3 text-base font-semibold rounded-lg border border-blue-300 text-white hover:bg-blue-600 transition-colors">
                       My Dashboard
-                    </Button>
+                    </button>
                   </Link>
                 </>
               ) : (
                 <>
                   <Link href="#browse">
-                    <Button size="lg" className="w-full sm:w-auto bg-white text-blue-700 hover:bg-blue-50 font-semibold px-8">
+                    <button className="w-full sm:w-auto px-8 py-3 text-base font-semibold rounded-lg bg-white text-blue-700 hover:bg-blue-50 transition-colors">
                       Browse Lines
-                    </Button>
+                    </button>
                   </Link>
                   <Link href="#how-it-works">
-                    <Button size="lg" variant="secondary" className="w-full sm:w-auto border-blue-300 text-white hover:bg-blue-600 px-8">
+                    <button className="w-full sm:w-auto px-8 py-3 text-base font-semibold rounded-lg border border-blue-300 text-white hover:bg-blue-600 transition-colors">
                       How It Works
-                    </Button>
+                    </button>
                   </Link>
                 </>
               )}
