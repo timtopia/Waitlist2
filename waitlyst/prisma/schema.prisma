@@ -66,6 +66,9 @@ model Line {
   positions   LinePosition[]
   isActive    Boolean        @default(true)
   isPublic    Boolean        @default(true)
+  opensAt     DateTime?      // When the line opens for joining (null = open immediately)
+  closesAt    DateTime?      // When the line stops accepting new joins (null = never closes)
+  maxCapacity Int?           // Maximum number of positions allowed (null = unlimited)
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 }

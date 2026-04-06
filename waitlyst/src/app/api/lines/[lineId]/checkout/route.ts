@@ -1,16 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
-import { stripe } from "@/lib/stripe"
 import { lineEvents } from "@/lib/events"
-
-// Lock duration: 10 minutes for Stripe checkout
-const LOCK_DURATION_MS = 10 * 60 * 1000
-
-function isPositionLocked(position: { lockedUntil: Date | null }): boolean {
-  if (!position.lockedUntil) return false
-  return new Date() < position.lockedUntil
-}
 
 export async function POST(
   req: Request,
@@ -42,14 +33,6 @@ export async function POST(
       )
     }
 
-    // Check if buyer's position is locked
-    if (isPositionLocked(buyerPosition)) {
-      return NextResponse.json(
-        { error: "Your position is currently involved in another transaction. Please wait." },
-        { status: 409 }
-      )
-    }
-
     // Get position directly in front
     const targetPosition = await prisma.linePosition.findFirst({
       where: {
@@ -73,139 +56,69 @@ export async function POST(
       )
     }
 
-    // Check if target position is locked
-    if (isPositionLocked(targetPosition)) {
+    // Check if either position is locked
+    const now = new Date()
+    if (buyerPosition.lockedUntil && now < buyerPosition.lockedUntil) {
+      return NextResponse.json(
+        { error: "Your position is currently involved in another transaction. Please wait." },
+        { status: 409 }
+      )
+    }
+    if (targetPosition.lockedUntil && now < targetPosition.lockedUntil) {
       return NextResponse.json(
         { error: "This position is currently involved in another transaction. Please wait." },
         { status: 409 }
       )
     }
 
-    const priceInCents = Math.round(targetPosition.askingPrice * 100)
-
-    // Create a pending transaction and lock both positions atomically
-    const lockUntil = new Date(Date.now() + LOCK_DURATION_MS)
-
-    const transaction = await prisma.$transaction(async (tx) => {
-      // Double-check locks inside transaction
-      const freshBuyer = await tx.linePosition.findUnique({
-        where: { id: buyerPosition.id },
-      })
-      const freshSeller = await tx.linePosition.findUnique({
-        where: { id: targetPosition.id },
-      })
-
-      if (!freshBuyer || !freshSeller) {
-        throw new Error("Positions no longer exist")
-      }
-
-      if (isPositionLocked(freshBuyer) || isPositionLocked(freshSeller)) {
-        throw new Error("Position is locked by another transaction")
-      }
-
+    // Dev mode: complete swap immediately without payment
+    await prisma.$transaction(async (tx) => {
       // Create transaction record
-      const txRecord = await tx.transaction.create({
+      await tx.transaction.create({
         data: {
           buyerId: session.user.id,
           sellerId: targetPosition.userId,
           lineId,
           amount: targetPosition.askingPrice!,
-          status: "PENDING",
+          status: "COMPLETED",
         },
       })
 
-      // Lock both positions
+      // Swap positions using temporary position to avoid unique constraint
+      const tempPosition = -1
+
       await tx.linePosition.update({
         where: { id: buyerPosition.id },
-        data: { lockedUntil: lockUntil, lockedBy: txRecord.id },
+        data: { position: tempPosition },
       })
 
       await tx.linePosition.update({
         where: { id: targetPosition.id },
-        data: { lockedUntil: lockUntil, lockedBy: txRecord.id },
-      })
-
-      return txRecord
-    })
-
-    // Get base URL for redirects
-    const baseUrl = process.env.NEXTAUTH_URL || process.env.AUTH_URL || "http://localhost:3000"
-
-    // Check if Stripe is configured
-    if (!process.env.STRIPE_SECRET_KEY) {
-      // Dev mode: complete swap immediately without payment
-      await prisma.$transaction(async (tx) => {
-        const tempPosition = -1
-
-        await tx.linePosition.update({
-          where: { id: buyerPosition.id },
-          data: { position: tempPosition },
-        })
-
-        await tx.linePosition.update({
-          where: { id: targetPosition.id },
-          data: {
-            position: buyerPosition.position,
-            askingPrice: null,
-            lockedUntil: null,
-            lockedBy: null,
-          },
-        })
-
-        await tx.linePosition.update({
-          where: { id: buyerPosition.id },
-          data: {
-            position: targetPosition.position,
-            lockedUntil: null,
-            lockedBy: null,
-          },
-        })
-
-        await tx.transaction.update({
-          where: { id: transaction.id },
-          data: { status: "COMPLETED" },
-        })
-      })
-
-      lineEvents.emit(lineId, { type: "swap", lineId })
-
-      return NextResponse.json({
-        success: true,
-        devMode: true,
-        message: "Position swapped (dev mode - no payment)"
-      })
-    }
-
-    // Production: Create Stripe checkout session
-    const checkoutSession = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
-      line_items: [
-        {
-          price_data: {
-            currency: "usd",
-            product_data: {
-              name: `Position #${targetPosition.position} in ${targetPosition.line.name}`,
-              description: `Buy position from ${targetPosition.user.name || "Anonymous"}`,
-            },
-            unit_amount: priceInCents,
-          },
-          quantity: 1,
+        data: {
+          position: buyerPosition.position,
+          askingPrice: null,
+          lockedUntil: null,
+          lockedBy: null,
         },
-      ],
-      mode: "payment",
-      success_url: `${baseUrl}/api/lines/${lineId}/complete-payment?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${baseUrl}/api/lines/${lineId}/cancel-payment?transaction_id=${transaction.id}`,
-      metadata: {
-        transactionId: transaction.id,
-        lineId,
-        buyerId: session.user.id,
-        sellerId: targetPosition.userId,
-        buyerPositionId: buyerPosition.id,
-        sellerPositionId: targetPosition.id,
-      },
+      })
+
+      await tx.linePosition.update({
+        where: { id: buyerPosition.id },
+        data: {
+          position: targetPosition.position,
+          lockedUntil: null,
+          lockedBy: null,
+        },
+      })
     })
 
-    return NextResponse.json({ url: checkoutSession.url })
+    lineEvents.emit(lineId, { type: "swap", lineId })
+
+    return NextResponse.json({
+      success: true,
+      devMode: true,
+      message: "Position swapped successfully"
+    })
   } catch (error) {
     console.error("Checkout error:", error)
     const message = error instanceof Error ? error.message : "Failed to create checkout"

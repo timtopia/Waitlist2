@@ -294,7 +294,7 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
                   key={line.id}
                   className="p-4 bg-gray-50 rounded-lg"
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between">
                     <Link href={`/lines/${line.id}`} className="flex-1">
                       <div>
                         <div className="flex items-center space-x-2">
@@ -322,7 +322,7 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
                         </p>
                       </div>
                     </Link>
-                    <div className="flex items-center space-x-2 ml-4">
+                    <div className="flex flex-wrap items-center gap-2 ml-0 mt-3 sm:mt-0 sm:ml-4">
                       <Button
                         size="sm"
                         variant="ghost"

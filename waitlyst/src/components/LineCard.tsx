@@ -7,6 +7,9 @@ interface LineCardProps {
     id: string
     name: string
     description: string | null
+    opensAt?: string | null
+    closesAt?: string | null
+    maxCapacity?: number | null
     createdBy: {
       name: string | null
       image: string | null
@@ -18,14 +21,50 @@ interface LineCardProps {
   }
 }
 
+function getStatusBadge(line: LineCardProps["line"]) {
+  const now = new Date()
+  if (line.opensAt && now < new Date(line.opensAt)) {
+    return { label: "Upcoming", className: "bg-amber-100 text-amber-700" }
+  }
+  if (line.closesAt && now > new Date(line.closesAt)) {
+    return { label: "Closed", className: "bg-red-100 text-red-700" }
+  }
+  if (line.maxCapacity && line._count.positions >= line.maxCapacity) {
+    return { label: "Full", className: "bg-red-100 text-red-700" }
+  }
+  return { label: "Open", className: "bg-green-100 text-green-700" }
+}
+
 export function LineCard({ line }: LineCardProps) {
+  const status = getStatusBadge(line)
+
   return (
     <Link href={`/lines/${line.id}`}>
       <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
         <CardContent className="p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">{line.name}</h3>
+          <div className="flex items-start justify-between mb-2">
+            <h3 className="text-lg font-semibold text-gray-900">{line.name}</h3>
+            <span className={`text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 ml-2 ${status.className}`}>
+              {status.label}
+            </span>
+          </div>
           {line.description && (
             <p className="text-gray-600 text-sm mb-4 line-clamp-2">{line.description}</p>
+          )}
+          {line.maxCapacity && (
+            <div className="mb-3">
+              <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                <span>{line._count.positions}/{line.maxCapacity} spots</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-1.5">
+                <div
+                  className={`h-1.5 rounded-full ${
+                    line._count.positions >= line.maxCapacity ? "bg-red-500" : "bg-blue-500"
+                  }`}
+                  style={{ width: `${Math.min((line._count.positions / line.maxCapacity) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
           )}
           <div className="flex items-center justify-between text-sm">
             <div className="flex items-center space-x-2">

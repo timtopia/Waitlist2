@@ -3,8 +3,10 @@
 import { useEffect } from "react"
 
 export type LineUpdateEvent = {
-  type: "join" | "leave" | "price-change" | "swap" | "connected"
+  type: "join" | "leave" | "price-change" | "swap" | "connected" | "delete"
   lineId?: string
+  userName?: string
+  position?: number
 }
 
 export function useLineUpdates(lineId: string, onUpdate: (event: LineUpdateEvent) => void) {

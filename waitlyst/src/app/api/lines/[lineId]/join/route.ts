@@ -24,6 +24,16 @@ export async function POST(
         throw new Error("Line not found or inactive")
       }
 
+      // Check if line has opened yet
+      if (line.opensAt && new Date() < new Date(line.opensAt)) {
+        throw new Error("This line hasn't opened yet")
+      }
+
+      // Check if line has closed
+      if (line.closesAt && new Date() > new Date(line.closesAt)) {
+        throw new Error("This line is closed")
+      }
+
       // Creator cannot join their own line
       if (line.createdById === session.user.id) {
         throw new Error("You cannot join your own line")
@@ -35,6 +45,16 @@ export async function POST(
       })
       if (existing) {
         throw new Error("Already in this line")
+      }
+
+      // Check capacity
+      if (line.maxCapacity) {
+        const currentCount = await tx.linePosition.count({
+          where: { lineId },
+        })
+        if (currentCount >= line.maxCapacity) {
+          throw new Error("This line is full")
+        }
       }
 
       // Get next position number
@@ -58,7 +78,12 @@ export async function POST(
     })
 
     // Emit real-time update
-    lineEvents.emit(lineId, { type: "join", lineId })
+    lineEvents.emit(lineId, {
+      type: "join",
+      lineId,
+      userName: position.user.name || "Someone",
+      position: position.position,
+    })
 
     return NextResponse.json(position)
   } catch (error) {

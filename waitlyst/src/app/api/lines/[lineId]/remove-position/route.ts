@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
-import { stripe } from "@/lib/stripe"
+import { refundTransactions } from "@/lib/stripe"
 import { lineEvents } from "@/lib/events"
 import { settleTransactionsForUser } from "@/lib/settle-transactions"
 
@@ -108,28 +108,13 @@ export async function POST(
       return { userId, positionToRemove, purchasesToRefund: [] }
     })
 
-    // Process refunds outside the transaction (Stripe API calls)
+    // Process refunds
     let refundedAmount = 0
     let refundedCount = 0
 
     if (action === "refund" && result.purchasesToRefund.length > 0) {
-      for (const purchase of result.purchasesToRefund) {
-        try {
-          if (purchase.stripePaymentId) {
-            await stripe.refunds.create({
-              payment_intent: purchase.stripePaymentId,
-            })
-            await prisma.transaction.update({
-              where: { id: purchase.id },
-              data: { status: "REFUNDED" },
-            })
-            refundedAmount += purchase.amount
-            refundedCount++
-          }
-        } catch (error) {
-          console.error(`Failed to refund transaction ${purchase.id}:`, error)
-        }
-      }
+      refundedCount = await refundTransactions(result.purchasesToRefund)
+      refundedAmount = result.purchasesToRefund.reduce((sum, p) => sum + p.amount, 0)
 
       // Now delete the position after refunds are processed
       await prisma.$transaction(async (tx) => {

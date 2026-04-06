@@ -13,6 +13,10 @@ export default function CreateLinePage() {
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [isPublic, setIsPublic] = useState(true)
+  const [enableSchedule, setEnableSchedule] = useState(false)
+  const [opensAt, setOpensAt] = useState("")
+  const [closesAt, setClosesAt] = useState("")
+  const [maxCapacity, setMaxCapacity] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -61,6 +65,9 @@ export default function CreateLinePage() {
           name: name.trim(),
           description: description.trim() || null,
           isPublic,
+          opensAt: enableSchedule && opensAt ? new Date(opensAt).toISOString() : null,
+          closesAt: enableSchedule && closesAt ? new Date(closesAt).toISOString() : null,
+          maxCapacity: maxCapacity ? parseInt(maxCapacity, 10) : null,
         }),
       })
 
@@ -132,6 +139,88 @@ export default function CreateLinePage() {
                 </p>
               </div>
             </div>
+
+            {/* Capacity */}
+            <div>
+              <label htmlFor="maxCapacity" className="block text-sm font-medium text-gray-700 mb-1">
+                Max Capacity (optional)
+              </label>
+              <input
+                id="maxCapacity"
+                type="number"
+                min="1"
+                placeholder="Unlimited"
+                value={maxCapacity}
+                onChange={(e) => setMaxCapacity(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Leave empty for unlimited spots
+              </p>
+            </div>
+
+            {/* Schedule Toggle */}
+            <div className="flex items-center space-x-3">
+              <button
+                type="button"
+                onClick={() => setEnableSchedule(!enableSchedule)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  enableSchedule ? "bg-blue-600" : "bg-gray-300"
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    enableSchedule ? "translate-x-6" : "translate-x-1"
+                  }`}
+                />
+              </button>
+              <div>
+                <label className="text-sm font-medium text-gray-700">
+                  Schedule Open/Close Times
+                </label>
+                <p className="text-xs text-gray-500">
+                  {enableSchedule
+                    ? "Line will only accept joins during the scheduled window"
+                    : "Line is open immediately with no end time"}
+                </p>
+              </div>
+            </div>
+
+            {enableSchedule && (
+              <div className="space-y-4 pl-4 border-l-2 border-blue-200">
+                <div>
+                  <label htmlFor="opensAt" className="block text-sm font-medium text-gray-700 mb-1">
+                    Opens At
+                  </label>
+                  <input
+                    id="opensAt"
+                    type="datetime-local"
+                    value={opensAt}
+                    onChange={(e) => setOpensAt(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Leave empty to open immediately
+                  </p>
+                </div>
+                <div>
+                  <label htmlFor="closesAt" className="block text-sm font-medium text-gray-700 mb-1">
+                    Closes At
+                  </label>
+                  <input
+                    id="closesAt"
+                    type="datetime-local"
+                    value={closesAt}
+                    onChange={(e) => setClosesAt(e.target.value)}
+                    min={opensAt || undefined}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Leave empty for no end time
+                  </p>
+                </div>
+              </div>
+            )}
 
             {error && name.trim() && (
               <p className="text-sm text-red-600">{error}</p>

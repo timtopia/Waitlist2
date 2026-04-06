@@ -35,7 +35,12 @@ export async function PATCH(
     })
 
     // Emit real-time update
-    lineEvents.emit(lineId, { type: "price-change", lineId })
+    lineEvents.emit(lineId, {
+      type: "price-change",
+      lineId,
+      userName: position.user.name || "Someone",
+      position: position.position,
+    })
 
     return NextResponse.json(position)
   } catch (error) {

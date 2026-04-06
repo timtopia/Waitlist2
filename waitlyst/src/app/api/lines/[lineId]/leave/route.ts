@@ -38,7 +38,7 @@ export async function DELETE(
       }
 
       const purchasesToRefund = await tx.transaction.findMany({
-        where: { lineId, buyerId: userId, status: "COMPLETED", stripePaymentId: { not: null } },
+        where: { lineId, buyerId: userId, status: "COMPLETED" },
       })
 
       return { position, purchasesToRefund }
@@ -57,7 +57,11 @@ export async function DELETE(
       await settleTransactionsForUser(tx, lineId, userId)
     })
 
-    lineEvents.emit(lineId, { type: "leave", lineId })
+    lineEvents.emit(lineId, {
+      type: "leave",
+      lineId,
+      userName: session.user.name || "Someone",
+    })
     return NextResponse.json({ success: true, refundedCount })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to leave line"

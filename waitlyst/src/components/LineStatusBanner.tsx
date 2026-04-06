@@ -1,0 +1,164 @@
+"use client"
+
+import { useEffect, useState } from "react"
+
+interface LineStatusBannerProps {
+  opensAt: string | null
+  closesAt: string | null
+  maxCapacity: number | null
+  currentCount: number
+}
+
+function formatTimeLeft(ms: number): string {
+  if (ms <= 0) return "0s"
+
+  const days = Math.floor(ms / (1000 * 60 * 60 * 24))
+  const hours = Math.floor((ms % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+  const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60))
+  const seconds = Math.floor((ms % (1000 * 60)) / 1000)
+
+  if (days > 0) return `${days}d ${hours}h ${minutes}m`
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`
+  if (minutes > 0) return `${minutes}m ${seconds}s`
+  return `${seconds}s`
+}
+
+type LineStatus =
+  | { state: "not_yet_open"; opensAt: Date }
+  | { state: "open"; closesAt: Date | null }
+  | { state: "closed" }
+  | { state: "full" }
+
+function getLineStatus(
+  opensAt: string | null,
+  closesAt: string | null,
+  maxCapacity: number | null,
+  currentCount: number
+): LineStatus {
+  const now = new Date()
+
+  if (opensAt && now < new Date(opensAt)) {
+    return { state: "not_yet_open", opensAt: new Date(opensAt) }
+  }
+
+  if (closesAt && now > new Date(closesAt)) {
+    return { state: "closed" }
+  }
+
+  if (maxCapacity && currentCount >= maxCapacity) {
+    return { state: "full" }
+  }
+
+  return { state: "open", closesAt: closesAt ? new Date(closesAt) : null }
+}
+
+export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount }: LineStatusBannerProps) {
+  const [now, setNow] = useState(new Date())
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const status = getLineStatus(opensAt, closesAt, maxCapacity, currentCount)
+
+  return (
+    <div className="space-y-3">
+      {/* Status Banner */}
+      {status.state === "not_yet_open" && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-semibold text-amber-800">Line Not Yet Open</p>
+              <p className="text-sm text-amber-600">
+                Opens {status.opensAt.toLocaleDateString(undefined, {
+                  weekday: "short",
+                  month: "short",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-bold text-amber-800 tabular-nums">
+                {formatTimeLeft(status.opensAt.getTime() - now.getTime())}
+              </p>
+              <p className="text-xs text-amber-600">until open</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {status.state === "open" && status.closesAt && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-semibold text-green-800">Line is Open</p>
+              <p className="text-sm text-green-600">
+                Closes {status.closesAt.toLocaleDateString(undefined, {
+                  weekday: "short",
+                  month: "short",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-bold text-green-800 tabular-nums">
+                {formatTimeLeft(status.closesAt.getTime() - now.getTime())}
+              </p>
+              <p className="text-xs text-green-600">remaining</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {status.state === "closed" && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="font-semibold text-red-800">Line is Closed</p>
+          <p className="text-sm text-red-600">This line is no longer accepting new joins.</p>
+        </div>
+      )}
+
+      {status.state === "full" && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="font-semibold text-red-800">Line is Full</p>
+          <p className="text-sm text-red-600">
+            All {maxCapacity} spots have been taken.
+          </p>
+        </div>
+      )}
+
+      {/* Capacity Bar */}
+      {maxCapacity && status.state !== "closed" && (
+        <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm font-medium text-gray-700">Spots Filled</p>
+            <p className="text-sm font-bold text-gray-900">
+              {currentCount} / {maxCapacity}
+            </p>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-3">
+            <div
+              className={`h-3 rounded-full transition-all duration-500 ${
+                currentCount >= maxCapacity
+                  ? "bg-red-500"
+                  : currentCount >= maxCapacity * 0.8
+                  ? "bg-amber-500"
+                  : "bg-blue-500"
+              }`}
+              style={{ width: `${Math.min((currentCount / maxCapacity) * 100, 100)}%` }}
+            />
+          </div>
+          {currentCount < maxCapacity && (
+            <p className="text-xs text-gray-500 mt-1">
+              {maxCapacity - currentCount} spot{maxCapacity - currentCount !== 1 ? "s" : ""} remaining
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
