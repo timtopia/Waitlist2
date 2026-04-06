@@ -74,7 +74,6 @@ export async function POST(
             lineId,
             buyerId: userId,
             status: "COMPLETED",
-            stripePaymentId: { not: null },
           },
         })
 

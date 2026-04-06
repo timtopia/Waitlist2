@@ -52,7 +52,7 @@ export async function DELETE(
       })
 
       return tx.transaction.findMany({
-        where: { lineId, status: "COMPLETED", settledAt: null, stripePaymentId: { not: null } },
+        where: { lineId, status: "COMPLETED", settledAt: null },
       })
     })
 

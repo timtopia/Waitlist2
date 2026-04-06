@@ -28,7 +28,7 @@ interface Line {
   positions: {
     id: string
     position: number
-    askingPrice: string | null
+    askingPrice: number | null
     lockedUntil: string | null
     user: {
       id: string

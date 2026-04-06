@@ -8,7 +8,7 @@ import { useSession } from "next-auth/react"
 interface Position {
   id: string
   position: number
-  askingPrice: string | null
+  askingPrice: number | null
   lockedUntil: string | null
   user: {
     id: string
@@ -282,7 +282,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false }
                     </p>
                     {pos.askingPrice !== null && (
                       <p className={`text-sm font-medium ${isLocked ? "text-orange-600" : "text-green-600"}`}>
-                        For sale: ${parseFloat(pos.askingPrice).toFixed(2)}
+                        For sale: ${pos.askingPrice.toFixed(2)}
                         {isLocked && <span className="ml-1">(pending)</span>}
                       </p>
                     )}
@@ -294,17 +294,20 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false }
                     <>
                       {editingPrice === pos.id ? (
                         <div className="flex items-center space-x-2">
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="Price"
-                            value={priceInput[pos.id] || ""}
-                            onChange={(e) =>
-                              setPriceInput({ ...priceInput, [pos.id]: e.target.value })
-                            }
-                            className="w-24 px-2 py-1 border rounded text-sm"
-                          />
+                          <div className="relative">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-gray-500">$</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="0.00"
+                              value={priceInput[pos.id] || ""}
+                              onChange={(e) =>
+                                setPriceInput({ ...priceInput, [pos.id]: e.target.value })
+                              }
+                              className="w-28 pl-6 pr-2 py-1 border rounded text-sm"
+                            />
+                          </div>
                           <Button
                             size="sm"
                             onClick={() => handleSetPrice(pos.id)}
@@ -329,7 +332,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false }
                               setEditingPrice(pos.id)
                               setPriceInput({
                                 ...priceInput,
-                                [pos.id]: pos.askingPrice || "",
+                                [pos.id]: pos.askingPrice?.toString() || "",
                               })
                             }}
                           >
@@ -365,7 +368,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false }
                       onClick={handleBuy}
                       isLoading={loadingAction === "buy"}
                     >
-                      Buy for ${parseFloat(pos.askingPrice!).toFixed(2)}
+                      Buy for ${pos.askingPrice!.toFixed(2)}
                     </Button>
                   )}
                   {isCreator && !isCurrentUser && (

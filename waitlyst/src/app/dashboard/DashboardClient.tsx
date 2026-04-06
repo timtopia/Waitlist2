@@ -259,7 +259,7 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
                       <p className="text-lg font-bold text-blue-600">#{pos.position}</p>
                       {pos.askingPrice !== null && (
                         <p className="text-sm text-green-600">
-                          For sale: ${parseFloat(pos.askingPrice).toFixed(2)}
+                          For sale: ${Number(pos.askingPrice).toFixed(2)}
                         </p>
                       )}
                     </div>
