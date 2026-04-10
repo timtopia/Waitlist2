@@ -17,8 +17,10 @@ interface Stats {
   linesCreated: number
   activePositions: number
   totalTransactions: number
-  balance: number
-  pendingEarnings: number
+  sellerBalance: number
+  pendingSellerEarnings: number
+  ownerBalance: number
+  pendingOwnerEarnings: number
   purchaseCount: number
   saleCount: number
 }
@@ -132,14 +134,25 @@ export function ProfileClient({ user, stats, recentTransactions }: ProfileClient
           <h2 className="text-lg font-semibold text-gray-900">Financial Summary</h2>
         </CardHeader>
         <CardContent>
-          <div className="bg-green-50 rounded-lg p-4 text-center">
-            <p className="text-2xl font-bold text-green-700">${stats.balance.toFixed(2)}</p>
-            <p className="text-sm text-green-600">Balance</p>
-            {stats.pendingEarnings > 0 && (
-              <p className="text-xs text-green-400 mt-1">
-                +${stats.pendingEarnings.toFixed(2)} pending
-              </p>
-            )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-green-50 rounded-lg p-4 text-center">
+              <p className="text-2xl font-bold text-green-700">${stats.sellerBalance.toFixed(2)}</p>
+              <p className="text-sm text-green-600">Seller Balance</p>
+              {stats.pendingSellerEarnings > 0 && (
+                <p className="text-xs text-green-400 mt-1">
+                  +${stats.pendingSellerEarnings.toFixed(2)} pending
+                </p>
+              )}
+            </div>
+            <div className="bg-blue-50 rounded-lg p-4 text-center">
+              <p className="text-2xl font-bold text-blue-700">${stats.ownerBalance.toFixed(2)}</p>
+              <p className="text-sm text-blue-600">Line Owner Balance</p>
+              {stats.pendingOwnerEarnings > 0 && (
+                <p className="text-xs text-blue-400 mt-1">
+                  +${stats.pendingOwnerEarnings.toFixed(2)} pending
+                </p>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>

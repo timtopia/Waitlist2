@@ -14,7 +14,14 @@ export default async function ProfilePage() {
 
   const userId = session.user.id
 
-  const [user, transactions, linesCreated, activePositions] = await Promise.all([
+  // Get IDs of lines this user owns
+  const ownedLines = await prisma.line.findMany({
+    where: { createdById: userId },
+    select: { id: true },
+  })
+  const ownedLineIds = ownedLines.map((l) => l.id)
+
+  const [user, transactions, ownerTransactions, activePositions] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -32,9 +39,15 @@ export default async function ProfilePage() {
       orderBy: { createdAt: "desc" },
       take: 50,
     }),
-    prisma.line.count({
-      where: { createdById: userId },
-    }),
+    // Transactions on lines this user owns (for owner fee earnings)
+    ownedLineIds.length > 0
+      ? prisma.transaction.findMany({
+          where: {
+            lineId: { in: ownedLineIds },
+            ownerFee: { gt: 0 },
+          },
+        })
+      : Promise.resolve([]),
     prisma.linePosition.count({
       where: { userId },
     }),
@@ -52,12 +65,16 @@ export default async function ProfilePage() {
   const completedAsBuyer = asBuyer.filter((t) => t.status === "COMPLETED")
   const completedAsSeller = asSeller.filter((t) => t.status === "COMPLETED")
 
-  // Balance only includes sales (purchases charge a card, not platform balance)
-  const balance = completedAsSeller.reduce((sum, t) => sum + t.amount, 0)
-
-  // PENDING earnings from sales
+  // Seller balance (from selling positions)
+  const sellerBalance = completedAsSeller.reduce((sum, t) => sum + t.amount, 0)
   const pendingAsSeller = asSeller.filter((t) => t.status === "PENDING")
-  const pendingEarnings = pendingAsSeller.reduce((sum, t) => sum + t.amount, 0)
+  const pendingSellerEarnings = pendingAsSeller.reduce((sum, t) => sum + t.amount, 0)
+
+  // Owner balance (fees earned from lines user owns)
+  const completedOwnerTxns = ownerTransactions.filter((t) => t.status === "COMPLETED")
+  const pendingOwnerTxns = ownerTransactions.filter((t) => t.status === "PENDING")
+  const ownerBalance = completedOwnerTxns.reduce((sum, t) => sum + t.ownerFee, 0)
+  const pendingOwnerEarnings = pendingOwnerTxns.reduce((sum, t) => sum + t.ownerFee, 0)
 
   return (
     <ProfileClient
@@ -66,11 +83,13 @@ export default async function ProfilePage() {
         createdAt: user.createdAt.toISOString(),
       }}
       stats={{
-        linesCreated,
+        linesCreated: ownedLineIds.length,
         activePositions,
         totalTransactions: transactions.length,
-        balance,
-        pendingEarnings,
+        sellerBalance,
+        pendingSellerEarnings,
+        ownerBalance,
+        pendingOwnerEarnings,
         purchaseCount: completedAsBuyer.length,
         saleCount: completedAsSeller.length,
       }}

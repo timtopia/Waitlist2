@@ -3,14 +3,15 @@ generator client {
 }
 
 datasource db {
-  provider = "mongodb"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("POSTGRES_PRISMA_URL")
+  directUrl = env("POSTGRES_URL_NON_POOLING")
 }
 
 // NextAuth required models
 model Account {
-  id                String  @id @default(auto()) @map("_id") @db.ObjectId
-  userId            String  @db.ObjectId
+  id                String  @id @default(cuid())
+  userId            String
   type              String
   provider          String
   providerAccountId String
@@ -27,15 +28,15 @@ model Account {
 }
 
 model Session {
-  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  id           String   @id @default(cuid())
   sessionToken String   @unique
-  userId       String   @db.ObjectId
+  userId       String
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model User {
-  id            String         @id @default(auto()) @map("_id") @db.ObjectId
+  id            String         @id @default(cuid())
   name          String?
   email         String?        @unique
   emailVerified DateTime?
@@ -48,7 +49,7 @@ model User {
 }
 
 model VerificationToken {
-  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  id         String   @id @default(cuid())
   identifier String
   token      String   @unique
   expires    DateTime
@@ -58,10 +59,10 @@ model VerificationToken {
 
 // Waitlyst app models
 model Line {
-  id              String         @id @default(auto()) @map("_id") @db.ObjectId
+  id              String         @id @default(cuid())
   name            String
   description     String?
-  createdById     String         @db.ObjectId
+  createdById     String
   createdBy       User           @relation("LineCreator", fields: [createdById], references: [id])
   positions       LinePosition[]
   isActive        Boolean        @default(true)
@@ -72,13 +73,15 @@ model Line {
   ownerFeePercent Float          @default(0) // Percentage the line owner earns on each sale (e.g. 10 = 10%)
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
+
+  @@index([createdById])
 }
 
 model LinePosition {
-  id          String    @id @default(auto()) @map("_id") @db.ObjectId
-  lineId      String    @db.ObjectId
+  id          String    @id @default(cuid())
+  lineId      String
   line        Line      @relation(fields: [lineId], references: [id], onDelete: Cascade)
-  userId      String    @db.ObjectId
+  userId      String
   user        User      @relation(fields: [userId], references: [id])
   position    Int       // 1 = first in line
   askingPrice Float?    // null = not for sale
@@ -89,13 +92,15 @@ model LinePosition {
 
   @@unique([lineId, userId])    // User can only be in a line once
   @@unique([lineId, position])  // Each position is unique per line
+  @@index([lineId])
+  @@index([userId])
 }
 
 model Transaction {
-  id              String            @id @default(auto()) @map("_id") @db.ObjectId
-  buyerId         String            @db.ObjectId
-  sellerId        String            @db.ObjectId
-  lineId          String            @db.ObjectId
+  id              String            @id @default(cuid())
+  buyerId         String
+  sellerId        String
+  lineId          String
   amount          Float             // Seller's asking price (what seller receives)
   ownerFee        Float             @default(0) // Fee paid to line owner
   platformFee     Float             @default(0) // Fee paid to platform
@@ -103,6 +108,10 @@ model Transaction {
   status          TransactionStatus @default(PENDING)
   settledAt       DateTime?         // Set when both buyer and seller have left the line
   createdAt       DateTime          @default(now())
+
+  @@index([lineId])
+  @@index([buyerId])
+  @@index([sellerId])
 }
 
 enum TransactionStatus {
