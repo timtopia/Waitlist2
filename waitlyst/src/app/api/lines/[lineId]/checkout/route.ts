@@ -120,7 +120,7 @@ export async function POST(
       try {
         checkoutSession = await stripe.checkout.sessions.create({
           mode: "payment",
-          automatic_tax: { enabled: true },
+          // automatic_tax: { enabled: true }, // Enable when Stripe Tax is configured in dashboard
           line_items: [
             {
               price_data: {
@@ -128,10 +128,8 @@ export async function POST(
                 product_data: {
                   name: `Position #${targetPosition.position} in ${targetPosition.line.name}`,
                   description: `Buy position #${targetPosition.position} from ${targetPosition.user.name || "Anonymous"}`,
-                  tax_code: "txcd_10000000", // General - Electronically Supplied Services
                 },
                 unit_amount: Math.round(fees.totalPrice * 100), // Stripe uses cents — total includes fees
-                tax_behavior: "exclusive", // Tax is added on top of the price
               },
               quantity: 1,
             },

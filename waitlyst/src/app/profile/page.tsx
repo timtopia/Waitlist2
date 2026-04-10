@@ -52,20 +52,11 @@ export default async function ProfilePage() {
   const completedAsBuyer = asBuyer.filter((t) => t.status === "COMPLETED")
   const completedAsSeller = asSeller.filter((t) => t.status === "COMPLETED")
 
-  const totalSpent = completedAsBuyer.reduce((sum, t) => sum + t.amount, 0)
-  const totalEarned = completedAsSeller.reduce((sum, t) => sum + t.amount, 0)
+  // Balance only includes sales (purchases charge a card, not platform balance)
+  const balance = completedAsSeller.reduce((sum, t) => sum + t.amount, 0)
 
-  // REFUNDED transactions
-  const refundedAsBuyer = asBuyer.filter((t) => t.status === "REFUNDED")
-  const refundedAsSeller = asSeller.filter((t) => t.status === "REFUNDED")
-
-  const totalRefundedToBuyer = refundedAsBuyer.reduce((sum, t) => sum + t.amount, 0)
-  const totalRefundedAsSeller = refundedAsSeller.reduce((sum, t) => sum + t.amount, 0)
-
-  // PENDING transactions
-  const pendingAsBuyer = asBuyer.filter((t) => t.status === "PENDING")
+  // PENDING earnings from sales
   const pendingAsSeller = asSeller.filter((t) => t.status === "PENDING")
-  const pendingSpend = pendingAsBuyer.reduce((sum, t) => sum + t.amount, 0)
   const pendingEarnings = pendingAsSeller.reduce((sum, t) => sum + t.amount, 0)
 
   return (
@@ -78,16 +69,10 @@ export default async function ProfilePage() {
         linesCreated,
         activePositions,
         totalTransactions: transactions.length,
-        totalSpent,
-        totalEarned,
-        netEarnings: totalEarned - totalSpent,
-        pendingSpend,
+        balance,
         pendingEarnings,
         purchaseCount: completedAsBuyer.length,
         saleCount: completedAsSeller.length,
-        totalRefundedToBuyer,
-        totalRefundedAsSeller,
-        refundCount: refundedAsBuyer.length + refundedAsSeller.length,
       }}
       recentTransactions={transactions.slice(0, 20).map((t) => ({
         id: t.id,

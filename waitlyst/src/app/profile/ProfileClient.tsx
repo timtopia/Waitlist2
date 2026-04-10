@@ -17,16 +17,10 @@ interface Stats {
   linesCreated: number
   activePositions: number
   totalTransactions: number
-  totalSpent: number
-  totalEarned: number
-  netEarnings: number
-  pendingSpend: number
+  balance: number
   pendingEarnings: number
   purchaseCount: number
   saleCount: number
-  totalRefundedToBuyer: number
-  totalRefundedAsSeller: number
-  refundCount: number
 }
 
 interface Transaction {
@@ -138,54 +132,14 @@ export function ProfileClient({ user, stats, recentTransactions }: ProfileClient
           <h2 className="text-lg font-semibold text-gray-900">Financial Summary</h2>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-red-50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-red-700">${stats.totalSpent.toFixed(2)}</p>
-              <p className="text-sm text-red-600">Total Spent</p>
-              {stats.pendingSpend > 0 && (
-                <p className="text-xs text-red-400 mt-1">
-                  +${stats.pendingSpend.toFixed(2)} pending
-                </p>
-              )}
-            </div>
-            <div className="bg-green-50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-green-700">${stats.totalEarned.toFixed(2)}</p>
-              <p className="text-sm text-green-600">Total Earned</p>
-              {stats.pendingEarnings > 0 && (
-                <p className="text-xs text-green-400 mt-1">
-                  +${stats.pendingEarnings.toFixed(2)} pending
-                </p>
-              )}
-            </div>
-            {(stats.totalRefundedToBuyer > 0 || stats.totalRefundedAsSeller > 0) && (
-              <div className="bg-amber-50 rounded-lg p-4 text-center">
-                <p className="text-2xl font-bold text-amber-700">
-                  ${(stats.totalRefundedToBuyer + stats.totalRefundedAsSeller).toFixed(2)}
-                </p>
-                <p className="text-sm text-amber-600">
-                  Refunded ({stats.refundCount})
-                </p>
-                {stats.totalRefundedToBuyer > 0 && (
-                  <p className="text-xs text-amber-500 mt-1">
-                    ${stats.totalRefundedToBuyer.toFixed(2)} received back
-                  </p>
-                )}
-              </div>
+          <div className="bg-green-50 rounded-lg p-4 text-center">
+            <p className="text-2xl font-bold text-green-700">${stats.balance.toFixed(2)}</p>
+            <p className="text-sm text-green-600">Balance</p>
+            {stats.pendingEarnings > 0 && (
+              <p className="text-xs text-green-400 mt-1">
+                +${stats.pendingEarnings.toFixed(2)} pending
+              </p>
             )}
-            <div className={`rounded-lg p-4 text-center ${
-              stats.netEarnings >= 0 ? "bg-blue-50" : "bg-amber-50"
-            }`}>
-              <p className={`text-2xl font-bold ${
-                stats.netEarnings >= 0 ? "text-blue-700" : "text-amber-700"
-              }`}>
-                {stats.netEarnings >= 0 ? "+" : "-"}${Math.abs(stats.netEarnings).toFixed(2)}
-              </p>
-              <p className={`text-sm ${
-                stats.netEarnings >= 0 ? "text-blue-600" : "text-amber-600"
-              }`}>
-                Net {stats.netEarnings >= 0 ? "Earnings" : "Spent"}
-              </p>
-            </div>
           </div>
         </CardContent>
       </Card>
