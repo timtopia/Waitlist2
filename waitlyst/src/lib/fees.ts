@@ -1,14 +1,15 @@
 /**
  * Fee calculation utilities.
  *
- * When a position is sold:
- *  - Seller sets their asking price (what they receive)
- *  - Owner fee = askingPrice × ownerFeePercent / 100
- *  - Platform fee = askingPrice × platformFeePercent / 100
- *  - Buyer pays = askingPrice + ownerFee + platformFee
+ * When a position is sold, the buyer pays:
+ *   askingPrice + ownerFee + platformFee
+ *
+ * Stripe's processing fee (2.9% + $0.30) comes out of the platform fee.
+ * Set PLATFORM_FEE_PERCENT high enough to cover Stripe + your margin.
+ * e.g. 10% platform fee → ~3% to Stripe, ~7% profit.
  */
 
-const PLATFORM_FEE_PERCENT = parseFloat(process.env.PLATFORM_FEE_PERCENT || "5")
+const PLATFORM_FEE_PERCENT = parseFloat(process.env.PLATFORM_FEE_PERCENT || "10")
 
 export function getPlatformFeePercent(): number {
   return PLATFORM_FEE_PERCENT

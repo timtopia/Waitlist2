@@ -255,7 +255,7 @@ export function EditLineClient({ line }: { line: LineData }) {
                     e.g. on a $10 sale, you earn ${(10 * parseFloat(ownerFeePercent) / 100).toFixed(2)}
                   </span>
                 ) : (
-                  <span> A 5% platform fee also applies to each sale.</span>
+                  <span> A 10% platform fee also applies to each sale.</span>
                 )}
               </p>
             </div>
