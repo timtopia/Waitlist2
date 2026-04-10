@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { refundTransactions } from "@/lib/stripe"
 import { lineEvents } from "@/lib/events"
+import { getPlatformFeePercent } from "@/lib/fees"
 
 export const dynamic = "force-dynamic"
 
@@ -27,7 +28,7 @@ export async function GET(
     return NextResponse.json({ error: "Line not found" }, { status: 404 })
   }
 
-  return NextResponse.json(line, {
+  return NextResponse.json({ ...line, platformFeePercent: getPlatformFeePercent() }, {
     headers: {
       "Cache-Control": "no-store, no-cache, must-revalidate",
     },

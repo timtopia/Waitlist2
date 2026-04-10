@@ -24,6 +24,7 @@ interface Line {
   closesAt: string | null
   maxCapacity: number | null
   ownerFeePercent: number
+  platformFeePercent: number
   createdAt: string
   createdBy: {
     id: string
@@ -52,19 +53,16 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [notificationsEnabled, setNotificationsEnabled] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [feeInfo, setFeeInfo] = useState<{ ownerFeePercent: number; platformFeePercent: number } | undefined>()
   const router = useRouter()
   const searchParams = useSearchParams()
   const { requestPermission, sendNotification } = useNotifications()
   const { addToast } = useToast()
 
-  // Fetch fee info for this line
-  useEffect(() => {
-    fetch(`/api/lines/${lineId}/fees`, { cache: "no-store" })
-      .then((res) => res.ok ? res.json() : null)
-      .then((data) => { if (data) setFeeInfo(data) })
-      .catch(() => {})
-  }, [lineId])
+  // Derive fee info from line data — updates automatically when line data changes via polling
+  const feeInfo = line ? {
+    ownerFeePercent: line.ownerFeePercent,
+    platformFeePercent: line.platformFeePercent,
+  } : undefined
 
   // Handle payment status from Stripe redirect
   useEffect(() => {

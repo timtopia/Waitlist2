@@ -258,6 +258,11 @@ export function EditLineClient({ line }: { line: LineData }) {
                   <span> A 10% platform fee also applies to each sale.</span>
                 )}
               </p>
+              {parseFloat(ownerFeePercent) !== line.ownerFeePercent && (
+                <p className="text-xs text-amber-600 mt-1">
+                  Changing the fee will update all displayed prices immediately. Purchases already in progress will keep their original fees.
+                </p>
+              )}
             </div>
 
             {/* Schedule Toggle */}
