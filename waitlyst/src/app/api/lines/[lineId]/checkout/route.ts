@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { stripe, isStripeConfigured, getBaseUrl, performPositionSwap } from "@/lib/stripe"
 import { lineEvents } from "@/lib/events"
 
-const LOCK_DURATION_MS = 10 * 60 * 1000 // 10 minutes
+const LOCK_DURATION_MS = 30 * 60 * 1000 // 30 minutes (Stripe minimum for checkout session expiry)
 
 export async function POST(
   req: Request,
@@ -108,31 +108,49 @@ export async function POST(
 
       // Create Stripe Checkout Session
       const baseUrl = getBaseUrl()
-      const checkoutSession = await stripe.checkout.sessions.create({
-        mode: "payment",
-        line_items: [
-          {
-            price_data: {
-              currency: "usd",
-              product_data: {
-                name: `Position #${targetPosition.position} in ${targetPosition.line.name}`,
-                description: `Buy position #${targetPosition.position} from ${targetPosition.user.name || "Anonymous"}`,
+      let checkoutSession
+      try {
+        checkoutSession = await stripe.checkout.sessions.create({
+          mode: "payment",
+          line_items: [
+            {
+              price_data: {
+                currency: "usd",
+                product_data: {
+                  name: `Position #${targetPosition.position} in ${targetPosition.line.name}`,
+                  description: `Buy position #${targetPosition.position} from ${targetPosition.user.name || "Anonymous"}`,
+                },
+                unit_amount: Math.round(amount * 100), // Stripe uses cents
               },
-              unit_amount: Math.round(amount * 100), // Stripe uses cents
+              quantity: 1,
             },
-            quantity: 1,
+          ],
+          metadata: {
+            transactionId: transaction.id,
+            lineId,
+            buyerId: session.user.id,
+            sellerId: targetPosition.userId,
           },
-        ],
-        metadata: {
-          transactionId: transaction.id,
-          lineId,
-          buyerId: session.user.id,
-          sellerId: targetPosition.userId,
-        },
-        success_url: `${baseUrl}/api/lines/${lineId}/complete-payment?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${baseUrl}/api/lines/${lineId}/cancel-payment?transaction_id=${transaction.id}`,
-        expires_at: Math.floor(lockUntil.getTime() / 1000), // Match position lock expiry
-      })
+          success_url: `${baseUrl}/api/lines/${lineId}/complete-payment?session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${baseUrl}/api/lines/${lineId}/cancel-payment?transaction_id=${transaction.id}`,
+          expires_at: Math.floor(lockUntil.getTime() / 1000),
+        })
+      } catch (stripeError) {
+        // Stripe API call failed — clean up the locked positions and pending transaction
+        console.error("Stripe checkout session creation failed:", stripeError)
+        await prisma.$transaction(async (tx) => {
+          await tx.linePosition.updateMany({
+            where: { lockedBy: transaction.id },
+            data: { lockedUntil: null, lockedBy: null },
+          })
+          await tx.transaction.update({
+            where: { id: transaction.id },
+            data: { status: "FAILED" },
+          })
+        })
+        const msg = stripeError instanceof Error ? stripeError.message : "Payment service error"
+        return NextResponse.json({ error: msg }, { status: 502 })
+      }
 
       // Store Stripe session ID on the transaction
       await prisma.transaction.update({
