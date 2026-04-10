@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
-import { stripe, isStripeConfigured, getBaseUrl, performPositionSwap } from "@/lib/stripe"
+import { getStripe, getBaseUrl, performPositionSwap } from "@/lib/stripe"
 import { lineEvents } from "@/lib/events"
 
 const LOCK_DURATION_MS = 30 * 60 * 1000 // 30 minutes (Stripe minimum for checkout session expiry)
@@ -77,7 +77,8 @@ export async function POST(
     const amount = targetPosition.askingPrice
 
     // ─── STRIPE MODE: Create a Checkout Session ───────────────────────
-    if (isStripeConfigured() && stripe) {
+    const stripe = getStripe()
+    if (stripe) {
       const lockUntil = new Date(Date.now() + LOCK_DURATION_MS)
 
       // Create the pending transaction and lock positions atomically

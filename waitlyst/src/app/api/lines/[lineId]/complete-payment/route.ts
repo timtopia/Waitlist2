@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { stripe, isStripeConfigured, getBaseUrl, performPositionSwap } from "@/lib/stripe"
+import { getStripe, getBaseUrl, performPositionSwap } from "@/lib/stripe"
 import { prisma } from "@/lib/prisma"
 import { lineEvents } from "@/lib/events"
 
@@ -23,7 +23,8 @@ export async function GET(
     return NextResponse.redirect(`${baseUrl}/lines/${lineId}?payment=error&reason=missing_session`)
   }
 
-  if (!isStripeConfigured() || !stripe) {
+  const stripe = getStripe()
+  if (!stripe) {
     return NextResponse.redirect(`${baseUrl}/lines/${lineId}?payment=error&reason=stripe_not_configured`)
   }
 

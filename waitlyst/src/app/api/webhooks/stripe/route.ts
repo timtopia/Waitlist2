@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server"
-import { stripe, isStripeConfigured, performPositionSwap } from "@/lib/stripe"
+import { getStripe, performPositionSwap } from "@/lib/stripe"
 import { prisma } from "@/lib/prisma"
 import { lineEvents } from "@/lib/events"
 
 export async function POST(req: Request) {
-  if (!isStripeConfigured() || !stripe) {
+  const stripe = getStripe()
+  if (!stripe) {
     return NextResponse.json(
       { error: "Stripe is not configured" },
       { status: 503 }
