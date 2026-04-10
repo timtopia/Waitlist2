@@ -432,15 +432,11 @@ describe("Price API", () => {
 
   it("should set asking price for a position", async () => {
     mockAuth.mockResolvedValue({ user: { id: "user-1" } })
-    mockPrisma.linePosition.findUnique.mockResolvedValue({
-      id: "pos-1",
-      lineId: "line-1",
-      userId: "user-1",
-      position: 1,
-    })
     mockPrisma.linePosition.update.mockResolvedValue({
       id: "pos-1",
       askingPrice: 25.0,
+      position: 1,
+      user: { id: "user-1", name: "Test User", image: null },
     })
 
     const { PATCH } = await import("@/app/api/lines/[lineId]/price/route")
@@ -460,14 +456,11 @@ describe("Price API", () => {
 
   it("should clear asking price when null is passed", async () => {
     mockAuth.mockResolvedValue({ user: { id: "user-1" } })
-    mockPrisma.linePosition.findUnique.mockResolvedValue({
-      id: "pos-1",
-      lineId: "line-1",
-      userId: "user-1",
-    })
     mockPrisma.linePosition.update.mockResolvedValue({
       id: "pos-1",
       askingPrice: null,
+      position: 1,
+      user: { id: "user-1", name: "Test User", image: null },
     })
 
     const { PATCH } = await import("@/app/api/lines/[lineId]/price/route")
