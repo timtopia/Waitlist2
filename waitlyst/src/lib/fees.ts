@@ -4,9 +4,7 @@
  * When a position is sold, the buyer pays:
  *   askingPrice + ownerFee + platformFee
  *
- * Stripe's processing fee (2.9% + $0.30) comes out of the platform fee.
- * Set PLATFORM_FEE_PERCENT high enough to cover Stripe + your margin.
- * e.g. 10% platform fee → ~3% to Stripe, ~7% profit.
+ * Stripe's processing fees come out of the platform's share.
  */
 
 const PLATFORM_FEE_PERCENT = parseFloat(process.env.PLATFORM_FEE_PERCENT || "10")

@@ -9,21 +9,10 @@ export function getStripe(): Stripe | null {
   if (_stripe === undefined) {
     const key = process.env.STRIPE_SECRET_KEY
     _stripe = key ? new Stripe(key) : null
-    if (_stripe) {
-      console.log("[stripe] Initialized with key:", key!.substring(0, 12) + "...")
-    } else {
-      console.log("[stripe] No STRIPE_SECRET_KEY found — running in dev mode")
-    }
   }
   return _stripe
 }
 
-/**
- * Check if Stripe is configured and available.
- */
-export function isStripeConfigured(): boolean {
-  return getStripe() !== null
-}
 
 /**
  * Get the base URL for redirects.

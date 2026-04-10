@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { LineCard } from "@/components/LineCard"
 import { Button } from "@/components/ui/Button"
+import { getLineStatus } from "@/lib/line-status"
 
 interface Line {
   id: string
@@ -18,14 +19,6 @@ interface Line {
 }
 
 type FilterStatus = "all" | "open" | "upcoming" | "closed"
-
-function getLineStatus(line: Line): "open" | "upcoming" | "closed" | "full" {
-  const now = new Date()
-  if (line.opensAt && now < new Date(line.opensAt)) return "upcoming"
-  if (line.closesAt && now > new Date(line.closesAt)) return "closed"
-  if (line.maxCapacity && line._count.positions >= line.maxCapacity) return "full"
-  return "open"
-}
 
 export default function BrowsePage() {
   const [lines, setLines] = useState<Line[]>([])

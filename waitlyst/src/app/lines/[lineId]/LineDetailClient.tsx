@@ -167,7 +167,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         fetchLine()
       } else {
         const data = await res.json()
-        alert(data.error || "Failed to join line")
+        addToast(data.error || "Failed to join line", "error")
       }
     } finally {
       setJoining(false)

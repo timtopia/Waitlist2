@@ -50,6 +50,7 @@ interface QueueDisplayProps {
   feeInfo?: FeeInfo
 }
 
+/** Client-side fee calculator. Mirrors server-side calculateFees() in lib/fees.ts */
 function calcFees(price: number, feeInfo?: FeeInfo) {
   if (!feeInfo || !price) return { ownerFee: 0, platformFee: 0, total: price }
   const ownerFee = Math.round(price * feeInfo.ownerFeePercent) / 100

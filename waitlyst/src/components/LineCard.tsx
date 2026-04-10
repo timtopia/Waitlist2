@@ -1,6 +1,7 @@
 import Link from "next/link"
 import Image from "next/image"
 import { Card, CardContent } from "./ui/Card"
+import { getStatusBadge } from "@/lib/line-status"
 
 interface LineCardProps {
   line: {
@@ -19,20 +20,6 @@ interface LineCardProps {
     }
     createdAt: string
   }
-}
-
-function getStatusBadge(line: LineCardProps["line"]) {
-  const now = new Date()
-  if (line.opensAt && now < new Date(line.opensAt)) {
-    return { label: "Upcoming", className: "bg-amber-100 text-amber-700" }
-  }
-  if (line.closesAt && now > new Date(line.closesAt)) {
-    return { label: "Closed", className: "bg-red-100 text-red-700" }
-  }
-  if (line.maxCapacity && line._count.positions >= line.maxCapacity) {
-    return { label: "Full", className: "bg-red-100 text-red-700" }
-  }
-  return { label: "Open", className: "bg-green-100 text-green-700" }
 }
 
 export function LineCard({ line }: LineCardProps) {

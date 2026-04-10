@@ -1,5 +1,13 @@
-// Simple event emitter for server-side events
-type Listener = (data: any) => void
+// Simple event emitter for server-side events (SSE)
+
+interface LineEvent {
+  type: "join" | "leave" | "price-change" | "swap" | "delete" | "lock"
+  lineId?: string
+  userName?: string
+  position?: number
+}
+
+type Listener = (data: LineEvent) => void
 
 class LineEventEmitter {
   private listeners: Map<string, Set<Listener>> = new Map()
@@ -18,9 +26,13 @@ class LineEventEmitter {
     }
   }
 
-  emit(lineId: string, data: any) {
+  emit(lineId: string, data: LineEvent) {
     this.listeners.get(lineId)?.forEach((listener) => {
-      listener(data)
+      try {
+        listener(data)
+      } catch (e) {
+        console.error("Event listener error:", e)
+      }
     })
   }
 }
