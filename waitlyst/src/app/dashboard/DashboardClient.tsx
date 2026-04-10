@@ -96,6 +96,19 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
     fetchActivities()
   }, [])
 
+  // Poll for dashboard updates (position changes, new joins, etc.)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      router.refresh()
+    }, 10000) // Refresh every 10 seconds
+    return () => clearInterval(interval)
+  }, [router])
+
+  // Sync lines state when server data changes
+  useEffect(() => {
+    setLines(initialLines)
+  }, [initialLines])
+
   async function handleRemoveFront(lineId: string) {
     setRemoveConfirm(null)
     setLoadingAction(`remove-${lineId}`)
