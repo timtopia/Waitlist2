@@ -43,6 +43,7 @@ export default async function EditLinePage({ params }: Props) {
         opensAt: line.opensAt?.toISOString() || null,
         closesAt: line.closesAt?.toISOString() || null,
         maxCapacity: line.maxCapacity,
+        ownerFeePercent: line.ownerFeePercent,
         currentCount: line._count.positions,
       }}
     />

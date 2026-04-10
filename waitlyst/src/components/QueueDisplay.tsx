@@ -37,14 +37,27 @@ interface RemovalModal {
   loading: boolean
 }
 
+interface FeeInfo {
+  ownerFeePercent: number
+  platformFeePercent: number
+}
+
 interface QueueDisplayProps {
   lineId: string
   positions: Position[]
   onRefresh: () => void
   isCreator?: boolean
+  feeInfo?: FeeInfo
 }
 
-export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false }: QueueDisplayProps) {
+function calcFees(price: number, feeInfo?: FeeInfo) {
+  if (!feeInfo || !price) return { ownerFee: 0, platformFee: 0, total: price }
+  const ownerFee = Math.round(price * feeInfo.ownerFeePercent) / 100
+  const platformFee = Math.round(price * feeInfo.platformFeePercent) / 100
+  return { ownerFee, platformFee, total: price + ownerFee + platformFee }
+}
+
+export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, feeInfo }: QueueDisplayProps) {
   const { data: session } = useSession()
   const { addToast } = useToast()
   const [loadingAction, setLoadingAction] = useState<string | null>(null)
@@ -258,18 +271,26 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false }
       />
 
       {/* Buy Confirmation */}
-      <ConfirmModal
-        open={showBuyConfirm}
-        title="Buy Position"
-        message={positionInFront?.askingPrice
-          ? `Buy the position ahead of you for $${positionInFront.askingPrice.toFixed(2)}? You'll swap places with the person in front.`
-          : "Buy the position ahead of you?"}
-        confirmLabel={positionInFront?.askingPrice ? `Pay $${positionInFront.askingPrice.toFixed(2)}` : "Buy"}
-        variant="primary"
-        isLoading={loadingAction === "buy"}
-        onConfirm={handleBuy}
-        onCancel={() => setShowBuyConfirm(false)}
-      />
+      {(() => {
+        const buyFees = positionInFront?.askingPrice ? calcFees(positionInFront.askingPrice, feeInfo) : null
+        const hasFees = buyFees && (buyFees.ownerFee > 0 || buyFees.platformFee > 0)
+        return (
+          <ConfirmModal
+            open={showBuyConfirm}
+            title="Buy Position"
+            message={positionInFront?.askingPrice
+              ? hasFees
+                ? `Position price: $${positionInFront.askingPrice.toFixed(2)}\nFees: $${(buyFees!.ownerFee + buyFees!.platformFee).toFixed(2)}\nTotal: $${buyFees!.total.toFixed(2)}\n\nYou'll swap places with the person in front.`
+                : `Buy the position ahead of you for $${positionInFront.askingPrice.toFixed(2)}? You'll swap places with the person in front.`
+              : "Buy the position ahead of you?"}
+            confirmLabel={buyFees ? `Pay $${buyFees.total.toFixed(2)}` : "Buy"}
+            variant="primary"
+            isLoading={loadingAction === "buy"}
+            onConfirm={handleBuy}
+            onCancel={() => setShowBuyConfirm(false)}
+          />
+        )
+      })()}
 
       {positions.length === 0 ? (
         <p className="text-center text-gray-500 py-8">No one in line yet.</p>
@@ -322,12 +343,16 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false }
                         <span className="ml-2 text-sm text-green-600">(Next up)</span>
                       )}
                     </p>
-                    {pos.askingPrice !== null && (
-                      <p className={`text-sm font-medium ${isLocked ? "text-orange-600" : "text-green-600"}`}>
-                        For sale: ${pos.askingPrice.toFixed(2)}
-                        {isLocked && <span className="ml-1">(pending)</span>}
-                      </p>
-                    )}
+                    {pos.askingPrice !== null && (() => {
+                      const posFees = calcFees(pos.askingPrice, feeInfo)
+                      const hasFees = posFees.ownerFee > 0 || posFees.platformFee > 0
+                      return (
+                        <p className={`text-sm font-medium ${isLocked ? "text-orange-600" : "text-green-600"}`}>
+                          For sale: ${hasFees ? posFees.total.toFixed(2) : pos.askingPrice.toFixed(2)}
+                          {isLocked && <span className="ml-1">(pending)</span>}
+                        </p>
+                      )
+                    })()}
                   </div>
                 </div>
 
@@ -335,35 +360,47 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false }
                   {isCurrentUser && (
                     <>
                       {editingPrice === pos.id ? (
-                        <div className="flex items-center space-x-2">
-                          <div className="relative">
-                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-gray-500">$</span>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              placeholder="0.00"
-                              value={priceInput[pos.id] || ""}
-                              onChange={(e) =>
-                                setPriceInput({ ...priceInput, [pos.id]: e.target.value })
-                              }
-                              className="w-28 pl-6 pr-2 py-1 border rounded text-sm"
-                            />
+                        <div className="space-y-1">
+                          <div className="flex items-center space-x-2">
+                            <div className="relative">
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-gray-500">$</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder="0.00"
+                                value={priceInput[pos.id] || ""}
+                                onChange={(e) =>
+                                  setPriceInput({ ...priceInput, [pos.id]: e.target.value })
+                                }
+                                className="w-28 pl-6 pr-2 py-1 border rounded text-sm"
+                              />
+                            </div>
+                            <Button
+                              size="sm"
+                              onClick={() => handleSetPrice(pos.id)}
+                              isLoading={loadingAction === `price-${pos.id}`}
+                            >
+                              Set
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setEditingPrice(null)}
+                            >
+                              Cancel
+                            </Button>
                           </div>
-                          <Button
-                            size="sm"
-                            onClick={() => handleSetPrice(pos.id)}
-                            isLoading={loadingAction === `price-${pos.id}`}
-                          >
-                            Set
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setEditingPrice(null)}
-                          >
-                            Cancel
-                          </Button>
+                          {priceInput[pos.id] && parseFloat(priceInput[pos.id]) > 0 && feeInfo && (feeInfo.ownerFeePercent > 0 || feeInfo.platformFeePercent > 0) && (() => {
+                            const p = parseFloat(priceInput[pos.id])
+                            const f = calcFees(p, feeInfo)
+                            return (
+                              <p className="text-xs text-gray-500 pl-1">
+                                You receive ${p.toFixed(2)} · Buyer pays ${f.total.toFixed(2)}
+                                <span className="text-gray-400"> ({feeInfo.ownerFeePercent}% owner + {feeInfo.platformFeePercent}% platform fee)</span>
+                              </p>
+                            )
+                          })()}
                         </div>
                       ) : (
                         <>
@@ -404,15 +441,18 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false }
                       )}
                     </>
                   )}
-                  {canBuy && (
-                    <Button
-                      size="sm"
-                      onClick={() => setShowBuyConfirm(true)}
-                      isLoading={loadingAction === "buy"}
-                    >
-                      Buy for ${pos.askingPrice!.toFixed(2)}
-                    </Button>
-                  )}
+                  {canBuy && (() => {
+                    const buyTotal = calcFees(pos.askingPrice!, feeInfo).total
+                    return (
+                      <Button
+                        size="sm"
+                        onClick={() => setShowBuyConfirm(true)}
+                        isLoading={loadingAction === "buy"}
+                      >
+                        Buy for ${buyTotal.toFixed(2)}
+                      </Button>
+                    )
+                  })()}
                   {isCreator && !isCurrentUser && (
                     <Button
                       size="sm"

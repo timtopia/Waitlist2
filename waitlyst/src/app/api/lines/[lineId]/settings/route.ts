@@ -66,6 +66,10 @@ export async function PATCH(
       }
       allowedUpdates.maxCapacity = cap
     }
+    // Owner fee percentage
+    if (typeof updates.ownerFeePercent === "number") {
+      allowedUpdates.ownerFeePercent = Math.max(0, Math.min(updates.ownerFeePercent, 50))
+    }
 
     const updatedLine = await prisma.line.update({
       where: { id: lineId },

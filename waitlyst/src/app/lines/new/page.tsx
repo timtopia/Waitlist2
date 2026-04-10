@@ -17,6 +17,7 @@ export default function CreateLinePage() {
   const [opensAt, setOpensAt] = useState("")
   const [closesAt, setClosesAt] = useState("")
   const [maxCapacity, setMaxCapacity] = useState("")
+  const [ownerFeePercent, setOwnerFeePercent] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -68,6 +69,7 @@ export default function CreateLinePage() {
           opensAt: enableSchedule && opensAt ? new Date(opensAt).toISOString() : null,
           closesAt: enableSchedule && closesAt ? new Date(closesAt).toISOString() : null,
           maxCapacity: maxCapacity ? parseInt(maxCapacity, 10) : null,
+          ownerFeePercent: ownerFeePercent ? parseFloat(ownerFeePercent) : 0,
         }),
       })
 
@@ -156,6 +158,36 @@ export default function CreateLinePage() {
               />
               <p className="text-xs text-gray-500 mt-1">
                 Leave empty for unlimited spots
+              </p>
+            </div>
+
+            {/* Owner Fee */}
+            <div>
+              <label htmlFor="ownerFee" className="block text-sm font-medium text-gray-700 mb-1">
+                Your Fee on Position Sales (%)
+              </label>
+              <div className="relative">
+                <input
+                  id="ownerFee"
+                  type="number"
+                  min="0"
+                  max="50"
+                  step="0.5"
+                  placeholder="0"
+                  value={ownerFeePercent}
+                  onChange={(e) => setOwnerFeePercent(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Percentage you earn when someone buys a position in your line.
+                {ownerFeePercent && parseFloat(ownerFeePercent) > 0 ? (
+                  <span className="text-blue-600 ml-1">
+                    e.g. on a $10 sale, you earn ${(10 * parseFloat(ownerFeePercent) / 100).toFixed(2)}
+                  </span>
+                ) : (
+                  <span> A 5% platform fee also applies to each sale.</span>
+                )}
               </p>
             </div>
 

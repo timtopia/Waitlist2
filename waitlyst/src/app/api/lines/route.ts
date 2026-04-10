@@ -8,7 +8,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const { name, description, isPublic = true, opensAt, closesAt, maxCapacity } = await req.json()
+  const { name, description, isPublic = true, opensAt, closesAt, maxCapacity, ownerFeePercent = 0 } = await req.json()
 
   if (!name || typeof name !== "string" || name.trim().length === 0) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 })
@@ -24,6 +24,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Close time must be after open time" }, { status: 400 })
   }
 
+  const feePercent = typeof ownerFeePercent === "number" ? Math.max(0, Math.min(ownerFeePercent, 50)) : 0
+
   const line = await prisma.line.create({
     data: {
       name: name.trim(),
@@ -33,6 +35,7 @@ export async function POST(req: Request) {
       opensAt: opensAt ? new Date(opensAt) : null,
       closesAt: closesAt ? new Date(closesAt) : null,
       maxCapacity: maxCapacity || null,
+      ownerFeePercent: feePercent,
     },
   })
 

@@ -23,6 +23,7 @@ interface Line {
   opensAt: string | null
   closesAt: string | null
   maxCapacity: number | null
+  ownerFeePercent: number
   createdAt: string
   createdBy: {
     id: string
@@ -51,10 +52,19 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [notificationsEnabled, setNotificationsEnabled] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [feeInfo, setFeeInfo] = useState<{ ownerFeePercent: number; platformFeePercent: number } | undefined>()
   const router = useRouter()
   const searchParams = useSearchParams()
   const { requestPermission, sendNotification } = useNotifications()
   const { addToast } = useToast()
+
+  // Fetch fee info for this line
+  useEffect(() => {
+    fetch(`/api/lines/${lineId}/fees`, { cache: "no-store" })
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => { if (data) setFeeInfo(data) })
+      .catch(() => {})
+  }, [lineId])
 
   // Handle payment status from Stripe redirect
   useEffect(() => {
@@ -323,6 +333,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             positions={line.positions}
             onRefresh={fetchLine}
             isCreator={isCreator}
+            feeInfo={feeInfo}
           />
         </CardContent>
       </Card>

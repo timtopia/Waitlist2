@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { getStripe, getBaseUrl, performPositionSwap } from "@/lib/stripe"
+import { calculateFees } from "@/lib/fees"
 import { lineEvents } from "@/lib/events"
 
 const LOCK_DURATION_MS = 30 * 60 * 1000 // 30 minutes (Stripe minimum for checkout session expiry)
@@ -74,7 +75,8 @@ export async function POST(
       )
     }
 
-    const amount = targetPosition.askingPrice
+    const askingPrice = targetPosition.askingPrice
+    const fees = calculateFees(askingPrice, targetPosition.line.ownerFeePercent)
 
     // ─── STRIPE MODE: Create a Checkout Session ───────────────────────
     const stripe = getStripe()
@@ -88,7 +90,9 @@ export async function POST(
             buyerId: session.user.id,
             sellerId: targetPosition.userId,
             lineId,
-            amount,
+            amount: askingPrice,
+            ownerFee: fees.ownerFee,
+            platformFee: fees.platformFee,
             status: "PENDING",
           },
         })
@@ -124,7 +128,7 @@ export async function POST(
                   name: `Position #${targetPosition.position} in ${targetPosition.line.name}`,
                   description: `Buy position #${targetPosition.position} from ${targetPosition.user.name || "Anonymous"}`,
                 },
-                unit_amount: Math.round(amount * 100), // Stripe uses cents
+                unit_amount: Math.round(fees.totalPrice * 100), // Stripe uses cents — total includes fees
               },
               quantity: 1,
             },
@@ -175,7 +179,9 @@ export async function POST(
           buyerId: session.user.id,
           sellerId: targetPosition.userId,
           lineId,
-          amount,
+          amount: askingPrice,
+          ownerFee: fees.ownerFee,
+          platformFee: fees.platformFee,
           status: "PENDING",
         },
       })

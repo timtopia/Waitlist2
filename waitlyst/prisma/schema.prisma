@@ -58,19 +58,20 @@ model VerificationToken {
 
 // Waitlyst app models
 model Line {
-  id          String         @id @default(auto()) @map("_id") @db.ObjectId
-  name        String
-  description String?
-  createdById String         @db.ObjectId
-  createdBy   User           @relation("LineCreator", fields: [createdById], references: [id])
-  positions   LinePosition[]
-  isActive    Boolean        @default(true)
-  isPublic    Boolean        @default(true)
-  opensAt     DateTime?      // When the line opens for joining (null = open immediately)
-  closesAt    DateTime?      // When the line stops accepting new joins (null = never closes)
-  maxCapacity Int?           // Maximum number of positions allowed (null = unlimited)
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id              String         @id @default(auto()) @map("_id") @db.ObjectId
+  name            String
+  description     String?
+  createdById     String         @db.ObjectId
+  createdBy       User           @relation("LineCreator", fields: [createdById], references: [id])
+  positions       LinePosition[]
+  isActive        Boolean        @default(true)
+  isPublic        Boolean        @default(true)
+  opensAt         DateTime?      // When the line opens for joining (null = open immediately)
+  closesAt        DateTime?      // When the line stops accepting new joins (null = never closes)
+  maxCapacity     Int?           // Maximum number of positions allowed (null = unlimited)
+  ownerFeePercent Float          @default(0) // Percentage the line owner earns on each sale (e.g. 10 = 10%)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 }
 
 model LinePosition {
@@ -95,7 +96,9 @@ model Transaction {
   buyerId         String            @db.ObjectId
   sellerId        String            @db.ObjectId
   lineId          String            @db.ObjectId
-  amount          Float
+  amount          Float             // Seller's asking price (what seller receives)
+  ownerFee        Float             @default(0) // Fee paid to line owner
+  platformFee     Float             @default(0) // Fee paid to platform
   stripePaymentId String?
   status          TransactionStatus @default(PENDING)
   settledAt       DateTime?         // Set when both buyer and seller have left the line
