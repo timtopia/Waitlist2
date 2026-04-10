@@ -39,6 +39,8 @@ export async function POST(req: Request) {
   return NextResponse.json(line)
 }
 
+export const dynamic = "force-dynamic"
+
 export async function GET() {
   const lines = await prisma.line.findMany({
     where: { isActive: true, isPublic: true },

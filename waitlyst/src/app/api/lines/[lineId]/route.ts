@@ -4,6 +4,8 @@ import { auth } from "@/auth"
 import { refundTransactions } from "@/lib/stripe"
 import { lineEvents } from "@/lib/events"
 
+export const dynamic = "force-dynamic"
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ lineId: string }> }
@@ -25,7 +27,11 @@ export async function GET(
     return NextResponse.json({ error: "Line not found" }, { status: 404 })
   }
 
-  return NextResponse.json(line)
+  return NextResponse.json(line, {
+    headers: {
+      "Cache-Control": "no-store, no-cache, must-revalidate",
+    },
+  })
 }
 
 export async function DELETE(

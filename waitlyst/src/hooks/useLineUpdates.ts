@@ -59,7 +59,9 @@ export function useLineUpdates(lineId: string, onUpdate: (event: LineUpdateEvent
     // ─── Polling: reliable fallback for serverless ───────────────────
     const poll = async () => {
       try {
-        const res = await fetch(`/api/lines/${lineId}`)
+        const res = await fetch(`/api/lines/${lineId}`, {
+          cache: "no-store",
+        })
         if (res.ok) {
           const text = await res.text()
           if (lastSnapshotRef.current !== null && lastSnapshotRef.current !== text) {
