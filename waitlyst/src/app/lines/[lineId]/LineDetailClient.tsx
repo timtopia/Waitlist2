@@ -107,13 +107,20 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   }, [fetchLine])
 
   const handleLineUpdate = useCallback((event: LineUpdateEvent) => {
+    if (event.type === "poll-update" && event.data) {
+      // Poll detected a change — use the fresh data directly (no extra fetch)
+      setLine(event.data as Line)
+      return
+    }
+
+    // SSE event — refetch and notify
     fetchLine()
 
-    // Send browser notification
     const messages: Record<string, string> = {
       join: `${event.userName || "Someone"} joined the line`,
       leave: `${event.userName || "Someone"} left the line — you may have moved up!`,
       swap: "Positions were swapped!",
+      lock: "A position purchase is pending...",
       "price-change": `${event.userName || "Someone"} changed their price`,
       delete: "This line has been deleted",
     }

@@ -107,6 +107,9 @@ export async function POST(
         return txn
       })
 
+      // Notify viewers that positions are locked (pending payment)
+      lineEvents.emit(lineId, { type: "lock", lineId })
+
       // Create Stripe Checkout Session
       const baseUrl = getBaseUrl()
       let checkoutSession
