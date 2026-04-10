@@ -16,6 +16,7 @@ export async function POST(
   const { lineId } = await params
 
   try {
+    let removedUserName = "Someone"
     await prisma.$transaction(async (tx) => {
       // Check if line exists and user is the creator
       const line = await tx.line.findUnique({
@@ -31,6 +32,7 @@ export async function POST(
       // Get the front position
       const frontPosition = await tx.linePosition.findFirst({
         where: { lineId, position: 1 },
+        include: { user: { select: { name: true } } },
       })
       if (!frontPosition) {
         throw new Error("No one in line to remove")
@@ -52,6 +54,7 @@ export async function POST(
       }
 
       const removedUserId = frontPosition.userId
+      removedUserName = frontPosition.user?.name || "Someone"
 
       // Delete the front position
       await tx.linePosition.delete({
@@ -74,7 +77,11 @@ export async function POST(
     })
 
     // Emit real-time update
-    lineEvents.emit(lineId, { type: "leave", lineId })
+    lineEvents.emit(lineId, {
+      type: "leave",
+      lineId,
+      userName: removedUserName,
+    })
 
     return NextResponse.json({ success: true })
   } catch (error) {

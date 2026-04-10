@@ -139,7 +139,11 @@ export async function POST(
     }
 
     // Emit real-time update
-    lineEvents.emit(lineId, { type: "leave", lineId })
+    lineEvents.emit(lineId, {
+      type: "leave",
+      lineId,
+      userName: result.positionToRemove.user?.name || "Someone",
+    })
 
     return NextResponse.json({
       success: true,
