@@ -24,3 +24,11 @@ vi.mock("next/navigation", () => ({
   })),
   redirect: vi.fn(),
 }))
+
+// Mock Toast context
+vi.mock("@/components/ui/Toast", () => ({
+  useToast: vi.fn(() => ({
+    addToast: vi.fn(),
+  })),
+  ToastProvider: ({ children }: { children: React.ReactNode }) => children,
+}))

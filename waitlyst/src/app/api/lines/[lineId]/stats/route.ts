@@ -33,23 +33,25 @@ export async function GET(
     orderBy: { createdAt: "desc" },
   })
 
-  // Only count settled transactions (both parties have left the line)
-  const settled = transactions.filter(t => t.settledAt !== null)
-  const settledCompleted = settled.filter(t => t.status === "COMPLETED")
-  const settledRefunded = settled.filter(t => t.status === "REFUNDED")
+  // Categorize by status (regardless of settlement)
+  const completed = transactions.filter(t => t.status === "COMPLETED")
+  const refunded = transactions.filter(t => t.status === "REFUNDED")
 
-  // Unsettled transactions (at least one party still in line)
-  const unsettled = transactions.filter(t => t.settledAt === null)
-  const unsettledCompleted = unsettled.filter(t => t.status === "COMPLETED")
+  // Settlement breakdown for COMPLETED transactions
+  const settledCompleted = completed.filter(t => t.settledAt !== null)
+  const unsettledCompleted = completed.filter(t => t.settledAt === null)
 
+  // Refund totals (both settled and unsettled — all refunds count)
+  const totalRefunded = refunded.reduce((sum, t) => sum + t.amount, 0)
+
+  // Completed totals (only settled ones are "confirmed revenue")
   const totalCompleted = settledCompleted.reduce((sum, t) => sum + t.amount, 0)
-  const totalRefunded = settledRefunded.reduce((sum, t) => sum + t.amount, 0)
   const pendingSettlement = unsettledCompleted.reduce((sum, t) => sum + t.amount, 0)
 
   return NextResponse.json({
     totalTransactions: transactions.length,
     completedCount: settledCompleted.length,
-    refundedCount: settledRefunded.length,
+    refundedCount: refunded.length,
     pendingSettlementCount: unsettledCompleted.length,
     totalCompleted,
     totalRefunded,

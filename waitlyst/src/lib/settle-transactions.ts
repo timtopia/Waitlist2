@@ -5,18 +5,21 @@ type PrismaTransaction = Omit<PrismaClient, "$connect" | "$disconnect" | "$on" |
 /**
  * Settle transactions for a user who just left a line.
  * A transaction is settled when both buyer and seller have left the line.
- * Only COMPLETED transactions can be settled (REFUNDED transactions don't count in stats).
+ *
+ * Both COMPLETED and REFUNDED transactions can be settled — settlement just means
+ * "both parties are done with this line." The status (COMPLETED vs REFUNDED) tracks
+ * whether money was kept or returned; settledAt tracks when the transaction is finalized.
  */
 export async function settleTransactionsForUser(
   tx: PrismaTransaction,
   lineId: string,
   userId: string
 ) {
-  // Find all COMPLETED transactions in this line where this user was buyer or seller
+  // Find all unsettled COMPLETED or REFUNDED transactions involving this user
   const transactions = await tx.transaction.findMany({
     where: {
       lineId,
-      status: "COMPLETED",
+      status: { in: ["COMPLETED", "REFUNDED"] },
       settledAt: null,
       OR: [
         { buyerId: userId },

@@ -14,19 +14,22 @@ const mockPositions = [
   {
     id: "pos-1",
     position: 1,
-    askingPrice: "25.00",
+    askingPrice: 25.00,
+    lockedUntil: null,
     user: { id: "user-1", name: "Alice", image: null },
   },
   {
     id: "pos-2",
     position: 2,
     askingPrice: null,
+    lockedUntil: null,
     user: { id: "user-2", name: "Bob", image: null },
   },
   {
     id: "pos-3",
     position: 3,
     askingPrice: null,
+    lockedUntil: null,
     user: { id: "user-3", name: "Charlie", image: null },
   },
 ]
@@ -224,8 +227,13 @@ describe("QueueDisplay", () => {
       />
     )
 
+    // Click buy button to open confirmation modal
     const buyButton = screen.getByText("Buy for $25.00")
     fireEvent.click(buyButton)
+
+    // Confirm the purchase in the modal
+    const confirmButton = screen.getByText("Pay $25.00")
+    fireEvent.click(confirmButton)
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith("/api/lines/line-1/checkout", {
@@ -251,19 +259,15 @@ describe("QueueDisplay", () => {
     const sellButton = screen.getByText("Sell Position")
     fireEvent.click(sellButton)
 
-    expect(screen.getByPlaceholderText("Price")).toBeInTheDocument()
+    expect(screen.getByPlaceholderText("0.00")).toBeInTheDocument()
     expect(screen.getByText("Set")).toBeInTheDocument()
-    expect(screen.getByText("Cancel")).toBeInTheDocument()
   })
 
-  it("confirms before leaving a line", async () => {
+  it("shows confirm modal before leaving a line", async () => {
     ;(useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       data: { user: { id: "user-3" } },
       status: "authenticated",
     })
-
-    // Mock window.confirm for happy-dom
-    window.confirm = vi.fn().mockReturnValue(false)
 
     render(
       <QueueDisplay
@@ -276,9 +280,18 @@ describe("QueueDisplay", () => {
     const leaveButton = screen.getByText("Leave")
     fireEvent.click(leaveButton)
 
-    expect(window.confirm).toHaveBeenCalledWith(
-      "Are you sure you want to leave this line?"
-    )
+    // Confirm modal should appear with title and message
+    await waitFor(() => {
+      expect(screen.getByText(/Are you sure you want to leave/)).toBeInTheDocument()
+    })
+
+    // Modal has a "Leave Line" confirm button and a "Cancel" button
+    const confirmButton = screen.getByRole("button", { name: "Leave Line" })
+    expect(confirmButton).toBeInTheDocument()
+
+    // Clicking cancel should dismiss the modal and not call fetch
+    const cancelButton = screen.getByText("Cancel")
+    fireEvent.click(cancelButton)
     expect(fetch).not.toHaveBeenCalled()
   })
 
@@ -287,7 +300,7 @@ describe("QueueDisplay", () => {
       {
         id: "pos-1",
         position: 1,
-        askingPrice: "25.00",
+        askingPrice: 25.00,
         lockedUntil: new Date(Date.now() + 60000).toISOString(), // Locked for 1 minute
         user: { id: "user-1", name: "Alice", image: null },
       },
@@ -339,7 +352,7 @@ describe("QueueDisplay", () => {
         {
           id: "pos-1",
           position: 1,
-          askingPrice: "25.00",
+          askingPrice: 25.00,
           lockedUntil: new Date(Date.now() - 60000).toISOString(), // Expired 1 minute ago
           user: { id: "user-1", name: "Alice", image: null },
         },
@@ -383,6 +396,8 @@ describe("QueueDisplay", () => {
           asSeller: [],
           totalPaid: 0,
           totalReceived: 0,
+          totalRefundedToBuyer: 0,
+          totalRefundedAsSeller: 0,
           netAmount: 0,
         }),
       })
@@ -453,6 +468,8 @@ describe("QueueDisplay", () => {
           asSeller: [],
           totalPaid: 0,
           totalReceived: 0,
+          totalRefundedToBuyer: 0,
+          totalRefundedAsSeller: 0,
           netAmount: 0,
         }),
       })
@@ -483,10 +500,12 @@ describe("QueueDisplay", () => {
       ;(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({
-          asBuyer: [{ id: "txn-1", amount: 50 }],
+          asBuyer: [{ id: "txn-1", amount: 50, status: "COMPLETED" }],
           asSeller: [],
           totalPaid: 50,
           totalReceived: 0,
+          totalRefundedToBuyer: 0,
+          totalRefundedAsSeller: 0,
           netAmount: -50,
         }),
       })
@@ -570,10 +589,12 @@ describe("QueueDisplay", () => {
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
-            asBuyer: [{ id: "txn-1", amount: 50 }],
+            asBuyer: [{ id: "txn-1", amount: 50, status: "COMPLETED" }],
             asSeller: [],
             totalPaid: 50,
             totalReceived: 0,
+            totalRefundedToBuyer: 0,
+            totalRefundedAsSeller: 0,
             netAmount: -50,
           }),
         })
@@ -625,6 +646,8 @@ describe("QueueDisplay", () => {
           asSeller: [],
           totalPaid: 0,
           totalReceived: 0,
+          totalRefundedToBuyer: 0,
+          totalRefundedAsSeller: 0,
           netAmount: 0,
         }),
       })

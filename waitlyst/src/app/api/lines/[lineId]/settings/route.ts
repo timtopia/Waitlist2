@@ -42,6 +42,30 @@ export async function PATCH(
     if (typeof updates.description === "string") {
       allowedUpdates.description = updates.description.trim() || null
     }
+    // Schedule fields
+    if (updates.opensAt !== undefined) {
+      allowedUpdates.opensAt = updates.opensAt ? new Date(updates.opensAt) : null
+    }
+    if (updates.closesAt !== undefined) {
+      allowedUpdates.closesAt = updates.closesAt ? new Date(updates.closesAt) : null
+    }
+    // Capacity field
+    if (updates.maxCapacity !== undefined) {
+      const cap = updates.maxCapacity === null ? null : parseInt(updates.maxCapacity)
+      if (cap !== null) {
+        // Verify capacity is not less than current participants
+        const currentCount = await prisma.linePosition.count({
+          where: { lineId },
+        })
+        if (cap < currentCount) {
+          return NextResponse.json(
+            { error: `Capacity cannot be less than current participants (${currentCount})` },
+            { status: 400 }
+          )
+        }
+      }
+      allowedUpdates.maxCapacity = cap
+    }
 
     const updatedLine = await prisma.line.update({
       where: { id: lineId },

@@ -33,13 +33,14 @@ export async function GET(
     return NextResponse.json({ error: "Not authorized" }, { status: 403 })
   }
 
-  // Get all completed transactions where this user was buyer or seller
+  // Get all completed AND refunded transactions where this user was buyer or seller.
+  // We include REFUNDED so the admin has full visibility into this user's transaction history.
   const [asBuyer, asSeller] = await Promise.all([
     prisma.transaction.findMany({
       where: {
         lineId,
         buyerId: userId,
-        status: "COMPLETED",
+        status: { in: ["COMPLETED", "REFUNDED"] },
       },
       orderBy: { createdAt: "desc" },
     }),
@@ -47,20 +48,30 @@ export async function GET(
       where: {
         lineId,
         sellerId: userId,
-        status: "COMPLETED",
+        status: { in: ["COMPLETED", "REFUNDED"] },
       },
       orderBy: { createdAt: "desc" },
     }),
   ])
 
-  const totalPaid = asBuyer.reduce((sum, t) => sum + t.amount, 0)
-  const totalReceived = asSeller.reduce((sum, t) => sum + t.amount, 0)
+  // Only count COMPLETED (non-refunded) transactions for the financial summary
+  const completedBuyer = asBuyer.filter((t) => t.status === "COMPLETED")
+  const completedSeller = asSeller.filter((t) => t.status === "COMPLETED")
+  const refundedBuyer = asBuyer.filter((t) => t.status === "REFUNDED")
+  const refundedSeller = asSeller.filter((t) => t.status === "REFUNDED")
+
+  const totalPaid = completedBuyer.reduce((sum, t) => sum + t.amount, 0)
+  const totalReceived = completedSeller.reduce((sum, t) => sum + t.amount, 0)
+  const totalRefundedToBuyer = refundedBuyer.reduce((sum, t) => sum + t.amount, 0)
+  const totalRefundedAsSeller = refundedSeller.reduce((sum, t) => sum + t.amount, 0)
 
   return NextResponse.json({
     asBuyer,
     asSeller,
     totalPaid,
     totalReceived,
+    totalRefundedToBuyer,
+    totalRefundedAsSeller,
     netAmount: totalReceived - totalPaid,
   })
 }

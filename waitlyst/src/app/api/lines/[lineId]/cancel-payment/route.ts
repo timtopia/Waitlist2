@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { getBaseUrl } from "@/lib/stripe"
 
+/**
+ * Handle Stripe Checkout cancellation redirect.
+ * When a user cancels payment on the Stripe checkout page, they're sent here.
+ * We unlock the positions and mark the transaction as FAILED.
+ */
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ lineId: string }> }
@@ -8,11 +14,10 @@ export async function GET(
   const { lineId } = await params
   const url = new URL(req.url)
   const transactionId = url.searchParams.get("transaction_id")
-  const baseUrl = process.env.NEXTAUTH_URL || process.env.AUTH_URL || "http://localhost:3000"
+  const baseUrl = getBaseUrl()
 
   if (transactionId) {
     try {
-      // Unlock positions that were locked by this transaction
       await prisma.$transaction(async (tx) => {
         // Find and unlock positions locked by this transaction
         await tx.linePosition.updateMany({

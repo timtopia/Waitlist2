@@ -2,9 +2,11 @@
 
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
+import { ConfirmModal } from "@/components/ui/ConfirmModal"
+import { useToast } from "@/components/ui/Toast"
 
 interface CreatedLine {
   id: string
@@ -53,26 +55,60 @@ interface DashboardClientProps {
   positions: Position[]
 }
 
+interface Activity {
+  id: string
+  type: "joined" | "purchase" | "sale" | "refund"
+  description: string
+  amount?: number
+  lineId?: string
+  lineName?: string
+  createdAt: string
+}
+
 export function DashboardClient({ createdLines: initialLines, positions }: DashboardClientProps) {
   const router = useRouter()
+  const { addToast } = useToast()
   const [lines, setLines] = useState(initialLines)
   const [loadingAction, setLoadingAction] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [statsModal, setStatsModal] = useState<StatsModal | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<{ lineId: string; lineName: string } | null>(null)
+  const [removeConfirm, setRemoveConfirm] = useState<{ lineId: string } | null>(null)
+
+  // Activity Feed
+  const [activities, setActivities] = useState<Activity[]>([])
+  const [activitiesLoading, setActivitiesLoading] = useState(true)
+
+  useEffect(() => {
+    async function fetchActivities() {
+      try {
+        const res = await fetch("/api/activity")
+        if (res.ok) {
+          const data = await res.json()
+          if (Array.isArray(data)) {
+            setActivities(data)
+          }
+        }
+      } finally {
+        setActivitiesLoading(false)
+      }
+    }
+    fetchActivities()
+  }, [])
 
   async function handleRemoveFront(lineId: string) {
-    if (!confirm("Remove the person at the front of the line?")) return
-
+    setRemoveConfirm(null)
     setLoadingAction(`remove-${lineId}`)
     try {
       const res = await fetch(`/api/lines/${lineId}/remove-front`, {
         method: "POST",
       })
       if (res.ok) {
+        addToast("Person removed from front of line", "success")
         router.refresh()
       } else {
         const data = await res.json()
-        alert(data.error || "Failed to remove person")
+        addToast(data.error || "Failed to remove person", "error")
       }
     } finally {
       setLoadingAction(null)
@@ -80,8 +116,7 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
   }
 
   async function handleDeleteLine(lineId: string) {
-    if (!confirm("Are you sure you want to delete this line? This cannot be undone.")) return
-
+    setDeleteConfirm(null)
     setLoadingAction(`delete-${lineId}`)
     try {
       const res = await fetch(`/api/lines/${lineId}`, {
@@ -89,9 +124,10 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
       })
       if (res.ok) {
         setLines(lines.filter(l => l.id !== lineId))
+        addToast("Line deleted", "success")
       } else {
         const data = await res.json()
-        alert(data.error || "Failed to delete line")
+        addToast(data.error || "Failed to delete line", "error")
       }
     } finally {
       setLoadingAction(null)
@@ -110,9 +146,10 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
         setLines(lines.map(l =>
           l.id === lineId ? { ...l, isPublic: !currentlyPublic } : l
         ))
+        addToast(`Line is now ${!currentlyPublic ? "public" : "private"}`, "success")
       } else {
         const data = await res.json()
-        alert(data.error || "Failed to update")
+        addToast(data.error || "Failed to update", "error")
       }
     } finally {
       setLoadingAction(null)
@@ -123,6 +160,7 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
     const url = `${window.location.origin}/lines/${lineId}`
     navigator.clipboard.writeText(url)
     setCopiedId(lineId)
+    addToast("Link copied to clipboard!", "success")
     setTimeout(() => setCopiedId(null), 2000)
   }
 
@@ -226,6 +264,30 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        open={!!deleteConfirm}
+        title="Delete Line"
+        message={`Are you sure you want to delete "${deleteConfirm?.lineName || ""}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        variant="danger"
+        isLoading={!!deleteConfirm && loadingAction === `delete-${deleteConfirm.lineId}`}
+        onConfirm={() => deleteConfirm && handleDeleteLine(deleteConfirm.lineId)}
+        onCancel={() => setDeleteConfirm(null)}
+      />
+
+      {/* Remove Front Confirmation Modal */}
+      <ConfirmModal
+        open={!!removeConfirm}
+        title="Remove Person"
+        message="Remove the person at the front of the line?"
+        confirmLabel="Remove"
+        variant="danger"
+        isLoading={!!removeConfirm && loadingAction === `remove-${removeConfirm.lineId}`}
+        onConfirm={() => removeConfirm && handleRemoveFront(removeConfirm.lineId)}
+        onCancel={() => setRemoveConfirm(null)}
+      />
 
       {/* Lines I'm In */}
       <Card className="mb-8">
@@ -354,13 +416,21 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
                       >
                         Make {line.isPublic ? "Private" : "Public"}
                       </Button>
+                      <Link
+                        href={`/lines/${line.id}/edit`}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Button size="sm" variant="ghost">
+                          Edit
+                        </Button>
+                      </Link>
                       {line.frontPerson && (
                         <Button
                           size="sm"
                           variant="danger"
                           onClick={(e) => {
                             e.preventDefault()
-                            handleRemoveFront(line.id)
+                            setRemoveConfirm({ lineId: line.id })
                           }}
                           isLoading={loadingAction === `remove-${line.id}`}
                         >
@@ -372,7 +442,7 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
                         variant="danger"
                         onClick={(e) => {
                           e.preventDefault()
-                          handleDeleteLine(line.id)
+                          setDeleteConfirm({ lineId: line.id, lineName: line.name })
                         }}
                         isLoading={loadingAction === `delete-${line.id}`}
                       >
@@ -386,6 +456,101 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
           )}
         </CardContent>
       </Card>
+
+      {/* Activity Feed */}
+      <Card className="mt-8">
+        <CardHeader>
+          <h2 className="text-xl font-semibold text-gray-900">Recent Activity</h2>
+        </CardHeader>
+        <CardContent>
+          {activitiesLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-12 bg-gray-100 rounded-lg animate-pulse" />
+              ))}
+            </div>
+          ) : activities.length === 0 ? (
+            <div className="text-center py-6">
+              <p className="text-gray-500">No recent activity.</p>
+              <p className="text-sm text-gray-400 mt-1">
+                Join a line or trade a position to see activity here.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {activities.map((activity) => {
+                const iconStyles: Record<string, { bg: string; icon: string; path: string }> = {
+                  joined: {
+                    bg: "bg-blue-100",
+                    icon: "text-blue-600",
+                    path: "M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z",
+                  },
+                  purchase: {
+                    bg: "bg-red-100",
+                    icon: "text-red-600",
+                    path: "M5 10l7-7m0 0l7 7m-7-7v18",
+                  },
+                  sale: {
+                    bg: "bg-green-100",
+                    icon: "text-green-600",
+                    path: "M19 14l-7 7m0 0l-7-7m7 7V3",
+                  },
+                  refund: {
+                    bg: "bg-amber-100",
+                    icon: "text-amber-600",
+                    path: "M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6",
+                  },
+                }
+                const style = iconStyles[activity.type] || iconStyles.joined
+                const timeAgo = getTimeAgo(activity.createdAt)
+
+                return (
+                  <div
+                    key={activity.id}
+                    className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${style.bg}`}>
+                      <svg className={`w-4 h-4 ${style.icon}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={style.path} />
+                      </svg>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-gray-900 truncate">{activity.description}</p>
+                      {activity.lineName && activity.lineId && (
+                        <Link
+                          href={`/lines/${activity.lineId}`}
+                          className="text-xs text-blue-600 hover:underline"
+                        >
+                          {activity.lineName}
+                        </Link>
+                      )}
+                    </div>
+                    <span className="text-xs text-gray-400 flex-shrink-0">{timeAgo}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
+}
+
+function getTimeAgo(dateStr: string): string {
+  const now = new Date()
+  const date = new Date(dateStr)
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+
+  if (diffMins < 1) return "just now"
+  if (diffMins < 60) return `${diffMins}m ago`
+
+  const diffHours = Math.floor(diffMins / 60)
+  if (diffHours < 24) return `${diffHours}h ago`
+
+  const diffDays = Math.floor(diffHours / 24)
+  if (diffDays < 7) return `${diffDays}d ago`
+
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" })
 }

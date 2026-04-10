@@ -2,6 +2,8 @@
 
 import Image from "next/image"
 import { Button } from "./ui/Button"
+import { ConfirmModal } from "./ui/ConfirmModal"
+import { useToast } from "./ui/Toast"
 import { useState } from "react"
 import { useSession } from "next-auth/react"
 
@@ -21,8 +23,10 @@ interface TransactionInfo {
   totalPaid: number
   totalReceived: number
   netAmount: number
-  asBuyer: { id: string; amount: number }[]
-  asSeller: { id: string; amount: number }[]
+  totalRefundedToBuyer: number
+  totalRefundedAsSeller: number
+  asBuyer: { id: string; amount: number; status: string }[]
+  asSeller: { id: string; amount: number; status: string }[]
 }
 
 interface RemovalModal {
@@ -42,10 +46,13 @@ interface QueueDisplayProps {
 
 export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false }: QueueDisplayProps) {
   const { data: session } = useSession()
+  const { addToast } = useToast()
   const [loadingAction, setLoadingAction] = useState<string | null>(null)
   const [priceInput, setPriceInput] = useState<{ [key: string]: string }>({})
   const [editingPrice, setEditingPrice] = useState<string | null>(null)
   const [removalModal, setRemovalModal] = useState<RemovalModal | null>(null)
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
+  const [showBuyConfirm, setShowBuyConfirm] = useState(false)
 
   const currentUserPosition = positions.find((p) => p.user.id === session?.user?.id)
   const positionInFront = currentUserPosition
@@ -73,6 +80,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false }
   }
 
   async function handleBuy() {
+    setShowBuyConfirm(false)
     setLoadingAction("buy")
     try {
       const res = await fetch(`/api/lines/${lineId}/checkout`, {
@@ -83,10 +91,11 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false }
         if (data.url) {
           window.location.href = data.url
         } else if (data.devMode) {
+          addToast("Position purchased! You moved up.", "success")
           onRefresh()
         }
       } else {
-        alert(data.error || "Failed to start checkout")
+        addToast(data.error || "Failed to start checkout", "error")
       }
     } finally {
       setLoadingAction(null)
@@ -94,14 +103,14 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false }
   }
 
   async function handleLeave() {
-    if (!confirm("Are you sure you want to leave this line?")) return
-
+    setShowLeaveConfirm(false)
     setLoadingAction("leave")
     try {
       const res = await fetch(`/api/lines/${lineId}/leave`, {
         method: "DELETE",
       })
       if (res.ok) {
+        addToast("You left the line", "info")
         onRefresh()
       }
     } finally {
@@ -147,13 +156,15 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false }
       if (res.ok) {
         const data = await res.json()
         if (action === "refund" && data.refundedCount > 0) {
-          alert(`Refunded ${data.refundedCount} transaction(s) totaling $${data.refundedAmount.toFixed(2)}`)
+          addToast(`Refunded ${data.refundedCount} transaction(s) totaling $${data.refundedAmount.toFixed(2)}`, "success")
+        } else {
+          addToast("Person removed from line", "success")
         }
         setRemovalModal(null)
         onRefresh()
       } else {
         const data = await res.json()
-        alert(data.error || "Failed to remove person")
+        addToast(data.error || "Failed to remove person", "error")
       }
     } finally {
       setLoadingAction(null)
@@ -184,8 +195,13 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false }
                   </p>
                   <p className="text-sm text-gray-600">
                     <span className="font-medium">Received:</span> ${removalModal.transactionInfo.totalReceived.toFixed(2)}
-                    <span className="text-gray-400 ml-1">({removalModal.transactionInfo.asSeller.length} sales)</span>
+                    <span className="text-gray-400 ml-1">({removalModal.transactionInfo.asSeller.filter(t => t.status === "COMPLETED").length} sales)</span>
                   </p>
+                  {(removalModal.transactionInfo.totalRefundedToBuyer > 0 || removalModal.transactionInfo.totalRefundedAsSeller > 0) && (
+                    <p className="text-sm text-amber-600">
+                      <span className="font-medium">Already Refunded:</span> ${(removalModal.transactionInfo.totalRefundedToBuyer + removalModal.transactionInfo.totalRefundedAsSeller).toFixed(2)}
+                    </p>
+                  )}
                   <p className="text-sm font-medium text-gray-900 mt-1 pt-1 border-t">
                     Net: ${removalModal.transactionInfo.netAmount.toFixed(2)}
                   </p>
@@ -207,7 +223,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false }
               >
                 Payout (Keep Transactions Final)
               </Button>
-              {removalModal.transactionInfo && removalModal.transactionInfo.asBuyer.length > 0 && (
+              {removalModal.transactionInfo && removalModal.transactionInfo.asBuyer.filter(t => t.status === "COMPLETED").length > 0 && (
                 <Button
                   variant="danger"
                   onClick={() => handleRemoveWithAction("refund")}
@@ -228,6 +244,32 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false }
           </div>
         </div>
       )}
+
+      {/* Leave Confirmation */}
+      <ConfirmModal
+        open={showLeaveConfirm}
+        title="Leave Line"
+        message="Are you sure you want to leave this line? You'll lose your position and any unsettled transactions."
+        confirmLabel="Leave Line"
+        variant="danger"
+        isLoading={loadingAction === "leave"}
+        onConfirm={handleLeave}
+        onCancel={() => setShowLeaveConfirm(false)}
+      />
+
+      {/* Buy Confirmation */}
+      <ConfirmModal
+        open={showBuyConfirm}
+        title="Buy Position"
+        message={positionInFront?.askingPrice
+          ? `Buy the position ahead of you for $${positionInFront.askingPrice.toFixed(2)}? You'll swap places with the person in front.`
+          : "Buy the position ahead of you?"}
+        confirmLabel={positionInFront?.askingPrice ? `Pay $${positionInFront.askingPrice.toFixed(2)}` : "Buy"}
+        variant="primary"
+        isLoading={loadingAction === "buy"}
+        onConfirm={handleBuy}
+        onCancel={() => setShowBuyConfirm(false)}
+      />
 
       {positions.length === 0 ? (
         <p className="text-center text-gray-500 py-8">No one in line yet.</p>
@@ -353,7 +395,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false }
                           <Button
                             size="sm"
                             variant="danger"
-                            onClick={handleLeave}
+                            onClick={() => setShowLeaveConfirm(true)}
                             isLoading={loadingAction === "leave"}
                           >
                             Leave
@@ -365,7 +407,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false }
                   {canBuy && (
                     <Button
                       size="sm"
-                      onClick={handleBuy}
+                      onClick={() => setShowBuyConfirm(true)}
                       isLoading={loadingAction === "buy"}
                     >
                       Buy for ${pos.askingPrice!.toFixed(2)}

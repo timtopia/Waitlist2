@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
-import { refundTransactions } from "@/lib/stripe"
 import { lineEvents } from "@/lib/events"
 import { settleTransactionsForUser } from "@/lib/settle-transactions"
 
@@ -18,8 +17,7 @@ export async function DELETE(
   const userId = session.user.id
 
   try {
-    // Get position and purchases to refund
-    const { position, purchasesToRefund } = await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx) => {
       const position = await tx.linePosition.findUnique({
         where: { lineId_userId: { lineId, userId } },
       })
@@ -37,23 +35,18 @@ export async function DELETE(
         })
       }
 
-      const purchasesToRefund = await tx.transaction.findMany({
-        where: { lineId, buyerId: userId, status: "COMPLETED" },
-      })
-
-      return { position, purchasesToRefund }
-    })
-
-    // Process refunds
-    const refundedCount = await refundTransactions(purchasesToRefund)
-
-    // Delete position and settle transactions
-    await prisma.$transaction(async (tx) => {
+      // Delete position and shift everyone behind up
       await tx.linePosition.delete({ where: { id: position.id } })
       await tx.linePosition.updateMany({
         where: { lineId, position: { gt: position.position } },
         data: { position: { decrement: 1 } },
       })
+
+      // Settle any transactions where both parties have now left the line.
+      // This covers both COMPLETED and REFUNDED transactions.
+      // Note: We do NOT automatically refund completed purchases when a user
+      // voluntarily leaves. The position swap was a legitimate trade.
+      // Refunds are only issued by admin action or when a line is deleted.
       await settleTransactionsForUser(tx, lineId, userId)
     })
 
@@ -62,7 +55,7 @@ export async function DELETE(
       lineId,
       userName: session.user.name || "Someone",
     })
-    return NextResponse.json({ success: true, refundedCount })
+    return NextResponse.json({ success: true })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to leave line"
     return NextResponse.json({ error: message }, { status: 400 })

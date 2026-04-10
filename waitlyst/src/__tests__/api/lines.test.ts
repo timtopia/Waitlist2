@@ -585,11 +585,11 @@ describe("Position Transactions API", () => {
     })
     mockPrisma.transaction.findMany
       .mockResolvedValueOnce([
-        { id: "txn-1", amount: 50 },
-        { id: "txn-2", amount: 30 },
+        { id: "txn-1", amount: 50, status: "COMPLETED" },
+        { id: "txn-2", amount: 30, status: "COMPLETED" },
       ])
       .mockResolvedValueOnce([
-        { id: "txn-3", amount: 20 },
+        { id: "txn-3", amount: 20, status: "COMPLETED" },
       ])
 
     const { GET } = await import("@/app/api/lines/[lineId]/position-transactions/route")

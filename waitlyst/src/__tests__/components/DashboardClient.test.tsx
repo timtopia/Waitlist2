@@ -447,22 +447,28 @@ describe("DashboardClient", () => {
   })
 
   describe("Remove Front", () => {
-    it("confirms before removing front person", async () => {
-      window.confirm = vi.fn().mockReturnValue(false)
-
+    it("shows confirm modal before removing front person", async () => {
       render(<DashboardClient createdLines={mockCreatedLines} positions={[]} />)
 
       const removeButton = screen.getByText("Remove Front")
       fireEvent.click(removeButton)
 
-      expect(window.confirm).toHaveBeenCalledWith(
-        "Remove the person at the front of the line?"
+      // Confirm modal should appear
+      await waitFor(() => {
+        expect(screen.getByText("Remove Person")).toBeInTheDocument()
+      })
+      expect(screen.getByText(/Remove the person at the front/)).toBeInTheDocument()
+
+      // Clicking cancel should not call the remove-front API
+      const cancelButton = screen.getByText("Cancel")
+      fireEvent.click(cancelButton)
+      expect(fetch).not.toHaveBeenCalledWith(
+        "/api/lines/line-1/remove-front",
+        expect.anything()
       )
-      expect(fetch).not.toHaveBeenCalled()
     })
 
     it("calls remove-front API when confirmed", async () => {
-      window.confirm = vi.fn().mockReturnValue(true)
       ;(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ success: true }),
@@ -472,6 +478,15 @@ describe("DashboardClient", () => {
 
       const removeButton = screen.getByText("Remove Front")
       fireEvent.click(removeButton)
+
+      // Wait for confirm modal
+      await waitFor(() => {
+        expect(screen.getByText("Remove Person")).toBeInTheDocument()
+      })
+
+      // Click "Remove" button in the modal to confirm
+      const confirmButton = screen.getByRole("button", { name: "Remove" })
+      fireEvent.click(confirmButton)
 
       await waitFor(() => {
         expect(fetch).toHaveBeenCalledWith(

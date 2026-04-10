@@ -2,12 +2,16 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useSession, signIn } from "next-auth/react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import Image from "next/image"
+import Link from "next/link"
 import { Button } from "@/components/ui/Button"
 import { Card, CardContent, CardHeader } from "@/components/ui/Card"
 import { QueueDisplay } from "@/components/QueueDisplay"
 import { LineStatusBanner } from "@/components/LineStatusBanner"
+import { ShareLine } from "@/components/ShareLine"
+import { ConfirmModal } from "@/components/ui/ConfirmModal"
+import { useToast } from "@/components/ui/Toast"
 import { useLineUpdates, LineUpdateEvent } from "@/hooks/useLineUpdates"
 import { useNotifications } from "@/hooks/useNotifications"
 
@@ -46,8 +50,35 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [error, setError] = useState<string | null>(null)
   const [notificationsEnabled, setNotificationsEnabled] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { requestPermission, sendNotification } = useNotifications()
+  const { addToast } = useToast()
+
+  // Handle payment status from Stripe redirect
+  useEffect(() => {
+    const paymentStatus = searchParams.get("payment")
+    if (paymentStatus === "success") {
+      addToast("Payment successful! Your position has been swapped.", "success")
+      // Clean up URL
+      router.replace(`/lines/${lineId}`, { scroll: false })
+    } else if (paymentStatus === "cancelled") {
+      addToast("Payment was cancelled. No charges were made.", "info")
+      router.replace(`/lines/${lineId}`, { scroll: false })
+    } else if (paymentStatus === "error") {
+      const reason = searchParams.get("reason")
+      const messages: Record<string, string> = {
+        missing_session: "Payment session not found.",
+        stripe_not_configured: "Payment system is not configured.",
+        not_paid: "Payment was not completed.",
+        no_transaction: "Transaction could not be found.",
+        invalid_transaction: "Invalid transaction.",
+      }
+      addToast(messages[reason || ""] || "Something went wrong with your payment.", "error")
+      router.replace(`/lines/${lineId}`, { scroll: false })
+    }
+  }, [searchParams, lineId, addToast, router])
 
   useEffect(() => {
     if (typeof window !== "undefined" && "Notification" in window) {
@@ -127,19 +158,19 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   }
 
   async function handleDelete() {
-    if (!confirm("Are you sure you want to delete this line? This cannot be undone.")) return
-
     setDeleting(true)
     try {
       const res = await fetch(`/api/lines/${lineId}`, { method: "DELETE" })
       if (res.ok) {
+        addToast("Line deleted successfully", "success")
         router.push("/dashboard")
       } else {
         const data = await res.json()
-        alert(data.error || "Failed to delete line")
+        addToast(data.error || "Failed to delete line", "error")
       }
     } finally {
       setDeleting(false)
+      setShowDeleteConfirm(false)
     }
   }
 
@@ -173,6 +204,17 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
+      <ConfirmModal
+        open={showDeleteConfirm}
+        title="Delete Line"
+        message={`Are you sure you want to delete "${line.name}"? This will remove all positions and transaction history. This action cannot be undone.`}
+        confirmLabel="Delete Line"
+        variant="danger"
+        isLoading={deleting}
+        onConfirm={handleDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
+
       <Card className="mb-6">
         <CardHeader>
           <div className="flex items-start justify-between">
@@ -182,21 +224,29 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                 <p className="text-gray-600">{line.description}</p>
               )}
             </div>
-            {canJoin && (
-              <Button onClick={handleJoin} isLoading={joining}>
-                {session ? "Join Line" : "Sign in to Join"}
-              </Button>
-            )}
-            {isCreator && (
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-blue-600 font-medium bg-blue-50 px-3 py-1 rounded-full">
-                  Your Line
-                </span>
-                <Button variant="danger" size="sm" onClick={handleDelete} isLoading={deleting}>
-                  Delete
+            <div className="flex items-center gap-2">
+              <ShareLine lineId={line.id} lineName={line.name} />
+              {canJoin && (
+                <Button onClick={handleJoin} isLoading={joining}>
+                  {session ? "Join Line" : "Sign in to Join"}
                 </Button>
-              </div>
-            )}
+              )}
+              {isCreator && (
+                <>
+                  <span className="text-sm text-blue-600 font-medium bg-blue-50 px-3 py-1 rounded-full">
+                    Your Line
+                  </span>
+                  <Link href={`/lines/${lineId}/edit`}>
+                    <Button variant="secondary" size="sm">
+                      Edit
+                    </Button>
+                  </Link>
+                  <Button variant="danger" size="sm" onClick={() => setShowDeleteConfirm(true)} isLoading={deleting}>
+                    Delete
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>

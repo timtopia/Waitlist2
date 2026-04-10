@@ -66,14 +66,16 @@ export async function POST(
         })
       }
 
-      // Handle refund of all this user's purchases if action is "refund"
+      // Handle refund of this user's unsettled purchases if action is "refund"
       if (action === "refund") {
-        // Get all completed transactions where this user was the buyer
+        // Get unsettled completed transactions where this user was the buyer.
+        // Already-settled transactions represent finalized swaps and should not be refunded.
         const purchasesToRefund = await tx.transaction.findMany({
           where: {
             lineId,
             buyerId: userId,
             status: "COMPLETED",
+            settledAt: null,
           },
         })
 

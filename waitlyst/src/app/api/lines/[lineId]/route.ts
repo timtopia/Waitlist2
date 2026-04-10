@@ -46,23 +46,29 @@ export async function DELETE(
       if (!line) throw new Error("Line not found")
       if (line.createdById !== session.user.id) throw new Error("Not authorized")
 
+      // Fail any pending transactions
       await tx.transaction.updateMany({
         where: { lineId, status: "PENDING" },
         data: { status: "FAILED" },
       })
 
+      // Find unsettled COMPLETED transactions that need refunding
       return tx.transaction.findMany({
         where: { lineId, status: "COMPLETED", settledAt: null },
       })
     })
 
-    // Refund unsettled transactions
+    // Refund unsettled transactions (only changes status to REFUNDED, not settledAt)
     const refundedCount = await refundTransactions(transactionsToRefund)
 
-    // Settle remaining and delete line
+    // Settle ALL unsettled transactions (COMPLETED and REFUNDED) and delete line
     await prisma.$transaction(async (tx) => {
       await tx.transaction.updateMany({
-        where: { lineId, status: "COMPLETED", settledAt: null },
+        where: {
+          lineId,
+          settledAt: null,
+          status: { in: ["COMPLETED", "REFUNDED"] },
+        },
         data: { settledAt: new Date() },
       })
       await tx.line.delete({ where: { id: lineId } })
