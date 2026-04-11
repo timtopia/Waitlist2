@@ -289,10 +289,15 @@ describe("QueueDisplay", () => {
     const confirmButton = screen.getByRole("button", { name: "Leave Line" })
     expect(confirmButton).toBeInTheDocument()
 
-    // Clicking cancel should dismiss the modal and not call fetch
+    // Clicking cancel should dismiss the modal and not call any leave/action fetch
     const cancelButton = screen.getByText("Cancel")
     fireEvent.click(cancelButton)
-    expect(fetch).not.toHaveBeenCalled()
+    // The only fetch call should be the wait-time estimate (automatic on mount)
+    const fetchCalls = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
+    const nonWaitTimeCalls = fetchCalls.filter(
+      (call: unknown[]) => typeof call[0] === "string" && !call[0].includes("wait-time")
+    )
+    expect(nonWaitTimeCalls).toHaveLength(0)
   })
 
   describe("Position Locking", () => {
@@ -536,6 +541,10 @@ describe("QueueDisplay", () => {
       ;(fetch as unknown as ReturnType<typeof vi.fn>)
         .mockResolvedValueOnce({
           ok: true,
+          json: () => Promise.resolve({ estimatedMinutesPerPerson: null, basedOn: 0 }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
           json: () => Promise.resolve({
             asBuyer: [],
             asSeller: [],
@@ -586,6 +595,10 @@ describe("QueueDisplay", () => {
       })
 
       ;(fetch as unknown as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ estimatedMinutesPerPerson: null, basedOn: 0 }),
+        })
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({

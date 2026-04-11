@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { Card, CardContent, CardHeader } from "@/components/ui/Card"
@@ -65,6 +66,56 @@ const statusColors: Record<string, string> = {
 }
 
 export function ProfileClient({ user, stats, recentTransactions }: ProfileClientProps) {
+  const [displayName, setDisplayName] = useState(user.name || "Anonymous")
+  const [isEditing, setIsEditing] = useState(false)
+  const [editValue, setEditValue] = useState(user.name || "")
+  const [isSaving, setIsSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSave() {
+    const trimmed = editValue.trim()
+    if (trimmed.length === 0 || trimmed.length > 50) {
+      setError("Name must be between 1 and 50 characters")
+      return
+    }
+
+    setIsSaving(true)
+    setError(null)
+
+    try {
+      const res = await fetch("/api/user", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmed }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || "Failed to update name")
+      }
+
+      const updated = await res.json()
+      setDisplayName(updated.name || "Anonymous")
+      setIsEditing(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update name")
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  function handleCancel() {
+    setEditValue(displayName === "Anonymous" ? "" : displayName)
+    setError(null)
+    setIsEditing(false)
+  }
+
+  function handleStartEdit() {
+    setEditValue(displayName === "Anonymous" ? "" : displayName)
+    setError(null)
+    setIsEditing(true)
+  }
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       {/* User Info */}
@@ -74,18 +125,78 @@ export function ProfileClient({ user, stats, recentTransactions }: ProfileClient
             {user.image ? (
               <Image
                 src={user.image}
-                alt={user.name || "User"}
+                alt={displayName}
                 width={64}
                 height={64}
                 className="rounded-full"
               />
             ) : (
               <div className="w-16 h-16 rounded-full bg-blue-600 flex items-center justify-center text-white text-2xl font-bold">
-                {user.name?.[0] || "U"}
+                {displayName[0] || "U"}
               </div>
             )}
             <div className="flex-1">
-              <h1 className="text-2xl font-bold text-gray-900">{user.name || "Anonymous"}</h1>
+              {isEditing ? (
+                <div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSave()
+                        if (e.key === "Escape") handleCancel()
+                      }}
+                      maxLength={50}
+                      autoFocus
+                      className="text-2xl font-bold text-gray-900 border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full max-w-xs"
+                    />
+                    <button
+                      onClick={handleSave}
+                      disabled={isSaving}
+                      className="p-1.5 text-green-600 hover:bg-green-50 rounded-md disabled:opacity-50"
+                      title="Save"
+                    >
+                      {isSaving ? (
+                        <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      ) : (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                    <button
+                      onClick={handleCancel}
+                      disabled={isSaving}
+                      className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-md disabled:opacity-50"
+                      title="Cancel"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  {error && (
+                    <p className="text-xs text-red-500 mt-1">{error}</p>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <h1 className="text-2xl font-bold text-gray-900">{displayName}</h1>
+                  <button
+                    onClick={handleStartEdit}
+                    className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md"
+                    title="Edit name"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                  </button>
+                </div>
+              )}
               {user.email && (
                 <p className="text-sm text-gray-500">{user.email}</p>
               )}
@@ -100,41 +211,19 @@ export function ProfileClient({ user, stats, recentTransactions }: ProfileClient
         </CardContent>
       </Card>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <Card>
-          <CardContent className="py-4 text-center">
-            <p className="text-2xl font-bold text-blue-600">{stats.linesCreated}</p>
-            <p className="text-xs text-gray-500 mt-1">Lines Created</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-4 text-center">
-            <p className="text-2xl font-bold text-blue-600">{stats.activePositions}</p>
-            <p className="text-xs text-gray-500 mt-1">Active Positions</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-4 text-center">
-            <p className="text-2xl font-bold text-blue-600">{stats.purchaseCount}</p>
-            <p className="text-xs text-gray-500 mt-1">Positions Bought</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-4 text-center">
-            <p className="text-2xl font-bold text-blue-600">{stats.saleCount}</p>
-            <p className="text-xs text-gray-500 mt-1">Positions Sold</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Financial Summary */}
+      {/* Stats & Balances */}
       <Card className="mb-6">
-        <CardHeader>
-          <h2 className="text-lg font-semibold text-gray-900">Financial Summary</h2>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <CardContent className="py-5">
+          <div className="flex items-center justify-between text-sm text-gray-500 mb-4">
+            <span>{stats.linesCreated} lines created</span>
+            <span className="text-gray-300">·</span>
+            <span>{stats.activePositions} active positions</span>
+            <span className="text-gray-300">·</span>
+            <span>{stats.purchaseCount} bought</span>
+            <span className="text-gray-300">·</span>
+            <span>{stats.saleCount} sold</span>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
             <div className="bg-green-50 rounded-lg p-4 text-center">
               <p className="text-2xl font-bold text-green-700">${stats.sellerBalance.toFixed(2)}</p>
               <p className="text-sm text-green-600">Seller Balance</p>
@@ -146,7 +235,7 @@ export function ProfileClient({ user, stats, recentTransactions }: ProfileClient
             </div>
             <div className="bg-blue-50 rounded-lg p-4 text-center">
               <p className="text-2xl font-bold text-blue-700">${stats.ownerBalance.toFixed(2)}</p>
-              <p className="text-sm text-blue-600">Line Owner Balance</p>
+              <p className="text-sm text-blue-600">Owner Balance</p>
               {stats.pendingOwnerEarnings > 0 && (
                 <p className="text-xs text-blue-400 mt-1">
                   +${stats.pendingOwnerEarnings.toFixed(2)} pending

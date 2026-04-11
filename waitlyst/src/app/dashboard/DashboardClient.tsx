@@ -2,9 +2,10 @@
 
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { Card, CardContent, CardHeader } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
+import { Input } from "@/components/ui/Input"
 import { ConfirmModal } from "@/components/ui/ConfirmModal"
 import { useToast } from "@/components/ui/Toast"
 
@@ -14,6 +15,7 @@ interface CreatedLine {
   description: string | null
   isActive: boolean
   isPublic: boolean
+  createdAt: string
   _count: { positions: number }
   frontPerson: {
     id: string
@@ -26,11 +28,16 @@ interface Position {
   lineId: string
   position: number
   askingPrice: string | null
+  joinedAt: string
   line: {
     name: string
+    createdAt: string
     _count: { positions: number }
   }
 }
+
+type StatusFilter = "all" | "active" | "paused"
+type SortOption = "newest" | "oldest" | "most-members"
 
 interface LineStats {
   totalTransactions: number
@@ -74,6 +81,74 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
   const [statsModal, setStatsModal] = useState<StatsModal | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ lineId: string; lineName: string } | null>(null)
   const [removeConfirm, setRemoveConfirm] = useState<{ lineId: string } | null>(null)
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+
+  // Search, filter, and sort state
+  const [searchText, setSearchText] = useState("")
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
+  const [createdSort, setCreatedSort] = useState<SortOption>("newest")
+  const [positionsSort, setPositionsSort] = useState<SortOption>("newest")
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // Computed: filter counts for "Lines I Created"
+  const statusCounts = useMemo(() => {
+    const searchLower = searchText.toLowerCase()
+    const searchFiltered = searchText
+      ? lines.filter(l => l.name.toLowerCase().includes(searchLower))
+      : lines
+    return {
+      all: searchFiltered.length,
+      active: searchFiltered.filter(l => l.isActive).length,
+      paused: searchFiltered.filter(l => !l.isActive).length,
+    }
+  }, [lines, searchText])
+
+  // Computed: filtered and sorted "Lines I Created"
+  const filteredLines = useMemo(() => {
+    const searchLower = searchText.toLowerCase()
+    let result = lines
+
+    // Text search
+    if (searchText) {
+      result = result.filter(l => l.name.toLowerCase().includes(searchLower))
+    }
+
+    // Status filter
+    if (statusFilter === "active") {
+      result = result.filter(l => l.isActive)
+    } else if (statusFilter === "paused") {
+      result = result.filter(l => !l.isActive)
+    }
+
+    // Sort
+    result = [...result].sort((a, b) => {
+      if (createdSort === "newest") return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      if (createdSort === "oldest") return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      return b._count.positions - a._count.positions // most-members
+    })
+
+    return result
+  }, [lines, searchText, statusFilter, createdSort])
+
+  // Computed: filtered and sorted "My Positions"
+  const filteredPositions = useMemo(() => {
+    const searchLower = searchText.toLowerCase()
+    let result = positions
+
+    // Text search
+    if (searchText) {
+      result = result.filter(p => p.line.name.toLowerCase().includes(searchLower))
+    }
+
+    // Sort
+    result = [...result].sort((a, b) => {
+      if (positionsSort === "newest") return new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime()
+      if (positionsSort === "oldest") return new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime()
+      return b.line._count.positions - a.line._count.positions // most-members
+    })
+
+    return result
+  }, [positions, searchText, positionsSort])
 
   // Activity Feed
   const [activities, setActivities] = useState<Activity[]>([])
@@ -147,6 +222,27 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
     }
   }
 
+  async function handleTogglePause(lineId: string) {
+    setLoadingAction(`pause-${lineId}`)
+    try {
+      const res = await fetch(`/api/lines/${lineId}/pause`, {
+        method: "POST",
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setLines(lines.map(l =>
+          l.id === lineId ? { ...l, isActive: data.isActive } : l
+        ))
+        addToast(data.isActive ? "Line resumed" : "Line paused", "success")
+      } else {
+        const data = await res.json()
+        addToast(data.error || "Failed to update", "error")
+      }
+    } finally {
+      setLoadingAction(null)
+    }
+  }
+
   async function handleTogglePublic(lineId: string, currentlyPublic: boolean) {
     setLoadingAction(`toggle-${lineId}`)
     try {
@@ -200,7 +296,37 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold text-gray-900 mb-8">Dashboard</h1>
+      <h1 className="text-3xl font-bold text-gray-900 mb-6">Dashboard</h1>
+
+      {/* Search Bar */}
+      <div className="relative mb-6">
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+        </div>
+        <Input
+          ref={searchInputRef}
+          type="text"
+          placeholder="Search lines by name..."
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          className="pl-9 pr-9"
+        />
+        {searchText && (
+          <button
+            onClick={() => {
+              setSearchText("")
+              searchInputRef.current?.focus()
+            }}
+            className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
+      </div>
 
       {/* Stats Modal */}
       {statsModal && (
@@ -265,11 +391,28 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
               <p className="text-sm text-gray-600">No transaction data available.</p>
             )}
 
-            <div className="mt-4">
+            <div className="mt-4 flex gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  const link = document.createElement("a")
+                  link.href = `/api/lines/${statsModal.lineId}/export`
+                  link.download = ""
+                  document.body.appendChild(link)
+                  link.click()
+                  document.body.removeChild(link)
+                }}
+                className="flex-1"
+              >
+                <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Export CSV
+              </Button>
               <Button
                 variant="ghost"
                 onClick={() => setStatsModal(null)}
-                className="w-full"
+                className="flex-1"
               >
                 Close
               </Button>
@@ -304,8 +447,19 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
 
       {/* Lines I'm In */}
       <Card className="mb-8">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <h2 className="text-xl font-semibold text-gray-900">My Positions</h2>
+          {positions.length > 0 && (
+            <select
+              value={positionsSort}
+              onChange={(e) => setPositionsSort(e.target.value as SortOption)}
+              className="text-sm border border-gray-300 rounded-lg px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="most-members">Most members</option>
+            </select>
+          )}
         </CardHeader>
         <CardContent>
           {positions.length === 0 ? (
@@ -315,9 +469,13 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
                 <Button variant="secondary">Browse Lines</Button>
               </Link>
             </div>
+          ) : filteredPositions.length === 0 ? (
+            <div className="text-center py-6">
+              <p className="text-gray-500">No positions match your search.</p>
+            </div>
           ) : (
             <div className="space-y-3">
-              {positions.map((pos) => (
+              {filteredPositions.map((pos) => (
                 <Link
                   key={pos.id}
                   href={`/lines/${pos.lineId}`}
@@ -350,11 +508,53 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <h2 className="text-xl font-semibold text-gray-900">Lines I Created</h2>
-          <Link href="/lines/new">
-            <Button size="sm">Create Line</Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            {lines.length > 0 && (
+              <select
+                value={createdSort}
+                onChange={(e) => setCreatedSort(e.target.value as SortOption)}
+                className="text-sm border border-gray-300 rounded-lg px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="most-members">Most members</option>
+              </select>
+            )}
+            <Link href="/lines/new">
+              <Button size="sm">Create Line</Button>
+            </Link>
+          </div>
         </CardHeader>
         <CardContent>
+          {lines.length > 0 && (
+            <div className="flex items-center gap-1 mb-4">
+              {(["all", "active", "paused"] as const).map((filter) => {
+                const count = statusCounts[filter]
+                const isSelected = statusFilter === filter
+                const label = filter.charAt(0).toUpperCase() + filter.slice(1)
+                return (
+                  <button
+                    key={filter}
+                    onClick={() => setStatusFilter(filter)}
+                    className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                      isSelected
+                        ? "bg-blue-100 text-blue-700"
+                        : "text-gray-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    {label}
+                    <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${
+                      isSelected
+                        ? "bg-blue-200 text-blue-800"
+                        : "bg-gray-200 text-gray-500"
+                    }`}>
+                      {count}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
           {lines.length === 0 ? (
             <div className="text-center py-6">
               <p className="text-gray-500 mb-4">You haven&apos;t created any lines yet.</p>
@@ -362,105 +562,135 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
                 <Button variant="secondary">Create Your First Line</Button>
               </Link>
             </div>
+          ) : filteredLines.length === 0 ? (
+            <div className="text-center py-6">
+              <p className="text-gray-500">No lines match your search or filters.</p>
+            </div>
           ) : (
             <div className="space-y-3">
-              {lines.map((line) => (
+              {filteredLines.map((line) => (
                 <div
                   key={line.id}
                   className="p-4 bg-gray-50 rounded-lg"
                 >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between">
-                    <Link href={`/lines/${line.id}`} className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <Link href={`/lines/${line.id}`} className="flex-1 min-w-0">
                       <div>
                         <div className="flex items-center space-x-2">
-                          <h3 className="font-medium text-gray-900">{line.name}</h3>
-                          <span className={`text-xs px-2 py-0.5 rounded ${
+                          <h3 className="font-medium text-gray-900 truncate">{line.name}</h3>
+                          <span className={`text-xs px-2 py-0.5 rounded flex-shrink-0 ${
                             line.isPublic
                               ? "bg-green-100 text-green-700"
                               : "bg-gray-200 text-gray-600"
                           }`}>
                             {line.isPublic ? "Public" : "Private"}
                           </span>
+                          {!line.isActive && (
+                            <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700 flex-shrink-0">
+                              Paused
+                            </span>
+                          )}
                         </div>
-                        {line.description && (
-                          <p className="text-sm text-gray-500 line-clamp-1">
-                            {line.description}
-                          </p>
-                        )}
                         <p className="text-sm text-gray-500 mt-1">
                           {line._count.positions} in line
                           {line.frontPerson && (
                             <span>
-                              {" "}- Next: {line.frontPerson.user.name || "Anonymous"}
+                              {" · "} Next: {line.frontPerson.user.name || "Anonymous"}
                             </span>
                           )}
                         </p>
                       </div>
                     </Link>
-                    <div className="flex flex-wrap items-center gap-2 ml-0 mt-3 sm:mt-0 sm:ml-4">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={(e) => {
-                          e.preventDefault()
-                          openStatsModal(line.id, line.name)
-                        }}
-                      >
-                        Stats
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={(e) => {
-                          e.preventDefault()
-                          handleCopyLink(line.id)
-                        }}
-                      >
-                        {copiedId === line.id ? "Copied!" : "Copy Link"}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={(e) => {
-                          e.preventDefault()
-                          handleTogglePublic(line.id, line.isPublic)
-                        }}
-                        isLoading={loadingAction === `toggle-${line.id}`}
-                      >
-                        Make {line.isPublic ? "Private" : "Public"}
-                      </Button>
-                      <Link
-                        href={`/lines/${line.id}/edit`}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Button size="sm" variant="ghost">
-                          Edit
-                        </Button>
-                      </Link>
+                    <div className="flex items-center gap-2 ml-4 flex-shrink-0">
                       {line.frontPerson && (
                         <Button
                           size="sm"
-                          variant="danger"
+                          variant="secondary"
                           onClick={(e) => {
                             e.preventDefault()
                             setRemoveConfirm({ lineId: line.id })
                           }}
                           isLoading={loadingAction === `remove-${line.id}`}
                         >
-                          Remove Front
+                          Serve Next
                         </Button>
                       )}
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        onClick={(e) => {
-                          e.preventDefault()
-                          setDeleteConfirm({ lineId: line.id, lineName: line.name })
-                        }}
-                        isLoading={loadingAction === `delete-${line.id}`}
-                      >
-                        Delete
-                      </Button>
+                      {!line.isActive && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            handleTogglePause(line.id)
+                          }}
+                          isLoading={loadingAction === `pause-${line.id}`}
+                        >
+                          Resume
+                        </Button>
+                      )}
+                      <div className="relative">
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault()
+                            setOpenMenuId(openMenuId === line.id ? null : line.id)
+                          }}
+                          className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-lg transition-colors"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                          </svg>
+                        </button>
+                        {openMenuId === line.id && (
+                          <>
+                            <div
+                              className="fixed inset-0 z-10"
+                              onClick={() => setOpenMenuId(null)}
+                            />
+                            <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                              <button
+                                onClick={() => { openStatsModal(line.id, line.name); setOpenMenuId(null) }}
+                                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                              >
+                                View Stats
+                              </button>
+                              <button
+                                onClick={() => { handleCopyLink(line.id); setOpenMenuId(null) }}
+                                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                              >
+                                {copiedId === line.id ? "Copied!" : "Copy Link"}
+                              </button>
+                              <Link
+                                href={`/lines/${line.id}/edit`}
+                                className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                onClick={() => setOpenMenuId(null)}
+                              >
+                                Edit
+                              </Link>
+                              <button
+                                onClick={() => { handleTogglePublic(line.id, line.isPublic); setOpenMenuId(null) }}
+                                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                              >
+                                Make {line.isPublic ? "Private" : "Public"}
+                              </button>
+                              {line.isActive && (
+                                <button
+                                  onClick={() => { handleTogglePause(line.id); setOpenMenuId(null) }}
+                                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                >
+                                  Pause
+                                </button>
+                              )}
+                              <div className="border-t border-gray-100 my-1" />
+                              <button
+                                onClick={() => { setDeleteConfirm({ lineId: line.id, lineName: line.name }); setOpenMenuId(null) }}
+                                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

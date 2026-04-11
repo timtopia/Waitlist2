@@ -31,6 +31,7 @@ const mockCreatedLines = [
     description: "A test line",
     isActive: true,
     isPublic: true,
+    createdAt: "2025-01-02T00:00:00.000Z",
     _count: { positions: 5 },
     frontPerson: {
       id: "pos-1",
@@ -43,6 +44,7 @@ const mockCreatedLines = [
     description: null,
     isActive: true,
     isPublic: false,
+    createdAt: "2025-01-01T00:00:00.000Z",
     _count: { positions: 0 },
     frontPerson: null,
   },
@@ -54,12 +56,24 @@ const mockPositions = [
     lineId: "line-3",
     position: 2,
     askingPrice: "15.00",
+    joinedAt: "2025-01-01T00:00:00.000Z",
     line: {
       name: "Another Line",
+      createdAt: "2025-01-01T00:00:00.000Z",
       _count: { positions: 10 },
     },
   },
 ]
+
+/** Helper: open the "..." overflow menu for line-1 (first menu button) */
+function openMenuForLine1() {
+  // The "..." buttons are the vertical dots icons — get all of them and click the first
+  const menuButtons = screen.getAllByRole("button").filter(
+    (btn) => btn.querySelector("svg") && btn.className.includes("text-gray-400")
+  )
+  // First "..." button belongs to line-1 (which has frontPerson so it also has "Serve Next")
+  fireEvent.click(menuButtons[0])
+}
 
 describe("DashboardClient", () => {
   beforeEach(() => {
@@ -111,26 +125,22 @@ describe("DashboardClient", () => {
     expect(screen.getByText(/Next: Alice/)).toBeInTheDocument()
   })
 
-  it("shows Remove Front button for lines with front person", () => {
+  it("shows Serve Next button for lines with front person", () => {
     render(<DashboardClient createdLines={mockCreatedLines} positions={[]} />)
-    expect(screen.getByText("Remove Front")).toBeInTheDocument()
+    expect(screen.getByText("Serve Next")).toBeInTheDocument()
   })
 
-  it("copies link to clipboard", async () => {
+  it("copies link to clipboard via overflow menu", async () => {
     render(<DashboardClient createdLines={mockCreatedLines} positions={[]} />)
 
-    const copyButtons = screen.getAllByText("Copy Link")
-    fireEvent.click(copyButtons[0])
+    openMenuForLine1()
+    fireEvent.click(screen.getByText("Copy Link"))
 
     expect(mockWriteText).toHaveBeenCalled()
-
-    await waitFor(() => {
-      expect(screen.getByText("Copied!")).toBeInTheDocument()
-    })
   })
 
   describe("Stats Modal", () => {
-    it("opens stats modal when Stats button is clicked", async () => {
+    it("opens stats modal when View Stats is clicked", async () => {
       ;(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({
@@ -147,8 +157,8 @@ describe("DashboardClient", () => {
 
       render(<DashboardClient createdLines={mockCreatedLines} positions={[]} />)
 
-      const statsButtons = screen.getAllByText("Stats")
-      fireEvent.click(statsButtons[0])
+      openMenuForLine1()
+      fireEvent.click(screen.getByText("View Stats"))
 
       await waitFor(() => {
         expect(screen.getByText("Test Line 1 - Transaction Stats")).toBeInTheDocument()
@@ -172,8 +182,8 @@ describe("DashboardClient", () => {
 
       render(<DashboardClient createdLines={mockCreatedLines} positions={[]} />)
 
-      const statsButtons = screen.getAllByText("Stats")
-      fireEvent.click(statsButtons[0])
+      openMenuForLine1()
+      fireEvent.click(screen.getByText("View Stats"))
 
       await waitFor(() => {
         expect(screen.getByText("$150.00")).toBeInTheDocument()
@@ -198,8 +208,8 @@ describe("DashboardClient", () => {
 
       render(<DashboardClient createdLines={mockCreatedLines} positions={[]} />)
 
-      const statsButtons = screen.getAllByText("Stats")
-      fireEvent.click(statsButtons[0])
+      openMenuForLine1()
+      fireEvent.click(screen.getByText("View Stats"))
 
       await waitFor(() => {
         expect(screen.getByText("$50.00")).toBeInTheDocument()
@@ -224,8 +234,8 @@ describe("DashboardClient", () => {
 
       render(<DashboardClient createdLines={mockCreatedLines} positions={[]} />)
 
-      const statsButtons = screen.getAllByText("Stats")
-      fireEvent.click(statsButtons[0])
+      openMenuForLine1()
+      fireEvent.click(screen.getByText("View Stats"))
 
       await waitFor(() => {
         expect(screen.getByText("$75.00")).toBeInTheDocument()
@@ -251,8 +261,8 @@ describe("DashboardClient", () => {
 
       render(<DashboardClient createdLines={mockCreatedLines} positions={[]} />)
 
-      const statsButtons = screen.getAllByText("Stats")
-      fireEvent.click(statsButtons[0])
+      openMenuForLine1()
+      fireEvent.click(screen.getByText("View Stats"))
 
       await waitFor(() => {
         expect(screen.getByText("$150.00")).toBeInTheDocument()
@@ -278,8 +288,8 @@ describe("DashboardClient", () => {
 
       render(<DashboardClient createdLines={mockCreatedLines} positions={[]} />)
 
-      const statsButtons = screen.getAllByText("Stats")
-      fireEvent.click(statsButtons[0])
+      openMenuForLine1()
+      fireEvent.click(screen.getByText("View Stats"))
 
       await waitFor(() => {
         expect(screen.getByText("$100.00")).toBeInTheDocument()
@@ -304,8 +314,8 @@ describe("DashboardClient", () => {
 
       render(<DashboardClient createdLines={mockCreatedLines} positions={[]} />)
 
-      const statsButtons = screen.getAllByText("Stats")
-      fireEvent.click(statsButtons[0])
+      openMenuForLine1()
+      fireEvent.click(screen.getByText("View Stats"))
 
       await waitFor(() => {
         expect(screen.getByText("Total transactions: 10")).toBeInTheDocument()
@@ -323,8 +333,8 @@ describe("DashboardClient", () => {
 
       render(<DashboardClient createdLines={mockCreatedLines} positions={[]} />)
 
-      const statsButtons = screen.getAllByText("Stats")
-      fireEvent.click(statsButtons[0])
+      openMenuForLine1()
+      fireEvent.click(screen.getByText("View Stats"))
 
       await waitFor(() => {
         expect(screen.getByText("Loading stats...")).toBeInTheDocument()
@@ -363,8 +373,8 @@ describe("DashboardClient", () => {
 
       render(<DashboardClient createdLines={mockCreatedLines} positions={[]} />)
 
-      const statsButtons = screen.getAllByText("Stats")
-      fireEvent.click(statsButtons[0])
+      openMenuForLine1()
+      fireEvent.click(screen.getByText("View Stats"))
 
       await waitFor(() => {
         expect(screen.getByText("Test Line 1 - Transaction Stats")).toBeInTheDocument()
@@ -396,8 +406,8 @@ describe("DashboardClient", () => {
 
       render(<DashboardClient createdLines={mockCreatedLines} positions={[]} />)
 
-      const statsButtons = screen.getAllByText("Stats")
-      fireEvent.click(statsButtons[0])
+      openMenuForLine1()
+      fireEvent.click(screen.getByText("View Stats"))
 
       await waitFor(() => {
         expect(fetch).toHaveBeenCalledWith("/api/lines/line-1/stats")
@@ -414,8 +424,8 @@ describe("DashboardClient", () => {
 
       render(<DashboardClient createdLines={mockCreatedLines} positions={[]} />)
 
-      const toggleButton = screen.getByText("Make Private")
-      fireEvent.click(toggleButton)
+      openMenuForLine1()
+      fireEvent.click(screen.getByText("Make Private"))
 
       await waitFor(() => {
         expect(fetch).toHaveBeenCalledWith(
@@ -437,21 +447,24 @@ describe("DashboardClient", () => {
 
       render(<DashboardClient createdLines={mockCreatedLines} positions={[]} />)
 
-      const toggleButton = screen.getByText("Make Private")
-      fireEvent.click(toggleButton)
+      openMenuForLine1()
+      fireEvent.click(screen.getByText("Make Private"))
 
+      // After toggling, the badge text on the card should change
       await waitFor(() => {
-        expect(screen.getByText("Make Public")).toBeInTheDocument()
+        // line-1 was Public, should now show Private badge
+        const privateBadges = screen.getAllByText("Private")
+        expect(privateBadges.length).toBe(2) // both lines now private
       })
     })
   })
 
-  describe("Remove Front", () => {
-    it("shows confirm modal before removing front person", async () => {
+  describe("Serve Next (Remove Front)", () => {
+    it("shows confirm modal before serving next person", async () => {
       render(<DashboardClient createdLines={mockCreatedLines} positions={[]} />)
 
-      const removeButton = screen.getByText("Remove Front")
-      fireEvent.click(removeButton)
+      const serveButton = screen.getByText("Serve Next")
+      fireEvent.click(serveButton)
 
       // Confirm modal should appear
       await waitFor(() => {
@@ -476,8 +489,8 @@ describe("DashboardClient", () => {
 
       render(<DashboardClient createdLines={mockCreatedLines} positions={[]} />)
 
-      const removeButton = screen.getByText("Remove Front")
-      fireEvent.click(removeButton)
+      const serveButton = screen.getByText("Serve Next")
+      fireEvent.click(serveButton)
 
       // Wait for confirm modal
       await waitFor(() => {

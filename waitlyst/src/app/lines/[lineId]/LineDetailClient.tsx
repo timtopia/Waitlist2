@@ -53,6 +53,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [notificationsEnabled, setNotificationsEnabled] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showOwnerMenu, setShowOwnerMenu] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
   const { requestPermission, sendNotification } = useNotifications()
@@ -145,10 +146,11 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const isCreator = line?.createdBy.id === session?.user?.id
 
   const now = new Date()
+  const linePaused = line ? !line.isActive : false
   const lineNotYetOpen = line?.opensAt && now < new Date(line.opensAt)
   const lineClosed = line?.closesAt && now > new Date(line.closesAt)
   const lineFull = line?.maxCapacity ? line.positions.length >= line.maxCapacity : false
-  const canJoin = !isInLine && !isCreator && !lineNotYetOpen && !lineClosed && !lineFull
+  const canJoin = !isInLine && !isCreator && !lineNotYetOpen && !lineClosed && !lineFull && !linePaused
 
   async function handleJoin() {
     if (!session) {
@@ -248,17 +250,52 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
               )}
               {isCreator && (
                 <>
-                  <span className="text-sm text-blue-600 font-medium bg-blue-50 px-3 py-1 rounded-full">
-                    Your Line
-                  </span>
                   <Link href={`/lines/${lineId}/edit`}>
                     <Button variant="secondary" size="sm">
                       Edit
                     </Button>
                   </Link>
-                  <Button variant="danger" size="sm" onClick={() => setShowDeleteConfirm(true)} isLoading={deleting}>
-                    Delete
-                  </Button>
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowOwnerMenu(!showOwnerMenu)}
+                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                      </svg>
+                    </button>
+                    {showOwnerMenu && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-10"
+                          onClick={() => setShowOwnerMenu(false)}
+                        />
+                        <div className="absolute right-0 top-full mt-1 w-44 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                          <button
+                            onClick={() => {
+                              const link = document.createElement("a")
+                              link.href = `/api/lines/${lineId}/export`
+                              link.download = ""
+                              document.body.appendChild(link)
+                              link.click()
+                              document.body.removeChild(link)
+                              setShowOwnerMenu(false)
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                          >
+                            Export CSV
+                          </button>
+                          <div className="border-t border-gray-100 my-1" />
+                          <button
+                            onClick={() => { setShowDeleteConfirm(true); setShowOwnerMenu(false) }}
+                            className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                          >
+                            Delete Line
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </>
               )}
             </div>
@@ -307,6 +344,27 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         </CardContent>
       </Card>
 
+      {/* Paused Banner */}
+      {linePaused && (
+        <div className="mb-6">
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+            <div className="flex items-center space-x-2">
+              <svg className="w-5 h-5 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div>
+                <p className="font-semibold text-amber-800">This line is currently paused</p>
+                <p className="text-sm text-amber-600">
+                  {isCreator
+                    ? "You have paused this line. No one can join or buy positions until you resume it."
+                    : "New joins and position purchases are temporarily disabled."}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Status Banner */}
       {(line.opensAt || line.closesAt || line.maxCapacity) && (
         <div className="mb-6">
@@ -332,6 +390,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             onRefresh={fetchLine}
             isCreator={isCreator}
             feeInfo={feeInfo}
+            isPaused={linePaused}
           />
         </CardContent>
       </Card>

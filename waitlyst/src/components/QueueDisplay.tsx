@@ -4,7 +4,7 @@ import Image from "next/image"
 import { Button } from "./ui/Button"
 import { ConfirmModal } from "./ui/ConfirmModal"
 import { useToast } from "./ui/Toast"
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useSession } from "next-auth/react"
 
 interface Position {
@@ -48,6 +48,7 @@ interface QueueDisplayProps {
   onRefresh: () => void
   isCreator?: boolean
   feeInfo?: FeeInfo
+  isPaused?: boolean
 }
 
 /** Client-side fee calculator. Mirrors server-side calculateFees() in lib/fees.ts */
@@ -58,7 +59,16 @@ function calcFees(price: number, feeInfo?: FeeInfo) {
   return { ownerFee, platformFee, total: price + ownerFee + platformFee }
 }
 
-export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, feeInfo }: QueueDisplayProps) {
+/** Format estimated wait time into a human-readable string */
+function formatWaitTime(minutes: number): string {
+  if (minutes < 1) return "<1 min"
+  if (minutes < 60) return `~${Math.round(minutes)} min`
+  const hours = minutes / 60
+  if (hours < 2) return "~1 hr"
+  return `~${Math.round(hours)} hrs`
+}
+
+export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, feeInfo, isPaused = false }: QueueDisplayProps) {
   const { data: session } = useSession()
   const { addToast } = useToast()
   const [loadingAction, setLoadingAction] = useState<string | null>(null)
@@ -67,6 +77,23 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
   const [removalModal, setRemovalModal] = useState<RemovalModal | null>(null)
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
   const [showBuyConfirm, setShowBuyConfirm] = useState(false)
+  const [waitTimeData, setWaitTimeData] = useState<{ estimatedMinutesPerPerson: number | null; basedOn: number } | null>(null)
+
+  const fetchWaitTime = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/lines/${lineId}/wait-time`)
+      if (res.ok) {
+        const data = await res.json()
+        setWaitTimeData(data)
+      }
+    } catch {
+      // Silently fail — wait time is non-critical
+    }
+  }, [lineId])
+
+  useEffect(() => {
+    fetchWaitTime()
+  }, [fetchWaitTime, positions.length])
 
   const currentUserPosition = positions.find((p) => p.user.id === session?.user?.id)
   const positionInFront = currentUserPosition
@@ -301,7 +328,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
             const isCurrentUser = pos.user.id === session?.user?.id
             const isLocked = pos.lockedUntil && new Date(pos.lockedUntil) > new Date()
             const canBuy =
-              positionInFront?.id === pos.id && pos.askingPrice !== null && !isLocked
+              positionInFront?.id === pos.id && pos.askingPrice !== null && !isLocked && !isPaused
             const isFront = pos.position === 1
 
             return (
@@ -354,6 +381,11 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                         </p>
                       )
                     })()}
+                    {!isFront && waitTimeData?.estimatedMinutesPerPerson != null && (
+                      <p className="text-xs text-gray-400">
+                        Est. wait: {formatWaitTime(waitTimeData.estimatedMinutesPerPerson * (pos.position - 1))}
+                      </p>
+                    )}
                   </div>
                 </div>
 

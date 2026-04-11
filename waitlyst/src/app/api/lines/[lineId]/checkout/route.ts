@@ -19,6 +19,15 @@ export async function POST(
   const { lineId } = await params
 
   try {
+    // Check if line is active (not paused)
+    const line = await prisma.line.findUnique({ where: { id: lineId } })
+    if (!line || !line.isActive) {
+      return NextResponse.json(
+        { error: "This line is currently paused" },
+        { status: 400 }
+      )
+    }
+
     // Get buyer's current position
     const buyerPosition = await prisma.linePosition.findUnique({
       where: { lineId_userId: { lineId, userId: session.user.id } },
