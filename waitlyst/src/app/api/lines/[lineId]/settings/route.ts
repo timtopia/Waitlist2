@@ -70,6 +70,40 @@ export async function PATCH(
     if (typeof updates.ownerFeePercent === "number") {
       allowedUpdates.ownerFeePercent = Math.max(0, Math.min(updates.ownerFeePercent, 50))
     }
+    // Product fields
+    if (updates.productName !== undefined) {
+      allowedUpdates.productName = typeof updates.productName === "string" && updates.productName.trim()
+        ? updates.productName.trim()
+        : null
+    }
+    if (updates.productImage !== undefined) {
+      allowedUpdates.productImage = typeof updates.productImage === "string" && updates.productImage.trim()
+        ? updates.productImage.trim()
+        : null
+    }
+    if (updates.productPrice !== undefined) {
+      if (updates.productPrice === null) {
+        allowedUpdates.productPrice = null
+      } else {
+        const price = parseFloat(updates.productPrice)
+        if (isNaN(price) || price <= 0) {
+          return NextResponse.json({ error: "Product price must be a positive number" }, { status: 400 })
+        }
+        allowedUpdates.productPrice = price
+      }
+    }
+    if (updates.productUrl !== undefined) {
+      if (updates.productUrl === null || updates.productUrl === "") {
+        allowedUpdates.productUrl = null
+      } else {
+        try {
+          new URL(updates.productUrl)
+          allowedUpdates.productUrl = updates.productUrl.trim()
+        } catch {
+          return NextResponse.json({ error: "Product URL must be a valid URL" }, { status: 400 })
+        }
+      }
+    }
 
     const updatedLine = await prisma.line.update({
       where: { id: lineId },

@@ -8,7 +8,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const { name, description, isPublic = true, opensAt, closesAt, maxCapacity, ownerFeePercent = 0 } = await req.json()
+  const { name, description, isPublic = true, opensAt, closesAt, maxCapacity, ownerFeePercent = 0, productName, productImage, productPrice, productUrl } = await req.json()
 
   if (!name || typeof name !== "string" || name.trim().length === 0) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 })
@@ -24,6 +24,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Close time must be after open time" }, { status: 400 })
   }
 
+  // Validate product fields
+  if (productPrice !== undefined && productPrice !== null) {
+    if (typeof productPrice !== "number" || productPrice <= 0) {
+      return NextResponse.json({ error: "Product price must be a positive number" }, { status: 400 })
+    }
+  }
+
+  if (productUrl !== undefined && productUrl !== null && productUrl !== "") {
+    try {
+      new URL(productUrl)
+    } catch {
+      return NextResponse.json({ error: "Product URL must be a valid URL" }, { status: 400 })
+    }
+  }
+
   const feePercent = typeof ownerFeePercent === "number" ? Math.max(0, Math.min(ownerFeePercent, 50)) : 0
 
   const line = await prisma.line.create({
@@ -36,6 +51,10 @@ export async function POST(req: Request) {
       closesAt: closesAt ? new Date(closesAt) : null,
       maxCapacity: maxCapacity || null,
       ownerFeePercent: feePercent,
+      productName: productName?.trim() || null,
+      productImage: productImage?.trim() || null,
+      productPrice: productPrice || null,
+      productUrl: productUrl?.trim() || null,
     },
   })
 

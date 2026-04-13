@@ -45,6 +45,10 @@ export default async function EditLinePage({ params }: Props) {
         maxCapacity: line.maxCapacity,
         ownerFeePercent: line.ownerFeePercent,
         currentCount: line._count.positions,
+        productName: line.productName,
+        productImage: line.productImage,
+        productPrice: line.productPrice,
+        productUrl: line.productUrl,
       }}
     />
   )

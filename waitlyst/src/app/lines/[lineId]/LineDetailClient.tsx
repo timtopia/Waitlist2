@@ -34,6 +34,10 @@ interface Line {
   platformFeePercent: number
   announcement: string | null
   announcementAt: string | null
+  productName: string | null
+  productImage: string | null
+  productPrice: number | null
+  productUrl: string | null
   createdAt: string
   createdBy: {
     id: string
@@ -53,6 +57,16 @@ interface Line {
   }[]
 }
 
+interface MarketData {
+  avgPrice: number
+  minPrice: number
+  maxPrice: number
+  volume: number
+  count: number
+  currentListings: number
+  lowestAsk: number | null
+}
+
 export function LineDetailClient({ lineId }: { lineId: string }) {
   const { data: session, status } = useSession()
   const [line, setLine] = useState<Line | null>(null)
@@ -69,6 +83,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [activities, setActivities] = useState<ActivityItem[]>([])
   const [activitiesLoading, setActivitiesLoading] = useState(true)
   const [showAllActivity, setShowAllActivity] = useState(false)
+  const [marketData, setMarketData] = useState<MarketData | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
   const { requestPermission, sendNotification } = useNotifications()
@@ -149,17 +164,36 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     fetchActivity()
   }, [fetchActivity])
 
+  // Fetch market data
+  const fetchMarketData = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/lines/${lineId}/market`)
+      if (res.ok) {
+        const data = await res.json()
+        setMarketData(data)
+      }
+    } catch {
+      // Market data is non-critical
+    }
+  }, [lineId])
+
+  useEffect(() => {
+    fetchMarketData()
+  }, [fetchMarketData])
+
   const handleLineUpdate = useCallback((event: LineUpdateEvent) => {
     if (event.type === "poll-update" && event.data) {
       // Poll detected a change — use the fresh data directly (no extra fetch)
       setLine(event.data as Line)
       fetchActivity()
+      fetchMarketData()
       return
     }
 
     // SSE event — refetch and notify
     fetchLine()
     fetchActivity()
+    fetchMarketData()
 
     const messages: Record<string, string> = {
       join: `${event.userName || "Someone"} joined the line`,
@@ -173,7 +207,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     if (message) {
       sendNotification(`Waitlyst - ${line?.name || "Line Update"}`, { body: message })
     }
-  }, [fetchLine, fetchActivity, sendNotification, line?.name])
+  }, [fetchLine, fetchActivity, fetchMarketData, sendNotification, line?.name])
 
   // Subscribe to real-time updates
   useLineUpdates(lineId, handleLineUpdate)
@@ -187,6 +221,9 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const lineClosed = line?.closesAt && now > new Date(line.closesAt)
   const lineFull = line?.maxCapacity ? line.positions.length >= line.maxCapacity : false
   const canJoin = !isInLine && !isCreator && !lineNotYetOpen && !lineClosed && !lineFull && !linePaused
+  const userPosition = line?.positions.find((p) => p.user.id === session?.user?.id)
+  const hasProductInfo = !!(line?.productName || line?.productImage)
+  const hasMarketData = marketData && (marketData.count > 0 || marketData.currentListings > 0)
 
   async function handleJoin() {
     if (!session) {
@@ -323,6 +360,86 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         onConfirm={handleDelete}
         onCancel={() => setShowDeleteConfirm(false)}
       />
+
+      {/* Product Hero */}
+      {hasProductInfo && (
+        <Card className="mb-6 overflow-hidden">
+          <div className="flex flex-col sm:flex-row">
+            {line.productImage && (
+              <div className="relative w-full sm:w-48 h-48 sm:h-auto flex-shrink-0 bg-gray-100">
+                <Image
+                  src={line.productImage}
+                  alt={line.productName || "Product"}
+                  fill
+                  className="object-cover"
+                  sizes="(max-width: 640px) 100vw, 192px"
+                />
+              </div>
+            )}
+            <div className="flex-1 p-5 flex flex-col justify-center">
+              {line.productName && (
+                <h2 className="text-xl font-bold text-gray-900 mb-1">
+                  {line.productName}
+                </h2>
+              )}
+              {line.productPrice != null && (
+                <p className="text-base text-gray-600 mb-2">
+                  Retail: <span className="font-semibold">${line.productPrice.toFixed(2)}</span>
+                </p>
+              )}
+              {line.productUrl && (
+                <a
+                  href={line.productUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors"
+                >
+                  View Product
+                  <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                  </svg>
+                </a>
+              )}
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Market Data Strip */}
+      {hasMarketData && (
+        <div className="mb-6 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600">
+            <span className="font-medium text-gray-500 text-xs uppercase tracking-wide">Market</span>
+            {marketData.count > 0 && (
+              <>
+                <span>
+                  Avg: <span className="font-semibold text-gray-800">${marketData.avgPrice.toFixed(2)}</span>
+                </span>
+                <span className="text-gray-300">|</span>
+                <span>
+                  Range: <span className="font-semibold text-gray-800">${marketData.minPrice.toFixed(2)}&ndash;${marketData.maxPrice.toFixed(2)}</span>
+                </span>
+              </>
+            )}
+            {marketData.currentListings > 0 && (
+              <>
+                {marketData.count > 0 && <span className="text-gray-300">|</span>}
+                <span>
+                  <span className="font-semibold text-gray-800">{marketData.currentListings}</span> listing{marketData.currentListings !== 1 ? "s" : ""}
+                </span>
+              </>
+            )}
+            {marketData.lowestAsk != null && (
+              <>
+                <span className="text-gray-300">|</span>
+                <span>
+                  Lowest ask: <span className="font-semibold text-gray-800">${marketData.lowestAsk.toFixed(2)}</span>
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       <Card className="mb-6">
         <CardHeader>
@@ -566,9 +683,35 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
 
       <Card>
         <CardHeader>
-          <h2 className="text-lg font-semibold text-gray-900">
-            Queue ({line.positions.length} {line.positions.length === 1 ? "person" : "people"})
-          </h2>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Queue ({line.positions.length} {line.positions.length === 1 ? "person" : "people"})
+            </h2>
+            {line.maxCapacity != null && (
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-500">
+                  {line.positions.length} of {line.maxCapacity} spots filled
+                </span>
+                {userPosition && (
+                  userPosition.position <= line.maxCapacity ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800">
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                      Your spot is secured
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800">
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                      You&apos;re on the waitlist (#{userPosition.position - line.maxCapacity} past capacity)
+                    </span>
+                  )
+                )}
+              </div>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           <QueueDisplay

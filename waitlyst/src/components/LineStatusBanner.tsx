@@ -65,30 +65,61 @@ export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount 
   return (
     <div className="space-y-3">
       {/* Status Banner */}
-      {status.state === "not_yet_open" && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-semibold text-amber-800">Line Not Yet Open</p>
-              <p className="text-sm text-amber-600">
-                Opens {status.opensAt.toLocaleDateString(undefined, {
-                  weekday: "short",
-                  month: "short",
-                  day: "numeric",
-                  hour: "numeric",
-                  minute: "2-digit",
-                })}
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="text-2xl font-bold text-amber-800 tabular-nums">
-                {formatTimeLeft(status.opensAt.getTime() - now.getTime())}
-              </p>
-              <p className="text-xs text-amber-600">until open</p>
+      {status.state === "not_yet_open" && (() => {
+        const msLeft = status.opensAt.getTime() - now.getTime()
+        const isUnderHour = msLeft < 60 * 60 * 1000
+        const isUnder5Min = msLeft < 5 * 60 * 1000
+        const isUnder30Min = msLeft < 30 * 60 * 1000
+
+        const bannerClasses = isUnder5Min
+          ? "bg-red-50 border border-red-300 rounded-lg p-4"
+          : isUnderHour
+          ? "bg-amber-50 border border-amber-200 rounded-lg p-4 animate-pulse"
+          : "bg-amber-50 border border-amber-200 rounded-lg p-4"
+
+        const titleClasses = isUnder5Min
+          ? "font-bold text-red-700 text-lg"
+          : "font-semibold text-amber-800"
+
+        const subtitleClasses = isUnder5Min
+          ? "text-sm text-red-500"
+          : "text-sm text-amber-600"
+
+        const countdownClasses = isUnder5Min
+          ? "text-3xl font-extrabold text-red-700 tabular-nums"
+          : "text-2xl font-bold text-amber-800 tabular-nums"
+
+        const labelClasses = isUnder5Min
+          ? "text-xs text-red-500 font-medium"
+          : "text-xs text-amber-600"
+
+        const prefix = isUnder30Min ? "\u{1F525} Drop starts in..." : "Line Not Yet Open"
+
+        return (
+          <div className={bannerClasses}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className={titleClasses}>{prefix}</p>
+                <p className={subtitleClasses}>
+                  Opens {status.opensAt.toLocaleDateString(undefined, {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className={countdownClasses}>
+                  {formatTimeLeft(msLeft)}
+                </p>
+                <p className={labelClasses}>until open</p>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {status.state === "open" && status.closesAt && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-4">

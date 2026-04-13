@@ -73,6 +73,10 @@ model Line {
   ownerFeePercent Float          @default(0) // Percentage the line owner earns on each sale (e.g. 10 = 10%)
   announcement    String?        // Owner announcement shown as banner (max ~280 chars)
   announcementAt  DateTime?      // When the announcement was last set
+  productName     String?        // Product name (e.g. "Nike Dunk Low Travis Scott")
+  productImage    String?        // URL to product image
+  productPrice    Float?         // Retail / MSRP price in dollars
+  productUrl      String?        // Link to official product page
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 

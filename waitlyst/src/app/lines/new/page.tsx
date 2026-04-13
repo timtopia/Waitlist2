@@ -18,6 +18,11 @@ export default function CreateLinePage() {
   const [closesAt, setClosesAt] = useState("")
   const [maxCapacity, setMaxCapacity] = useState("")
   const [ownerFeePercent, setOwnerFeePercent] = useState("")
+  const [showProductDetails, setShowProductDetails] = useState(false)
+  const [productName, setProductName] = useState("")
+  const [productImage, setProductImage] = useState("")
+  const [productPrice, setProductPrice] = useState("")
+  const [productUrl, setProductUrl] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -70,6 +75,10 @@ export default function CreateLinePage() {
           closesAt: enableSchedule && closesAt ? new Date(closesAt).toISOString() : null,
           maxCapacity: maxCapacity ? parseInt(maxCapacity, 10) : null,
           ownerFeePercent: ownerFeePercent ? parseFloat(ownerFeePercent) : 0,
+          productName: productName.trim() || null,
+          productImage: productImage.trim() || null,
+          productPrice: productPrice ? parseFloat(productPrice) : null,
+          productUrl: productUrl.trim() || null,
         }),
       })
 
@@ -253,6 +262,83 @@ export default function CreateLinePage() {
                 </div>
               </div>
             )}
+
+            {/* Product Details (collapsible) */}
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowProductDetails(!showProductDetails)}
+                className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                <span>Product Details (optional)</span>
+                <svg
+                  className={`h-4 w-4 text-gray-400 transition-transform ${showProductDetails ? "rotate-180" : ""}`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {showProductDetails && (
+                <div className="px-4 pb-4 space-y-4 border-t border-gray-200 pt-4">
+                  <div>
+                    <label htmlFor="productName" className="block text-sm font-medium text-gray-700 mb-1">
+                      Product Name
+                    </label>
+                    <input
+                      id="productName"
+                      type="text"
+                      placeholder='e.g., Nike Dunk Low Travis Scott'
+                      value={productName}
+                      onChange={(e) => setProductName(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="productImage" className="block text-sm font-medium text-gray-700 mb-1">
+                      Product Image URL
+                    </label>
+                    <input
+                      id="productImage"
+                      type="url"
+                      placeholder="https://example.com/image.jpg"
+                      value={productImage}
+                      onChange={(e) => setProductImage(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="productPrice" className="block text-sm font-medium text-gray-700 mb-1">
+                      Retail Price ($)
+                    </label>
+                    <input
+                      id="productPrice"
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={productPrice}
+                      onChange={(e) => setProductPrice(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="productUrl" className="block text-sm font-medium text-gray-700 mb-1">
+                      Product Link
+                    </label>
+                    <input
+                      id="productUrl"
+                      type="url"
+                      placeholder="https://example.com/product"
+                      value={productUrl}
+                      onChange={(e) => setProductUrl(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
 
             {error && name.trim() && (
               <p className="text-sm text-red-600">{error}</p>

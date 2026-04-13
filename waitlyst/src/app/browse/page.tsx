@@ -13,6 +13,10 @@ interface Line {
   opensAt: string | null
   closesAt: string | null
   maxCapacity: number | null
+  productName: string | null
+  productImage: string | null
+  productPrice: number | null
+  productUrl: string | null
   createdBy: { name: string | null; image: string | null }
   _count: { positions: number }
   createdAt: string
