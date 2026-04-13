@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/auth"
+import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 
 export async function PATCH(req: Request) {
-  const session = await auth()
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
+  const result = await requireAuth()
+  if (result instanceof NextResponse) return result
 
   const body = await req.json()
   const name = typeof body.name === "string" ? body.name.trim() : ""
@@ -19,7 +17,7 @@ export async function PATCH(req: Request) {
   }
 
   const updatedUser = await prisma.user.update({
-    where: { id: session.user.id },
+    where: { id: result.userId },
     data: { name },
     select: {
       id: true,

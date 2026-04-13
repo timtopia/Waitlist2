@@ -6,6 +6,8 @@ import { ConfirmModal } from "./ui/ConfirmModal"
 import { useToast } from "./ui/Toast"
 import { useState, useEffect, useCallback } from "react"
 import { useSession } from "next-auth/react"
+import { calcFees } from "@/lib/fees"
+import { formatCurrency } from "@/lib/format"
 
 interface Position {
   id: string
@@ -49,14 +51,6 @@ interface QueueDisplayProps {
   isCreator?: boolean
   feeInfo?: FeeInfo
   isPaused?: boolean
-}
-
-/** Client-side fee calculator. Mirrors server-side calculateFees() in lib/fees.ts */
-function calcFees(price: number, feeInfo?: FeeInfo) {
-  if (!feeInfo || !price) return { ownerFee: 0, platformFee: 0, total: price }
-  const ownerFee = Math.round(price * feeInfo.ownerFeePercent) / 100
-  const platformFee = Math.round(price * feeInfo.platformFeePercent) / 100
-  return { ownerFee, platformFee, total: price + ownerFee + platformFee }
 }
 
 /** Format estimated wait time into a human-readable string */
@@ -197,7 +191,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
       if (res.ok) {
         const data = await res.json()
         if (action === "refund" && data.refundedCount > 0) {
-          addToast(`Refunded ${data.refundedCount} transaction(s) totaling $${data.refundedAmount.toFixed(2)}`, "success")
+          addToast(`Refunded ${data.refundedCount} transaction(s) totaling ${formatCurrency(data.refundedAmount)}`, "success")
         } else {
           addToast("Person removed from line", "success")
         }
@@ -231,20 +225,20 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
               <div className="space-y-3 mb-4">
                 <div className="bg-gray-50 rounded-lg p-3">
                   <p className="text-sm text-gray-600">
-                    <span className="font-medium">Paid:</span> ${removalModal.transactionInfo.totalPaid.toFixed(2)}
+                    <span className="font-medium">Paid:</span> {formatCurrency(removalModal.transactionInfo.totalPaid)}
                     <span className="text-gray-400 ml-1">({removalModal.transactionInfo.asBuyer.length} purchases)</span>
                   </p>
                   <p className="text-sm text-gray-600">
-                    <span className="font-medium">Received:</span> ${removalModal.transactionInfo.totalReceived.toFixed(2)}
+                    <span className="font-medium">Received:</span> {formatCurrency(removalModal.transactionInfo.totalReceived)}
                     <span className="text-gray-400 ml-1">({removalModal.transactionInfo.asSeller.filter(t => t.status === "COMPLETED").length} sales)</span>
                   </p>
                   {(removalModal.transactionInfo.totalRefundedToBuyer > 0 || removalModal.transactionInfo.totalRefundedAsSeller > 0) && (
                     <p className="text-sm text-amber-600">
-                      <span className="font-medium">Already Refunded:</span> ${(removalModal.transactionInfo.totalRefundedToBuyer + removalModal.transactionInfo.totalRefundedAsSeller).toFixed(2)}
+                      <span className="font-medium">Already Refunded:</span> {formatCurrency(removalModal.transactionInfo.totalRefundedToBuyer + removalModal.transactionInfo.totalRefundedAsSeller)}
                     </p>
                   )}
                   <p className="text-sm font-medium text-gray-900 mt-1 pt-1 border-t">
-                    Net: ${removalModal.transactionInfo.netAmount.toFixed(2)}
+                    Net: {formatCurrency(removalModal.transactionInfo.netAmount)}
                   </p>
                 </div>
 
@@ -271,7 +265,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                   isLoading={loadingAction === `remove-${removalModal.positionId}`}
                   className="w-full"
                 >
-                  Refund (${removalModal.transactionInfo.totalPaid.toFixed(2)} to buyer)
+                  Refund ({formatCurrency(removalModal.transactionInfo.totalPaid)} to buyer)
                 </Button>
               )}
               <Button
@@ -300,7 +294,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
 
       {/* Buy Confirmation */}
       {(() => {
-        const buyFees = positionInFront?.askingPrice ? calcFees(positionInFront.askingPrice, feeInfo) : null
+        const buyFees = positionInFront?.askingPrice && feeInfo ? calcFees(positionInFront.askingPrice, feeInfo.ownerFeePercent, feeInfo.platformFeePercent) : null
         const hasFees = buyFees && (buyFees.ownerFee > 0 || buyFees.platformFee > 0)
         return (
           <ConfirmModal
@@ -308,10 +302,10 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
             title="Buy Position"
             message={positionInFront?.askingPrice
               ? hasFees
-                ? `Position price: $${positionInFront.askingPrice.toFixed(2)}\nFees: $${(buyFees!.ownerFee + buyFees!.platformFee).toFixed(2)}\nTotal: $${buyFees!.total.toFixed(2)}\n\nYou'll swap places with the person in front.`
-                : `Buy the position ahead of you for $${positionInFront.askingPrice.toFixed(2)}? You'll swap places with the person in front.`
+                ? `Position price: ${formatCurrency(positionInFront.askingPrice)}\nFees: ${formatCurrency(buyFees!.ownerFee + buyFees!.platformFee)}\nTotal: ${formatCurrency(buyFees!.total)}\n\nYou'll swap places with the person in front.`
+                : `Buy the position ahead of you for ${formatCurrency(positionInFront.askingPrice)}? You'll swap places with the person in front.`
               : "Buy the position ahead of you?"}
-            confirmLabel={buyFees ? `Pay $${buyFees.total.toFixed(2)}` : "Buy"}
+            confirmLabel={buyFees ? `Pay ${formatCurrency(buyFees.total)}` : "Buy"}
             variant="primary"
             isLoading={loadingAction === "buy"}
             onConfirm={handleBuy}
@@ -384,12 +378,12 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                       )}
                     </p>
                     {pos.askingPrice !== null && (() => {
-                      const posFees = calcFees(pos.askingPrice, feeInfo)
+                      const posFees = feeInfo ? calcFees(pos.askingPrice, feeInfo.ownerFeePercent, feeInfo.platformFeePercent) : { ownerFee: 0, platformFee: 0, total: pos.askingPrice }
                       const hasFees = posFees.ownerFee > 0 || posFees.platformFee > 0
                       return (
                         <p className={`text-sm font-medium flex items-center gap-1.5 ${isLocked ? "text-amber-600" : "text-green-600"}`}>
                           <span className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${isLocked ? "bg-amber-500" : "bg-green-500"}`} />
-                          {isLocked ? "Pending" : "For sale"}: ${hasFees ? posFees.total.toFixed(2) : pos.askingPrice.toFixed(2)}
+                          {isLocked ? "Pending" : "For sale"}: {formatCurrency(hasFees ? posFees.total : pos.askingPrice)}
                         </p>
                       )
                     })()}
@@ -438,10 +432,10 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                           </div>
                           {priceInput[pos.id] && parseFloat(priceInput[pos.id]) > 0 && feeInfo && (feeInfo.ownerFeePercent > 0 || feeInfo.platformFeePercent > 0) && (() => {
                             const p = parseFloat(priceInput[pos.id])
-                            const f = calcFees(p, feeInfo)
+                            const f = calcFees(p, feeInfo.ownerFeePercent, feeInfo.platformFeePercent)
                             return (
                               <p className="text-xs text-gray-500 pl-1">
-                                You receive ${p.toFixed(2)} · Buyer pays ${f.total.toFixed(2)}
+                                You receive {formatCurrency(p)} · Buyer pays {formatCurrency(f.total)}
                                 <span className="text-gray-400"> ({feeInfo.ownerFeePercent}% owner + {feeInfo.platformFeePercent}% platform fee)</span>
                               </p>
                             )
@@ -487,14 +481,14 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                     </>
                   )}
                   {canBuy && (() => {
-                    const buyTotal = calcFees(pos.askingPrice!, feeInfo).total
+                    const buyTotal = feeInfo ? calcFees(pos.askingPrice!, feeInfo.ownerFeePercent, feeInfo.platformFeePercent).total : pos.askingPrice!
                     return (
                       <Button
                         size="sm"
                         onClick={() => setShowBuyConfirm(true)}
                         isLoading={loadingAction === "buy"}
                       >
-                        Buy for ${buyTotal.toFixed(2)}
+                        Buy for {formatCurrency(buyTotal)}
                       </Button>
                     )
                   })()}

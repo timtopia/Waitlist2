@@ -1,26 +1,13 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { formatTimeLeft } from "@/lib/format"
 
 interface LineStatusBannerProps {
   opensAt: string | null
   closesAt: string | null
   maxCapacity: number | null
   currentCount: number
-}
-
-function formatTimeLeft(ms: number): string {
-  if (ms <= 0) return "0s"
-
-  const days = Math.floor(ms / (1000 * 60 * 60 * 24))
-  const hours = Math.floor((ms % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-  const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60))
-  const seconds = Math.floor((ms % (1000 * 60)) / 1000)
-
-  if (days > 0) return `${days}d ${hours}h ${minutes}m`
-  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`
-  if (minutes > 0) return `${minutes}m ${seconds}s`
-  return `${seconds}s`
 }
 
 type LineStatus =

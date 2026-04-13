@@ -11,9 +11,11 @@ import { QueueDisplay } from "@/components/QueueDisplay"
 import { LineStatusBanner } from "@/components/LineStatusBanner"
 import { ShareLine } from "@/components/ShareLine"
 import { ConfirmModal } from "@/components/ui/ConfirmModal"
+import { DropdownMenu } from "@/components/ui/DropdownMenu"
 import { useToast } from "@/components/ui/Toast"
 import { useLineUpdates, LineUpdateEvent } from "@/hooks/useLineUpdates"
 import { useNotifications } from "@/hooks/useNotifications"
+import { timeAgo } from "@/lib/format"
 
 interface ActivityItem {
   id: string
@@ -76,7 +78,6 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [notificationsEnabled, setNotificationsEnabled] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [showOwnerMenu, setShowOwnerMenu] = useState(false)
   const [showAnnouncementEditor, setShowAnnouncementEditor] = useState(false)
   const [announcementDraft, setAnnouncementDraft] = useState("")
   const [savingAnnouncement, setSavingAnnouncement] = useState(false)
@@ -268,17 +269,6 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     }
   }
 
-  function timeAgo(dateStr: string): string {
-    const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000)
-    if (seconds < 60) return "just now"
-    const minutes = Math.floor(seconds / 60)
-    if (minutes < 60) return `${minutes} minute${minutes !== 1 ? "s" : ""} ago`
-    const hours = Math.floor(minutes / 60)
-    if (hours < 24) return `${hours} hour${hours !== 1 ? "s" : ""} ago`
-    const days = Math.floor(hours / 24)
-    return `${days} day${days !== 1 ? "s" : ""} ago`
-  }
-
   async function handleSaveAnnouncement() {
     setSavingAnnouncement(true)
     try {
@@ -468,57 +458,30 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                       Edit
                     </Button>
                   </Link>
-                  <div className="relative">
-                    <button
-                      onClick={() => setShowOwnerMenu(!showOwnerMenu)}
-                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                      </svg>
-                    </button>
-                    {showOwnerMenu && (
-                      <>
-                        <div
-                          className="fixed inset-0 z-10"
-                          onClick={() => setShowOwnerMenu(false)}
-                        />
-                        <div className="absolute right-0 top-full mt-1 w-44 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
-                          <button
-                            onClick={() => {
-                              setAnnouncementDraft(line.announcement || "")
-                              setShowAnnouncementEditor(true)
-                              setShowOwnerMenu(false)
-                            }}
-                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                          >
-                            {line.announcement ? "Edit Announcement" : "Announce"}
-                          </button>
-                          <button
-                            onClick={() => {
-                              const link = document.createElement("a")
-                              link.href = `/api/lines/${lineId}/export`
-                              link.download = ""
-                              document.body.appendChild(link)
-                              link.click()
-                              document.body.removeChild(link)
-                              setShowOwnerMenu(false)
-                            }}
-                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                          >
-                            Export CSV
-                          </button>
-                          <div className="border-t border-gray-100 my-1" />
-                          <button
-                            onClick={() => { setShowDeleteConfirm(true); setShowOwnerMenu(false) }}
-                            className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                          >
-                            Delete Line
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
+                  <DropdownMenu
+                    items={[
+                      {
+                        label: line.announcement ? "Edit Announcement" : "Announce",
+                        onClick: () => {
+                          setAnnouncementDraft(line.announcement || "")
+                          setShowAnnouncementEditor(true)
+                        },
+                      },
+                      {
+                        label: "Export CSV",
+                        onClick: () => {
+                          const link = document.createElement("a")
+                          link.href = `/api/lines/${lineId}/export`
+                          link.download = ""
+                          document.body.appendChild(link)
+                          link.click()
+                          document.body.removeChild(link)
+                        },
+                      },
+                      { label: "Delete Line", onClick: () => setShowDeleteConfirm(true), variant: "danger" },
+                    ]}
+                    separatorBefore={[2]}
+                  />
                 </>
               )}
             </div>

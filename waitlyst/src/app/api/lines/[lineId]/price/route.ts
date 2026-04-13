@@ -1,15 +1,13 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/auth"
+import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ lineId: string }> }
 ) {
-  const session = await auth()
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
+  const result = await requireAuth()
+  if (result instanceof NextResponse) return result
 
   const { lineId } = await params
   const { price } = await req.json() // null to remove from sale
@@ -24,7 +22,7 @@ export async function PATCH(
       where: {
         lineId_userId: {
           lineId,
-          userId: session.user.id,
+          userId: result.userId,
         },
       },
       data: { askingPrice: price },

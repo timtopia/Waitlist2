@@ -1,15 +1,13 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/auth"
+import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ lineId: string }> }
 ) {
-  const session = await auth()
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
+  const result = await requireAuth()
+  if (result instanceof NextResponse) return result
 
   const { lineId } = await params
 
@@ -34,13 +32,13 @@ export async function POST(
       }
 
       // Creator cannot join their own line
-      if (line.createdById === session.user.id) {
+      if (line.createdById === result.userId) {
         throw new Error("You cannot join your own line")
       }
 
       // Check if already in line
       const existing = await tx.linePosition.findUnique({
-        where: { lineId_userId: { lineId, userId: session.user.id } },
+        where: { lineId_userId: { lineId, userId: result.userId } },
       })
       if (existing) {
         throw new Error("Already in this line")
@@ -67,7 +65,7 @@ export async function POST(
       return tx.linePosition.create({
         data: {
           lineId,
-          userId: session.user.id,
+          userId: result.userId,
           position: nextPosition,
         },
         include: {

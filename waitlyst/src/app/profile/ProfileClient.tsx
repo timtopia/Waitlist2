@@ -5,6 +5,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { Card, CardContent, CardHeader } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
+import { formatDate, formatDateTime, formatCurrency } from "@/lib/format"
 
 interface UserData {
   id: string
@@ -39,23 +40,6 @@ interface ProfileClientProps {
   user: UserData
   stats: Stats
   recentTransactions: Transaction[]
-}
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  })
-}
-
-function formatDateTime(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  })
 }
 
 const statusColors: Record<string, string> = {
@@ -225,20 +209,20 @@ export function ProfileClient({ user, stats, recentTransactions }: ProfileClient
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-green-50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-green-700">${stats.sellerBalance.toFixed(2)}</p>
+              <p className="text-2xl font-bold text-green-700">{formatCurrency(stats.sellerBalance)}</p>
               <p className="text-sm text-green-600">Seller Balance</p>
               {stats.pendingSellerEarnings > 0 && (
                 <p className="text-xs text-green-400 mt-1">
-                  +${stats.pendingSellerEarnings.toFixed(2)} pending
+                  +{formatCurrency(stats.pendingSellerEarnings)} pending
                 </p>
               )}
             </div>
             <div className="bg-blue-50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-blue-700">${stats.ownerBalance.toFixed(2)}</p>
+              <p className="text-2xl font-bold text-blue-700">{formatCurrency(stats.ownerBalance)}</p>
               <p className="text-sm text-blue-600">Owner Balance</p>
               {stats.pendingOwnerEarnings > 0 && (
                 <p className="text-xs text-blue-400 mt-1">
-                  +${stats.pendingOwnerEarnings.toFixed(2)} pending
+                  +{formatCurrency(stats.pendingOwnerEarnings)} pending
                 </p>
               )}
             </div>
@@ -296,7 +280,7 @@ export function ProfileClient({ user, stats, recentTransactions }: ProfileClient
                     <p className={`text-sm font-bold ${
                       tx.role === "buyer" ? "text-red-600" : "text-green-600"
                     }`}>
-                      {tx.role === "buyer" ? "-" : "+"}${tx.amount.toFixed(2)}
+                      {tx.role === "buyer" ? "-" : "+"}{formatCurrency(tx.amount)}
                     </p>
                   </div>
                 </div>

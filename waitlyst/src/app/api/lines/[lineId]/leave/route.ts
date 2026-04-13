@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/auth"
+import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { settleTransactionsForUser } from "@/lib/settle-transactions"
 
@@ -7,13 +7,11 @@ export async function DELETE(
   req: Request,
   { params }: { params: Promise<{ lineId: string }> }
 ) {
-  const session = await auth()
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
+  const result = await requireAuth()
+  if (result instanceof NextResponse) return result
 
   const { lineId } = await params
-  const userId = session.user.id
+  const userId = result.userId
 
   try {
     await prisma.$transaction(async (tx) => {

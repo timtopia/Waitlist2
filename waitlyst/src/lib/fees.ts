@@ -28,3 +28,11 @@ export function calculateFees(askingPrice: number, ownerFeePercent: number) {
     totalPrice,
   }
 }
+
+/** Client-safe fee calculator (no env vars). Works on both server and client. */
+export function calcFees(price: number, ownerFeePercent: number, platformFeePercent: number) {
+  if (!price) return { ownerFee: 0, platformFee: 0, total: price }
+  const ownerFee = Math.round(price * ownerFeePercent) / 100
+  const platformFee = Math.round(price * platformFeePercent) / 100
+  return { ownerFee, platformFee, total: price + ownerFee + platformFee }
+}

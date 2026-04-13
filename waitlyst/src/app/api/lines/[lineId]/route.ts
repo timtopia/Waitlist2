@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { auth } from "@/auth"
+import { requireLineOwner } from "@/lib/auth-helpers"
 import { refundTransactions } from "@/lib/stripe"
 import { getPlatformFeePercent } from "@/lib/fees"
 
@@ -38,20 +38,14 @@ export async function DELETE(
   req: Request,
   { params }: { params: Promise<{ lineId: string }> }
 ) {
-  const session = await auth()
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
-
   const { lineId } = await params
 
-  try {
-    // Verify ownership and get unsettled transactions to refund
-    const transactionsToRefund = await prisma.$transaction(async (tx) => {
-      const line = await tx.line.findUnique({ where: { id: lineId } })
-      if (!line) throw new Error("Line not found")
-      if (line.createdById !== session.user.id) throw new Error("Not authorized")
+  const result = await requireLineOwner(lineId)
+  if (result instanceof NextResponse) return result
 
+  try {
+    // Get unsettled transactions to refund
+    const transactionsToRefund = await prisma.$transaction(async (tx) => {
       // Fail any pending transactions
       await tx.transaction.updateMany({
         where: { lineId, status: "PENDING" },

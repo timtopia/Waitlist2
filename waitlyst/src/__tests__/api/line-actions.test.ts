@@ -554,7 +554,7 @@ describe("POST /api/lines/[lineId]/remove-front", () => {
     expect(response.status).toBe(401)
   })
 
-  it("should return 400 if not line owner", async () => {
+  it("should return 403 if not line owner", async () => {
     mockAuth.mockResolvedValue({ user: { id: "other-user" } })
     mockPrisma.line.findUnique.mockResolvedValue({
       id: "line-1",
@@ -567,12 +567,12 @@ describe("POST /api/lines/[lineId]/remove-front", () => {
     })
 
     const response = await POST(req, { params: Promise.resolve({ lineId: "line-1" }) })
-    expect(response.status).toBe(400)
+    expect(response.status).toBe(403)
     const data = await response.json()
-    expect(data.error).toContain("creator")
+    expect(data.error).toContain("Not authorized")
   })
 
-  it("should return 400 if line not found", async () => {
+  it("should return 404 if line not found", async () => {
     mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
     mockPrisma.line.findUnique.mockResolvedValue(null)
 
@@ -582,7 +582,7 @@ describe("POST /api/lines/[lineId]/remove-front", () => {
     })
 
     const response = await POST(req, { params: Promise.resolve({ lineId: "line-1" }) })
-    expect(response.status).toBe(400)
+    expect(response.status).toBe(404)
     const data = await response.json()
     expect(data.error).toContain("not found")
   })

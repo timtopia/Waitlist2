@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/auth"
+import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 
 export async function POST(req: Request) {
-  const session = await auth()
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
+  const result = await requireAuth()
+  if (result instanceof NextResponse) return result
 
   const { name, description, isPublic = true, opensAt, closesAt, maxCapacity, ownerFeePercent = 0, productName, productImage, productPrice, productUrl } = await req.json()
 
@@ -45,7 +43,7 @@ export async function POST(req: Request) {
     data: {
       name: name.trim(),
       description: description?.trim() || null,
-      createdById: session.user.id,
+      createdById: result.userId,
       isPublic: Boolean(isPublic),
       opensAt: opensAt ? new Date(opensAt) : null,
       closesAt: closesAt ? new Date(closesAt) : null,

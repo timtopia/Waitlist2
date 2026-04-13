@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/auth"
+import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { settleTransactionsForUser } from "@/lib/settle-transactions"
 
@@ -7,27 +7,14 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ lineId: string }> }
 ) {
-  const session = await auth()
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
-
   const { lineId } = await params
+
+  const result = await requireLineOwner(lineId)
+  if (result instanceof NextResponse) return result
 
   try {
     let removedUserName = "Someone"
     await prisma.$transaction(async (tx) => {
-      // Check if line exists and user is the creator
-      const line = await tx.line.findUnique({
-        where: { id: lineId },
-      })
-      if (!line) {
-        throw new Error("Line not found")
-      }
-      if (line.createdById !== session.user.id) {
-        throw new Error("Only the line creator can remove people")
-      }
-
       // Get the front position
       const frontPosition = await tx.linePosition.findFirst({
         where: { lineId, position: 1 },

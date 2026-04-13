@@ -231,8 +231,8 @@ describe("QueueDisplay", () => {
     const buyButton = screen.getByText("Buy for $25.00")
     fireEvent.click(buyButton)
 
-    // Confirm the purchase in the modal
-    const confirmButton = screen.getByText("Pay $25.00")
+    // Confirm the purchase in the modal (no feeInfo prop → label is "Buy")
+    const confirmButton = screen.getByText("Buy")
     fireEvent.click(confirmButton)
 
     await waitFor(() => {

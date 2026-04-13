@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/auth"
+import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 
 // Get transaction info for a specific user in a line
@@ -7,11 +7,6 @@ export async function GET(
   req: Request,
   { params }: { params: Promise<{ lineId: string }> }
 ) {
-  const session = await auth()
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
-
   const { lineId } = await params
   const url = new URL(req.url)
   const userId = url.searchParams.get("userId")
@@ -20,18 +15,8 @@ export async function GET(
     return NextResponse.json({ error: "userId required" }, { status: 400 })
   }
 
-  // Verify caller is the line owner
-  const line = await prisma.line.findUnique({
-    where: { id: lineId },
-  })
-
-  if (!line) {
-    return NextResponse.json({ error: "Line not found" }, { status: 404 })
-  }
-
-  if (line.createdById !== session.user.id) {
-    return NextResponse.json({ error: "Not authorized" }, { status: 403 })
-  }
+  const result = await requireLineOwner(lineId)
+  if (result instanceof NextResponse) return result
 
   // Get all completed AND refunded transactions where this user was buyer or seller.
   // We include REFUNDED so the admin has full visibility into this user's transaction history.

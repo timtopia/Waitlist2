@@ -640,7 +640,7 @@ describe("Remove Position API", () => {
     expect(response.status).toBe(400)
   })
 
-  it("should return error if not line owner", async () => {
+  it("should return 403 if not line owner", async () => {
     mockAuth.mockResolvedValue({ user: { id: "other-user" } })
     mockPrisma.line.findUnique.mockResolvedValue({
       id: "line-1",
@@ -654,7 +654,7 @@ describe("Remove Position API", () => {
     })
 
     const response = await POST(req, { params: Promise.resolve({ lineId: "line-1" }) })
-    expect(response.status).toBe(400)
+    expect(response.status).toBe(403)
   })
 
   it("should remove position with payout action", async () => {

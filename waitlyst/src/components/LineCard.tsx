@@ -5,6 +5,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { Card, CardContent } from "./ui/Card"
 import { getStatusBadge } from "@/lib/line-status"
+import { formatDropCountdown } from "@/lib/format"
 
 interface LineCardProps {
   line: {
@@ -27,15 +28,6 @@ interface LineCardProps {
     }
     createdAt: string
   }
-}
-
-function formatDropCountdown(ms: number): string {
-  if (ms <= 0) return "0:00"
-  const hours = Math.floor(ms / (1000 * 60 * 60))
-  const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60))
-  const seconds = Math.floor((ms % (1000 * 60)) / 1000)
-  if (hours > 0) return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
-  return `${minutes}:${String(seconds).padStart(2, "0")}`
 }
 
 export function LineCard({ line }: LineCardProps) {

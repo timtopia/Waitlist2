@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/auth"
+import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 
 // Get transaction stats for a line (owner only)
@@ -7,25 +7,10 @@ export async function GET(
   req: Request,
   { params }: { params: Promise<{ lineId: string }> }
 ) {
-  const session = await auth()
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
-
   const { lineId } = await params
 
-  // Verify caller is the line owner
-  const line = await prisma.line.findUnique({
-    where: { id: lineId },
-  })
-
-  if (!line) {
-    return NextResponse.json({ error: "Line not found" }, { status: 404 })
-  }
-
-  if (line.createdById !== session.user.id) {
-    return NextResponse.json({ error: "Not authorized" }, { status: 403 })
-  }
+  const result = await requireLineOwner(lineId)
+  if (result instanceof NextResponse) return result
 
   // Get all transactions for this line
   const transactions = await prisma.transaction.findMany({

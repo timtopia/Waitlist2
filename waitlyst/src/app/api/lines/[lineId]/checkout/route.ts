@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/auth"
+import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { getStripe, getBaseUrl, performPositionSwap } from "@/lib/stripe"
 import { calculateFees } from "@/lib/fees"
@@ -10,10 +10,8 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ lineId: string }> }
 ) {
-  const session = await auth()
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
+  const result = await requireAuth()
+  if (result instanceof NextResponse) return result
 
   const { lineId } = await params
 
@@ -29,7 +27,7 @@ export async function POST(
 
     // Get buyer's current position
     const buyerPosition = await prisma.linePosition.findUnique({
-      where: { lineId_userId: { lineId, userId: session.user.id } },
+      where: { lineId_userId: { lineId, userId: result.userId } },
     })
     if (!buyerPosition) {
       return NextResponse.json(
@@ -95,7 +93,7 @@ export async function POST(
       const transaction = await prisma.$transaction(async (tx) => {
         const txn = await tx.transaction.create({
           data: {
-            buyerId: session.user.id,
+            buyerId: result.userId,
             sellerId: targetPosition.userId,
             lineId,
             amount: askingPrice,
@@ -142,7 +140,7 @@ export async function POST(
           metadata: {
             transactionId: transaction.id,
             lineId,
-            buyerId: session.user.id,
+            buyerId: result.userId,
             sellerId: targetPosition.userId,
           },
           success_url: `${baseUrl}/api/lines/${lineId}/complete-payment?session_id={CHECKOUT_SESSION_ID}`,
@@ -182,7 +180,7 @@ export async function POST(
     const transaction = await prisma.$transaction(async (tx) => {
       return tx.transaction.create({
         data: {
-          buyerId: session.user.id,
+          buyerId: result.userId,
           sellerId: targetPosition.userId,
           lineId,
           amount: askingPrice,

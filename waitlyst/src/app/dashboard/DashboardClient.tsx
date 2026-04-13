@@ -7,7 +7,9 @@ import { Card, CardContent, CardHeader } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
 import { ConfirmModal } from "@/components/ui/ConfirmModal"
+import { DropdownMenu, DropdownMenuItem } from "@/components/ui/DropdownMenu"
 import { useToast } from "@/components/ui/Toast"
+import { timeAgo, formatCurrency } from "@/lib/format"
 
 interface CreatedLine {
   id: string
@@ -81,7 +83,6 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
   const [statsModal, setStatsModal] = useState<StatsModal | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ lineId: string; lineName: string } | null>(null)
   const [removeConfirm, setRemoveConfirm] = useState<{ lineId: string } | null>(null)
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
 
   // Search, filter, and sort state
   const [searchText, setSearchText] = useState("")
@@ -231,7 +232,6 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
 
   async function handleDuplicateLine(lineId: string) {
     setLoadingAction(`duplicate-${lineId}`)
-    setOpenMenuId(null)
     try {
       const res = await fetch(`/api/lines/${lineId}/duplicate`, {
         method: "POST",
@@ -392,7 +392,7 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-green-50 rounded-lg p-4 text-center">
                     <p className="text-2xl font-bold text-green-700">
-                      ${statsModal.stats.totalCompleted.toFixed(2)}
+                      {formatCurrency(statsModal.stats.totalCompleted)}
                     </p>
                     <p className="text-sm text-green-600">
                       Settled ({statsModal.stats.completedCount})
@@ -400,7 +400,7 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
                   </div>
                   <div className="bg-red-50 rounded-lg p-4 text-center">
                     <p className="text-2xl font-bold text-red-700">
-                      ${statsModal.stats.totalRefunded.toFixed(2)}
+                      {formatCurrency(statsModal.stats.totalRefunded)}
                     </p>
                     <p className="text-sm text-red-600">
                       Refunded ({statsModal.stats.refundedCount})
@@ -411,7 +411,7 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
                 {statsModal.stats.pendingSettlement > 0 && (
                   <div className="bg-yellow-50 rounded-lg p-4 text-center">
                     <p className="text-2xl font-bold text-yellow-700">
-                      ${statsModal.stats.pendingSettlement.toFixed(2)}
+                      {formatCurrency(statsModal.stats.pendingSettlement)}
                     </p>
                     <p className="text-sm text-yellow-600">
                       Pending Settlement ({statsModal.stats.pendingSettlementCount})
@@ -424,7 +424,7 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
 
                 <div className="bg-blue-50 rounded-lg p-4 text-center">
                   <p className="text-3xl font-bold text-blue-700">
-                    ${statsModal.stats.netRevenue.toFixed(2)}
+                    {formatCurrency(statsModal.stats.netRevenue)}
                   </p>
                   <p className="text-sm text-blue-600">Net Revenue (Settled)</p>
                 </div>
@@ -538,7 +538,7 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
                       <p className="text-lg font-bold text-blue-600">#{pos.position}</p>
                       {pos.askingPrice !== null && (
                         <p className="text-sm text-green-600">
-                          For sale: ${Number(pos.askingPrice).toFixed(2)}
+                          For sale: {formatCurrency(Number(pos.askingPrice))}
                         </p>
                       )}
                     </div>
@@ -674,76 +674,23 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
                           Resume
                         </Button>
                       )}
-                      <div className="relative">
-                        <button
-                          onClick={(e) => {
-                            e.preventDefault()
-                            setOpenMenuId(openMenuId === line.id ? null : line.id)
-                          }}
-                          className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-lg transition-colors"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                          </svg>
-                        </button>
-                        {openMenuId === line.id && (
-                          <>
-                            <div
-                              className="fixed inset-0 z-10"
-                              onClick={() => setOpenMenuId(null)}
-                            />
-                            <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
-                              <button
-                                onClick={() => { openStatsModal(line.id, line.name); setOpenMenuId(null) }}
-                                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                              >
-                                View Stats
-                              </button>
-                              <button
-                                onClick={() => { handleCopyLink(line.id); setOpenMenuId(null) }}
-                                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                              >
-                                {copiedId === line.id ? "Copied!" : "Copy Link"}
-                              </button>
-                              <Link
-                                href={`/lines/${line.id}/edit`}
-                                className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                                onClick={() => setOpenMenuId(null)}
-                              >
-                                Edit
-                              </Link>
-                              <button
-                                onClick={() => handleDuplicateLine(line.id)}
-                                disabled={loadingAction === `duplicate-${line.id}`}
-                                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                              >
-                                {loadingAction === `duplicate-${line.id}` ? "Duplicating..." : "Duplicate"}
-                              </button>
-                              <button
-                                onClick={() => { handleTogglePublic(line.id, line.isPublic); setOpenMenuId(null) }}
-                                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                              >
-                                Make {line.isPublic ? "Private" : "Public"}
-                              </button>
-                              {line.isActive && (
-                                <button
-                                  onClick={() => { handleTogglePause(line.id); setOpenMenuId(null) }}
-                                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                                >
-                                  Pause
-                                </button>
-                              )}
-                              <div className="border-t border-gray-100 my-1" />
-                              <button
-                                onClick={() => { setDeleteConfirm({ lineId: line.id, lineName: line.name }); setOpenMenuId(null) }}
-                                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </>
-                        )}
-                      </div>
+                      <DropdownMenu
+                        items={(() => {
+                          const menuItems: DropdownMenuItem[] = [
+                            { label: "View Stats", onClick: () => openStatsModal(line.id, line.name) },
+                            { label: copiedId === line.id ? "Copied!" : "Copy Link", onClick: () => handleCopyLink(line.id) },
+                            { label: "Edit", onClick: () => router.push(`/lines/${line.id}/edit`) },
+                            { label: loadingAction === `duplicate-${line.id}` ? "Duplicating..." : "Duplicate", onClick: () => handleDuplicateLine(line.id), disabled: loadingAction === `duplicate-${line.id}` },
+                            { label: `Make ${line.isPublic ? "Private" : "Public"}`, onClick: () => handleTogglePublic(line.id, line.isPublic) },
+                          ]
+                          if (line.isActive) {
+                            menuItems.push({ label: "Pause", onClick: () => handleTogglePause(line.id) })
+                          }
+                          menuItems.push({ label: "Delete", onClick: () => setDeleteConfirm({ lineId: line.id, lineName: line.name }), variant: "danger" })
+                          return menuItems
+                        })()}
+                        separatorBefore={[line.isActive ? 6 : 5]}
+                      />
                     </div>
                   </div>
                 </div>
@@ -798,7 +745,6 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
                   },
                 }
                 const style = iconStyles[activity.type] || iconStyles.joined
-                const timeAgo = getTimeAgo(activity.createdAt)
 
                 return (
                   <div
@@ -821,7 +767,7 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
                         </Link>
                       )}
                     </div>
-                    <span className="text-xs text-gray-400 flex-shrink-0">{timeAgo}</span>
+                    <span className="text-xs text-gray-400 flex-shrink-0">{timeAgo(activity.createdAt)}</span>
                   </div>
                 )
               })}
@@ -833,20 +779,3 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
   )
 }
 
-function getTimeAgo(dateStr: string): string {
-  const now = new Date()
-  const date = new Date(dateStr)
-  const diffMs = now.getTime() - date.getTime()
-  const diffMins = Math.floor(diffMs / 60000)
-
-  if (diffMins < 1) return "just now"
-  if (diffMins < 60) return `${diffMins}m ago`
-
-  const diffHours = Math.floor(diffMins / 60)
-  if (diffHours < 24) return `${diffHours}h ago`
-
-  const diffDays = Math.floor(diffHours / 24)
-  if (diffDays < 7) return `${diffDays}d ago`
-
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" })
-}
