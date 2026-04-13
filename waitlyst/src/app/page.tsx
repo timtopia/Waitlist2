@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { auth } from "@/auth"
 
-export const dynamic = "force-dynamic"
+export const revalidate = 60 // Cache landing page for 60 seconds
 
 export default async function HomePage() {
   const session = await auth()

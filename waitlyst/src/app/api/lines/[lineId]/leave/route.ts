@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
-import { lineEvents } from "@/lib/events"
 import { settleTransactionsForUser } from "@/lib/settle-transactions"
 
 export async function DELETE(
@@ -50,11 +49,6 @@ export async function DELETE(
       await settleTransactionsForUser(tx, lineId, userId)
     })
 
-    lineEvents.emit(lineId, {
-      type: "leave",
-      lineId,
-      userName: session.user.name || "Someone",
-    })
     return NextResponse.json({ success: true })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to leave line"

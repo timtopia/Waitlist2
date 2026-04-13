@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
-import { lineEvents } from "@/lib/events"
 
 export async function PATCH(
   req: Request,
@@ -32,14 +31,6 @@ export async function PATCH(
       include: {
         user: { select: { id: true, name: true, image: true } },
       },
-    })
-
-    // Emit real-time update
-    lineEvents.emit(lineId, {
-      type: "price-change",
-      lineId,
-      userName: position.user.name || "Someone",
-      position: position.position,
     })
 
     return NextResponse.json(position)

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 import { getStripe, getBaseUrl, performPositionSwap } from "@/lib/stripe"
 import { prisma } from "@/lib/prisma"
-import { lineEvents } from "@/lib/events"
 
 /**
  * Handle Stripe Checkout success redirect.
@@ -55,10 +54,6 @@ export async function GET(
 
     // Perform the swap (idempotent — won't swap again if already completed by webhook)
     const swapped = await performPositionSwap(transactionId)
-
-    if (swapped) {
-      lineEvents.emit(lineId, { type: "swap", lineId })
-    }
 
     // Whether we swapped or it was already done, the payment was successful
     return NextResponse.redirect(`${baseUrl}/lines/${lineId}?payment=success`)

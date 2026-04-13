@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 import { getStripe, performPositionSwap } from "@/lib/stripe"
 import { prisma } from "@/lib/prisma"
-import { lineEvents } from "@/lib/events"
 
 export async function POST(req: Request) {
   const stripe = getStripe()
@@ -61,10 +60,6 @@ export async function POST(req: Request) {
 
         // Perform the position swap (idempotent — won't swap if already done)
         const swapped = await performPositionSwap(transactionId)
-
-        if (swapped && lineId) {
-          lineEvents.emit(lineId, { type: "swap", lineId })
-        }
 
         break
       }

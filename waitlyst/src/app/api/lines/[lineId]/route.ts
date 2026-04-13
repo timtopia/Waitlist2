@@ -2,7 +2,6 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { refundTransactions } from "@/lib/stripe"
-import { lineEvents } from "@/lib/events"
 import { getPlatformFeePercent } from "@/lib/fees"
 
 export const dynamic = "force-dynamic"
@@ -81,7 +80,6 @@ export async function DELETE(
       await tx.line.delete({ where: { id: lineId } })
     })
 
-    lineEvents.emit(lineId, { type: "delete", lineId })
     return NextResponse.json({ success: true, refundedCount })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to delete line"

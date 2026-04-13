@@ -32,10 +32,6 @@ vi.mock("@/auth", () => ({
   auth: () => mockAuth(),
 }))
 
-// Mock events
-vi.mock("@/lib/events", () => ({
-  lineEvents: { emit: vi.fn() },
-}))
 
 // Mock settle-transactions
 vi.mock("@/lib/settle-transactions", () => ({

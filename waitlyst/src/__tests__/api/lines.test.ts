@@ -36,10 +36,6 @@ vi.mock("@/auth", () => ({
   auth: () => mockAuth(),
 }))
 
-// Mock events
-vi.mock("@/lib/events", () => ({
-  lineEvents: { emit: vi.fn() },
-}))
 
 // Mock Stripe
 const mockStripe = {

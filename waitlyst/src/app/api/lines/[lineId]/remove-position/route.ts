@@ -2,7 +2,6 @@ import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { refundTransactions } from "@/lib/stripe"
-import { lineEvents } from "@/lib/events"
 import { settleTransactionsForUser } from "@/lib/settle-transactions"
 
 export async function POST(
@@ -137,13 +136,6 @@ export async function POST(
         await settleTransactionsForUser(tx, lineId, result.userId)
       })
     }
-
-    // Emit real-time update
-    lineEvents.emit(lineId, {
-      type: "leave",
-      lineId,
-      userName: result.positionToRemove.user?.name || "Someone",
-    })
 
     return NextResponse.json({
       success: true,

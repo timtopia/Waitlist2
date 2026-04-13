@@ -3,7 +3,6 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { getStripe, getBaseUrl, performPositionSwap } from "@/lib/stripe"
 import { calculateFees } from "@/lib/fees"
-import { lineEvents } from "@/lib/events"
 
 const LOCK_DURATION_MS = 30 * 60 * 1000 // 30 minutes (Stripe minimum for checkout session expiry)
 
@@ -120,9 +119,6 @@ export async function POST(
         return txn
       })
 
-      // Notify viewers that positions are locked (pending payment)
-      lineEvents.emit(lineId, { type: "lock", lineId })
-
       // Create Stripe Checkout Session
       const baseUrl = getBaseUrl()
       let checkoutSession
@@ -206,7 +202,6 @@ export async function POST(
       )
     }
 
-    lineEvents.emit(lineId, { type: "swap", lineId })
 
     return NextResponse.json({
       success: true,

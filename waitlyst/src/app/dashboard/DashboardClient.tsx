@@ -171,12 +171,38 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
     fetchActivities()
   }, [])
 
-  // Poll for dashboard updates (position changes, new joins, etc.)
+  // Poll for dashboard updates — only when tab is visible, every 60 seconds
   useEffect(() => {
-    const interval = setInterval(() => {
-      router.refresh()
-    }, 10000) // Refresh every 10 seconds
-    return () => clearInterval(interval)
+    let interval: ReturnType<typeof setInterval> | null = null
+
+    function start() {
+      if (!interval) {
+        interval = setInterval(() => {
+          if (document.visibilityState === "visible") router.refresh()
+        }, 60000)
+      }
+    }
+
+    function stop() {
+      if (interval) { clearInterval(interval); interval = null }
+    }
+
+    function onVisibility() {
+      if (document.visibilityState === "visible") {
+        router.refresh() // Immediate refresh when tab comes back
+        start()
+      } else {
+        stop()
+      }
+    }
+
+    document.addEventListener("visibilitychange", onVisibility)
+    start()
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility)
+      stop()
+    }
   }, [router])
 
   // Sync lines state when server data changes

@@ -42,8 +42,6 @@ export async function POST(req: Request) {
   return NextResponse.json(line)
 }
 
-export const dynamic = "force-dynamic"
-
 export async function GET() {
   const lines = await prisma.line.findMany({
     where: { isActive: true, isPublic: true },
@@ -54,5 +52,9 @@ export async function GET() {
     orderBy: { createdAt: "desc" },
   })
 
-  return NextResponse.json(lines)
+  return NextResponse.json(lines, {
+    headers: {
+      "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
+    },
+  })
 }
