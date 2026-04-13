@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef, useCallback } from "react"
 import { Button } from "./ui/Button"
 
 interface ShareLineProps {
@@ -11,15 +11,30 @@ interface ShareLineProps {
 export function ShareLine({ lineId, lineName }: ShareLineProps) {
   const [copied, setCopied] = useState(false)
   const [open, setOpen] = useState(false)
+  const [showQr, setShowQr] = useState(false)
+  const [showEmbed, setShowEmbed] = useState(false)
+  const [embedCopied, setEmbedCopied] = useState(false)
+  const [qrSvg, setQrSvg] = useState<string | null>(null)
+  const [qrLoading, setQrLoading] = useState(false)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
 
-  const url = typeof window !== "undefined"
-    ? `${window.location.origin}/lines/${lineId}`
-    : `/lines/${lineId}`
+  const origin = typeof window !== "undefined" ? window.location.origin : ""
+  const url = `${origin}/lines/${lineId}`
+  const embedUrl = `${origin}/lines/${lineId}/embed`
+
+  const embedCode = `<iframe src="${embedUrl}" width="350" height="450" frameborder="0" style="border-radius:12px;border:1px solid #e5e7eb;"></iframe>`
+  const directLink = `<a href="${url}">Join the Drop on Waitlyst</a>`
 
   function handleCopy() {
     navigator.clipboard.writeText(url)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  function handleCopyEmbed() {
+    navigator.clipboard.writeText(embedCode)
+    setEmbedCopied(true)
+    setTimeout(() => setEmbedCopied(false), 2000)
   }
 
   async function handleNativeShare() {
@@ -36,6 +51,76 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
     }
   }
 
+  const fetchQrCode = useCallback(async () => {
+    setQrLoading(true)
+    try {
+      const res = await fetch(`/api/lines/${lineId}/qr?size=300`)
+      if (res.ok) {
+        const svg = await res.text()
+        setQrSvg(svg)
+      }
+    } finally {
+      setQrLoading(false)
+    }
+  }, [lineId])
+
+  function handleShowQr() {
+    setShowQr(true)
+    if (!qrSvg) {
+      fetchQrCode()
+    }
+  }
+
+  function handleDownloadSvg() {
+    if (!qrSvg) return
+    const blob = new Blob([qrSvg], { type: "image/svg+xml" })
+    const downloadUrl = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = downloadUrl
+    link.download = `${lineName.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-qr.svg`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(downloadUrl)
+  }
+
+  function handleDownloadPng() {
+    if (!qrSvg) return
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    const pngSize = 600
+    canvas.width = pngSize
+    canvas.height = pngSize
+
+    const img = new Image()
+    const svgBlob = new Blob([qrSvg], { type: "image/svg+xml;charset=utf-8" })
+    const svgUrl = URL.createObjectURL(svgBlob)
+
+    img.onload = () => {
+      ctx.fillStyle = "#ffffff"
+      ctx.fillRect(0, 0, pngSize, pngSize)
+      ctx.drawImage(img, 0, 0, pngSize, pngSize)
+      URL.revokeObjectURL(svgUrl)
+
+      canvas.toBlob((blob) => {
+        if (!blob) return
+        const pngUrl = URL.createObjectURL(blob)
+        const link = document.createElement("a")
+        link.href = pngUrl
+        link.download = `${lineName.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-qr.png`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(pngUrl)
+      }, "image/png")
+    }
+    img.src = svgUrl
+  }
+
   const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(`Join ${lineName} on Waitlyst!`)}&url=${encodeURIComponent(url)}`
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(`Join ${lineName} on Waitlyst! ${url}`)}`
   const emailUrl = `mailto:?subject=${encodeURIComponent(`Join ${lineName} on Waitlyst`)}&body=${encodeURIComponent(`Hey! Check out this line on Waitlyst:\n\n${lineName}\n${url}`)}`
@@ -45,7 +130,7 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
       <Button
         size="sm"
         variant="secondary"
-        onClick={() => setOpen(!open)}
+        onClick={() => { setOpen(!open); setShowEmbed(false) }}
         className="gap-2"
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -57,10 +142,10 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
       {open && (
         <>
           {/* Backdrop */}
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="fixed inset-0 z-40" onClick={() => { setOpen(false); setShowQr(false); setShowEmbed(false) }} />
 
           {/* Dropdown */}
-          <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-lg border border-gray-200 z-50 p-4">
+          <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-gray-200 z-50 p-4">
             <h4 className="text-sm font-semibold text-gray-900 mb-3">Share this line</h4>
 
             {/* Copy Link */}
@@ -76,7 +161,7 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
             </div>
 
             {/* Share buttons */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 mb-3">
               {typeof navigator !== "undefined" && "share" in navigator && (
                 <button
                   onClick={handleNativeShare}
@@ -120,9 +205,140 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
                 </svg>
               </a>
             </div>
+
+            {/* Divider */}
+            <div className="border-t border-gray-100 my-3" />
+
+            {/* QR Code button */}
+            {!showQr ? (
+              <button
+                onClick={handleShowQr}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4h6v6H4V4zm10 0h6v6h-6V4zm-10 10h6v6H4v-6zm13 3h1v1h-1v-1zm-3-3h1v1h-1v-1zm3 0h3v3h-3v-3zm0 3h1v1h-1v-1z" />
+                </svg>
+                QR Code
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700">QR Code</span>
+                  <button
+                    onClick={() => setShowQr(false)}
+                    className="text-xs text-gray-400 hover:text-gray-600"
+                  >
+                    Hide
+                  </button>
+                </div>
+                <div className="flex justify-center">
+                  {qrLoading ? (
+                    <div className="w-[200px] h-[200px] bg-gray-50 rounded-lg flex items-center justify-center">
+                      <svg className="animate-spin h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                    </div>
+                  ) : qrSvg ? (
+                    <div
+                      className="w-[200px] h-[200px] rounded-lg overflow-hidden border border-gray-100"
+                      dangerouslySetInnerHTML={{ __html: qrSvg }}
+                    />
+                  ) : (
+                    <div className="w-[200px] h-[200px] bg-gray-50 rounded-lg flex items-center justify-center text-sm text-gray-400">
+                      Failed to load
+                    </div>
+                  )}
+                </div>
+                {qrSvg && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleDownloadSvg}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-xs font-medium hover:bg-gray-200 transition-colors"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      SVG
+                    </button>
+                    <button
+                      onClick={handleDownloadPng}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-xs font-medium hover:bg-gray-200 transition-colors"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      PNG
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Divider */}
+            <div className="border-t border-gray-100 my-3" />
+
+            {/* Embed Widget button */}
+            {!showEmbed ? (
+              <button
+                onClick={() => setShowEmbed(true)}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                </svg>
+                Embed Widget
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700">Embed Widget</span>
+                  <button
+                    onClick={() => setShowEmbed(false)}
+                    className="text-xs text-gray-400 hover:text-gray-600"
+                  >
+                    Hide
+                  </button>
+                </div>
+
+                {/* Iframe embed code */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    Iframe Embed
+                  </label>
+                  <textarea
+                    readOnly
+                    value={embedCode}
+                    rows={3}
+                    className="w-full text-xs px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-600 font-mono resize-none"
+                    onFocus={(e) => e.target.select()}
+                  />
+                  <Button size="sm" onClick={handleCopyEmbed} className="mt-1 w-full">
+                    {embedCopied ? "Copied!" : "Copy Code"}
+                  </Button>
+                </div>
+
+                {/* Direct link */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    Direct Link
+                  </label>
+                  <textarea
+                    readOnly
+                    value={directLink}
+                    rows={1}
+                    className="w-full text-xs px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-600 font-mono resize-none"
+                    onFocus={(e) => e.target.select()}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </>
       )}
+
+      {/* Hidden canvas for PNG export */}
+      <canvas ref={canvasRef} className="hidden" />
     </div>
   )
 }

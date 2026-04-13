@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import { useSession, signIn } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Image from "next/image"
@@ -84,6 +84,10 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [activitiesLoading, setActivitiesLoading] = useState(true)
   const [showAllActivity, setShowAllActivity] = useState(false)
   const [marketData, setMarketData] = useState<MarketData | null>(null)
+  const [showQrModal, setShowQrModal] = useState(false)
+  const [qrSvg, setQrSvg] = useState<string | null>(null)
+  const [qrLoading, setQrLoading] = useState(false)
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
   const { requestPermission, sendNotification } = useNotifications()
