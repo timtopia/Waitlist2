@@ -15,6 +15,13 @@ import { useToast } from "@/components/ui/Toast"
 import { useLineUpdates, LineUpdateEvent } from "@/hooks/useLineUpdates"
 import { useNotifications } from "@/hooks/useNotifications"
 
+interface ActivityItem {
+  id: string
+  type: "join" | "purchase" | "sale" | "refund"
+  description: string
+  timestamp: string
+}
+
 interface Line {
   id: string
   name: string
@@ -25,6 +32,8 @@ interface Line {
   maxCapacity: number | null
   ownerFeePercent: number
   platformFeePercent: number
+  announcement: string | null
+  announcementAt: string | null
   createdAt: string
   createdBy: {
     id: string
@@ -54,6 +63,12 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [deleting, setDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showOwnerMenu, setShowOwnerMenu] = useState(false)
+  const [showAnnouncementEditor, setShowAnnouncementEditor] = useState(false)
+  const [announcementDraft, setAnnouncementDraft] = useState("")
+  const [savingAnnouncement, setSavingAnnouncement] = useState(false)
+  const [activities, setActivities] = useState<ActivityItem[]>([])
+  const [activitiesLoading, setActivitiesLoading] = useState(true)
+  const [showAllActivity, setShowAllActivity] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
   const { requestPermission, sendNotification } = useNotifications()
@@ -115,15 +130,36 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     fetchLine()
   }, [fetchLine])
 
+  // Fetch line-specific activity feed
+  const fetchActivity = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/lines/${lineId}/activity`)
+      if (res.ok) {
+        const data = await res.json()
+        if (Array.isArray(data)) {
+          setActivities(data)
+        }
+      }
+    } finally {
+      setActivitiesLoading(false)
+    }
+  }, [lineId])
+
+  useEffect(() => {
+    fetchActivity()
+  }, [fetchActivity])
+
   const handleLineUpdate = useCallback((event: LineUpdateEvent) => {
     if (event.type === "poll-update" && event.data) {
       // Poll detected a change — use the fresh data directly (no extra fetch)
       setLine(event.data as Line)
+      fetchActivity()
       return
     }
 
     // SSE event — refetch and notify
     fetchLine()
+    fetchActivity()
 
     const messages: Record<string, string> = {
       join: `${event.userName || "Someone"} joined the line`,
@@ -137,7 +173,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     if (message) {
       sendNotification(`Waitlyst - ${line?.name || "Line Update"}`, { body: message })
     }
-  }, [fetchLine, sendNotification, line?.name])
+  }, [fetchLine, fetchActivity, sendNotification, line?.name])
 
   // Subscribe to real-time updates
   useLineUpdates(lineId, handleLineUpdate)
@@ -188,6 +224,62 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     } finally {
       setDeleting(false)
       setShowDeleteConfirm(false)
+    }
+  }
+
+  function timeAgo(dateStr: string): string {
+    const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000)
+    if (seconds < 60) return "just now"
+    const minutes = Math.floor(seconds / 60)
+    if (minutes < 60) return `${minutes} minute${minutes !== 1 ? "s" : ""} ago`
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) return `${hours} hour${hours !== 1 ? "s" : ""} ago`
+    const days = Math.floor(hours / 24)
+    return `${days} day${days !== 1 ? "s" : ""} ago`
+  }
+
+  async function handleSaveAnnouncement() {
+    setSavingAnnouncement(true)
+    try {
+      const res = await fetch(`/api/lines/${lineId}/announcement`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ announcement: announcementDraft.trim() || null }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setLine(data)
+        setShowAnnouncementEditor(false)
+        addToast(announcementDraft.trim() ? "Announcement posted" : "Announcement cleared", "success")
+      } else {
+        const data = await res.json()
+        addToast(data.error || "Failed to update announcement", "error")
+      }
+    } finally {
+      setSavingAnnouncement(false)
+    }
+  }
+
+  async function handleClearAnnouncement() {
+    setSavingAnnouncement(true)
+    try {
+      const res = await fetch(`/api/lines/${lineId}/announcement`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ announcement: null }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setLine(data)
+        setShowAnnouncementEditor(false)
+        setAnnouncementDraft("")
+        addToast("Announcement cleared", "success")
+      } else {
+        const data = await res.json()
+        addToast(data.error || "Failed to clear announcement", "error")
+      }
+    } finally {
+      setSavingAnnouncement(false)
     }
   }
 
@@ -271,6 +363,16 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                           onClick={() => setShowOwnerMenu(false)}
                         />
                         <div className="absolute right-0 top-full mt-1 w-44 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                          <button
+                            onClick={() => {
+                              setAnnouncementDraft(line.announcement || "")
+                              setShowAnnouncementEditor(true)
+                              setShowOwnerMenu(false)
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                          >
+                            {line.announcement ? "Edit Announcement" : "Announce"}
+                          </button>
                           <button
                             onClick={() => {
                               const link = document.createElement("a")
@@ -365,6 +467,91 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         </div>
       )}
 
+      {/* Announcement Banner */}
+      {line.announcement && !showAnnouncementEditor && (
+        <div className="mb-6">
+          <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+            <div className="flex items-start space-x-3">
+              <svg className="w-5 h-5 text-indigo-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
+              </svg>
+              <div className="flex-1 min-w-0">
+                <p className="text-indigo-900 whitespace-pre-wrap break-words">{line.announcement}</p>
+                {line.announcementAt && (
+                  <p className="text-xs text-indigo-500 mt-1">{timeAgo(line.announcementAt)}</p>
+                )}
+              </div>
+              {isCreator && (
+                <button
+                  onClick={() => {
+                    setAnnouncementDraft(line.announcement || "")
+                    setShowAnnouncementEditor(true)
+                  }}
+                  className="text-indigo-400 hover:text-indigo-600 flex-shrink-0"
+                  title="Edit announcement"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Announcement Editor (owner only) */}
+      {isCreator && showAnnouncementEditor && (
+        <div className="mb-6">
+          <div className="bg-white border border-indigo-200 rounded-lg p-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {line.announcement ? "Edit Announcement" : "New Announcement"}
+            </label>
+            <textarea
+              value={announcementDraft}
+              onChange={(e) => setAnnouncementDraft(e.target.value)}
+              maxLength={280}
+              rows={3}
+              placeholder="Share an update with everyone in line..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
+            />
+            <div className="flex items-center justify-between mt-2">
+              <span className={`text-xs ${announcementDraft.length > 260 ? "text-amber-600" : "text-gray-400"}`}>
+                {announcementDraft.length}/280
+              </span>
+              <div className="flex items-center gap-2">
+                {line.announcement && (
+                  <button
+                    onClick={handleClearAnnouncement}
+                    disabled={savingAnnouncement}
+                    className="px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    Clear
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setShowAnnouncementEditor(false)
+                    setAnnouncementDraft("")
+                  }}
+                  disabled={savingAnnouncement}
+                  className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveAnnouncement}
+                  disabled={savingAnnouncement || announcementDraft.trim().length === 0}
+                  className="px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {savingAnnouncement ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Status Banner */}
       {(line.opensAt || line.closesAt || line.maxCapacity) && (
         <div className="mb-6">
@@ -392,6 +579,81 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             feeInfo={feeInfo}
             isPaused={linePaused}
           />
+        </CardContent>
+      </Card>
+
+      {/* Activity Feed */}
+      <Card className="mt-6">
+        <CardHeader>
+          <h2 className="text-lg font-semibold text-gray-900">Activity</h2>
+        </CardHeader>
+        <CardContent>
+          {activitiesLoading ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-10 bg-gray-100 rounded-lg animate-pulse" />
+              ))}
+            </div>
+          ) : activities.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-4">No activity yet</p>
+          ) : (
+            <>
+              <div className="space-y-1.5">
+                {(showAllActivity ? activities : activities.slice(0, 5)).map((activity) => {
+                  const iconStyles: Record<string, { bg: string; icon: string; path: string }> = {
+                    join: {
+                      bg: "bg-blue-100",
+                      icon: "text-blue-600",
+                      path: "M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z",
+                    },
+                    purchase: {
+                      bg: "bg-red-100",
+                      icon: "text-red-600",
+                      path: "M5 10l7-7m0 0l7 7m-7-7v18",
+                    },
+                    sale: {
+                      bg: "bg-green-100",
+                      icon: "text-green-600",
+                      path: "M19 14l-7 7m0 0l-7-7m7 7V3",
+                    },
+                    refund: {
+                      bg: "bg-amber-100",
+                      icon: "text-amber-600",
+                      path: "M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6",
+                    },
+                  }
+                  const style = iconStyles[activity.type] || iconStyles.join
+
+                  return (
+                    <div
+                      key={activity.id}
+                      className="flex items-center gap-2.5 py-1.5"
+                    >
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${style.bg}`}>
+                        <svg className={`w-3 h-3 ${style.icon}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={style.path} />
+                        </svg>
+                      </div>
+                      <p className="text-xs text-gray-700 flex-1 min-w-0 truncate">
+                        {activity.description}
+                      </p>
+                      <span className="text-xs text-gray-400 flex-shrink-0">
+                        {timeAgo(activity.timestamp)}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+              {activities.length > 5 && (
+                <button
+                  onClick={() => setShowAllActivity(!showAllActivity)}
+                  className="mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium"
+                >
+                  {showAllActivity ? "Show less" : `Show more (${activities.length - 5} more)`}
+                </button>
+              )}
+            </>
+          )}
         </CardContent>
       </Card>
     </div>

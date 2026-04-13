@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { LineCard } from "@/components/LineCard"
 import { Button } from "@/components/ui/Button"
@@ -19,12 +19,20 @@ interface Line {
 }
 
 type FilterStatus = "all" | "open" | "upcoming" | "closed"
+type SortOption = "newest" | "popular" | "ending-soon"
+
+const sortLabels: Record<SortOption, string> = {
+  newest: "Newest",
+  popular: "Most Popular",
+  "ending-soon": "Ending Soon",
+}
 
 export default function BrowsePage() {
   const [lines, setLines] = useState<Line[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [filter, setFilter] = useState<FilterStatus>("all")
+  const [sortBy, setSortBy] = useState<SortOption>("newest")
 
   useEffect(() => {
     async function fetchLines() {
@@ -40,25 +48,52 @@ export default function BrowsePage() {
     fetchLines()
   }, [])
 
-  const filtered = lines.filter((line) => {
-    // Search
-    if (search) {
-      const q = search.toLowerCase()
-      const matchesName = line.name.toLowerCase().includes(q)
-      const matchesDesc = line.description?.toLowerCase().includes(q)
-      if (!matchesName && !matchesDesc) return false
-    }
+  const filtered = useMemo(() => {
+    const result = lines.filter((line) => {
+      // Search
+      if (search) {
+        const q = search.toLowerCase()
+        const matchesName = line.name.toLowerCase().includes(q)
+        const matchesDesc = line.description?.toLowerCase().includes(q)
+        if (!matchesName && !matchesDesc) return false
+      }
 
-    // Status filter
-    if (filter !== "all") {
-      const status = getLineStatus(line)
-      if (filter === "open" && status !== "open") return false
-      if (filter === "upcoming" && status !== "upcoming") return false
-      if (filter === "closed" && status !== "closed" && status !== "full") return false
-    }
+      // Status filter
+      if (filter !== "all") {
+        const status = getLineStatus(line)
+        if (filter === "open" && status !== "open") return false
+        if (filter === "upcoming" && status !== "upcoming") return false
+        if (filter === "closed" && status !== "closed" && status !== "full") return false
+      }
 
-    return true
-  })
+      return true
+    })
+
+    // Sort
+    return result.sort((a, b) => {
+      switch (sortBy) {
+        case "newest":
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        case "popular":
+          return b._count.positions - a._count.positions
+        case "ending-soon": {
+          const now = new Date()
+          const aClose = a.closesAt ? new Date(a.closesAt) : null
+          const bClose = b.closesAt ? new Date(b.closesAt) : null
+          const aOpen = aClose && aClose > now
+          const bOpen = bClose && bClose > now
+          // Lines with a future closesAt come first, sorted soonest first
+          if (aOpen && bOpen) return aClose!.getTime() - bClose!.getTime()
+          if (aOpen) return -1
+          if (bOpen) return 1
+          // Remaining lines fall back to newest
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        }
+        default:
+          return 0
+      }
+    })
+  }, [lines, search, filter, sortBy])
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -97,6 +132,24 @@ export default function BrowsePage() {
         </div>
       </div>
 
+      {/* Sort */}
+      <div className="flex items-center gap-2 mb-8">
+        <span className="text-sm text-gray-500">Sort by:</span>
+        {(Object.keys(sortLabels) as SortOption[]).map((s) => (
+          <button
+            key={s}
+            onClick={() => setSortBy(s)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              sortBy === s
+                ? "bg-blue-600 text-white"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            {sortLabels[s]}
+          </button>
+        ))}
+      </div>
+
       {/* Results */}
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -115,7 +168,7 @@ export default function BrowsePage() {
             <>
               <p className="text-gray-500 mb-2">No lines match your search.</p>
               <button
-                onClick={() => { setSearch(""); setFilter("all") }}
+                onClick={() => { setSearch(""); setFilter("all"); setSortBy("newest") }}
                 className="text-sm text-blue-600 hover:underline"
               >
                 Clear filters

@@ -71,6 +71,8 @@ model Line {
   closesAt        DateTime?      // When the line stops accepting new joins (null = never closes)
   maxCapacity     Int?           // Maximum number of positions allowed (null = unlimited)
   ownerFeePercent Float          @default(0) // Percentage the line owner earns on each sale (e.g. 10 = 10%)
+  announcement    String?        // Owner announcement shown as banner (max ~280 chars)
+  announcementAt  DateTime?      // When the announcement was last set
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 

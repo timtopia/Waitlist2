@@ -203,6 +203,26 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
     }
   }
 
+  async function handleDuplicateLine(lineId: string) {
+    setLoadingAction(`duplicate-${lineId}`)
+    setOpenMenuId(null)
+    try {
+      const res = await fetch(`/api/lines/${lineId}/duplicate`, {
+        method: "POST",
+      })
+      if (res.ok) {
+        const newLine = await res.json()
+        addToast("Line duplicated!", "success")
+        router.push(`/lines/${newLine.id}/edit`)
+      } else {
+        const data = await res.json()
+        addToast(data.error || "Failed to duplicate line", "error")
+      }
+    } finally {
+      setLoadingAction(null)
+    }
+  }
+
   async function handleDeleteLine(lineId: string) {
     setDeleteConfirm(null)
     setLoadingAction(`delete-${lineId}`)
@@ -666,6 +686,13 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
                               >
                                 Edit
                               </Link>
+                              <button
+                                onClick={() => handleDuplicateLine(line.id)}
+                                disabled={loadingAction === `duplicate-${line.id}`}
+                                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                              >
+                                {loadingAction === `duplicate-${line.id}` ? "Duplicating..." : "Duplicate"}
+                              </button>
                               <button
                                 onClick={() => { handleTogglePublic(line.id, line.isPublic); setOpenMenuId(null) }}
                                 className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"

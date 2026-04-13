@@ -327,18 +327,30 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
           {positions.map((pos) => {
             const isCurrentUser = pos.user.id === session?.user?.id
             const isLocked = pos.lockedUntil && new Date(pos.lockedUntil) > new Date()
+            const isForSale = pos.askingPrice !== null && !isLocked
             const canBuy =
               positionInFront?.id === pos.id && pos.askingPrice !== null && !isLocked && !isPaused
             const isFront = pos.position === 1
 
+            // Left border accent: green for sale, amber for pending, transparent otherwise
+            const leftBorder = isLocked
+              ? "border-l-4 border-l-amber-400"
+              : isForSale
+              ? "border-l-4 border-l-green-400"
+              : "border-l-4 border-l-transparent"
+
             return (
               <div
                 key={pos.id}
-                className={`flex items-center justify-between p-4 rounded-lg border ${
+                className={`flex items-center justify-between p-4 rounded-lg border ${leftBorder} ${
                   isCurrentUser
                     ? "bg-blue-50 border-blue-200"
                     : isFront
                     ? "bg-green-50 border-green-200"
+                    : isLocked
+                    ? "bg-amber-50/50 border-amber-200"
+                    : isForSale
+                    ? "bg-white border-gray-200"
                     : "bg-white border-gray-200"
                 }`}
               >
@@ -375,9 +387,9 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                       const posFees = calcFees(pos.askingPrice, feeInfo)
                       const hasFees = posFees.ownerFee > 0 || posFees.platformFee > 0
                       return (
-                        <p className={`text-sm font-medium ${isLocked ? "text-orange-600" : "text-green-600"}`}>
-                          For sale: ${hasFees ? posFees.total.toFixed(2) : pos.askingPrice.toFixed(2)}
-                          {isLocked && <span className="ml-1">(pending)</span>}
+                        <p className={`text-sm font-medium flex items-center gap-1.5 ${isLocked ? "text-amber-600" : "text-green-600"}`}>
+                          <span className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${isLocked ? "bg-amber-500" : "bg-green-500"}`} />
+                          {isLocked ? "Pending" : "For sale"}: ${hasFees ? posFees.total.toFixed(2) : pos.askingPrice.toFixed(2)}
                         </p>
                       )
                     })()}
