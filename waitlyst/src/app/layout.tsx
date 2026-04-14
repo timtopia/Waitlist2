@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
@@ -15,8 +15,35 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Waitlyst - Queue Position Trading",
-  description: "Create and join virtual queues, trade your position with others",
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_APP_URL || "https://waitlyst.app"
+  ),
+  title: {
+    default: "Waitlyst - Queue Position Trading",
+    template: "%s | Waitlyst",
+  },
+  description:
+    "Create and join virtual queues, trade your position with others, and never lose your spot in line.",
+  openGraph: {
+    title: "Waitlyst - Queue Position Trading",
+    description:
+      "Create and join virtual queues, trade your position with others, and never lose your spot in line.",
+    siteName: "Waitlyst",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+  },
+  icons: {
+    icon: "/icon",
+    apple: "/apple-icon",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#2563eb",
 };
 
 export default function RootLayout({

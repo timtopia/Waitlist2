@@ -18,8 +18,8 @@ export default async function HomePage() {
               <span className="text-blue-200">Trade your place in line.</span>
             </h1>
             <p className="text-lg sm:text-xl text-blue-100 mb-8 max-w-2xl">
-              Waitlyst lets you create virtual queues for events, drops, and services.
-              People join your line, and they can buy or sell their position to others.
+              Waitlyst lets you create virtual queues for drops, launches, and events.
+              People join your line and can trade positions — buy the spot ahead or sell yours for profit.
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
               {session ? (
@@ -119,31 +119,31 @@ export default async function HomePage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             <div className="bg-white rounded-xl p-6 border border-gray-200">
-              <div className="text-3xl mb-3">🎵</div>
-              <h3 className="font-semibold text-gray-900 mb-2">Concert Presales</h3>
-              <p className="text-sm text-gray-600">
-                Schedule a line that opens when tickets go live. Fans queue up and trade spots.
-              </p>
-            </div>
-            <div className="bg-white rounded-xl p-6 border border-gray-200">
               <div className="text-3xl mb-3">👟</div>
-              <h3 className="font-semibold text-gray-900 mb-2">Product Drops</h3>
+              <h3 className="font-semibold text-gray-900 mb-2">Sneaker Drops</h3>
               <p className="text-sm text-gray-600">
-                Limited sneakers, merch, or collectibles. Set a capacity and let the line fill up.
+                Queue up before the drop goes live. Trade your spot or buy your way to the front of the line.
               </p>
             </div>
             <div className="bg-white rounded-xl p-6 border border-gray-200">
-              <div className="text-3xl mb-3">🍽️</div>
-              <h3 className="font-semibold text-gray-900 mb-2">Restaurant Waitlists</h3>
+              <div className="text-3xl mb-3">🔥</div>
+              <h3 className="font-semibold text-gray-900 mb-2">Limited Releases</h3>
               <p className="text-sm text-gray-600">
-                No more standing around. Join the line remotely and get notified when you're up.
+                Merch, collectibles, or exclusive collabs. Set a capacity and let the line fill up.
               </p>
             </div>
             <div className="bg-white rounded-xl p-6 border border-gray-200">
-              <div className="text-3xl mb-3">🎟️</div>
-              <h3 className="font-semibold text-gray-900 mb-2">Event Registration</h3>
+              <div className="text-3xl mb-3">🚀</div>
+              <h3 className="font-semibold text-gray-900 mb-2">Product Launches</h3>
               <p className="text-sm text-gray-600">
-                Limited capacity workshops, meetups, or classes. First come, first served — fairly.
+                Build hype before launch day. Fans join the waitlist and trade positions as demand grows.
+              </p>
+            </div>
+            <div className="bg-white rounded-xl p-6 border border-gray-200">
+              <div className="text-3xl mb-3">🎪</div>
+              <h3 className="font-semibold text-gray-900 mb-2">Pop-Up Events</h3>
+              <p className="text-sm text-gray-600">
+                Limited-capacity pop-ups, tastings, or experiences. First come, first served — with position trading.
               </p>
             </div>
           </div>
@@ -238,6 +238,12 @@ export default async function HomePage() {
             <p className="text-blue-100 mb-8 text-lg">
               Sign in with Google to create your first line or join an existing one.
             </p>
+            <Link
+              href="/api/auth/signin"
+              className="inline-block px-8 py-3 text-base font-semibold rounded-lg bg-white text-blue-700 hover:bg-blue-50 transition-colors"
+            >
+              Get Started
+            </Link>
           </div>
         </section>
       )}

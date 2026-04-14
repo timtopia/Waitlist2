@@ -9,6 +9,7 @@ import { useState } from "react"
 export function Header() {
   const { data: session, status } = useSession()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   return (
     <header className="bg-white border-b border-gray-200">
@@ -43,62 +44,148 @@ export function Header() {
             {status === "loading" ? (
               <div className="w-8 h-8 rounded-full bg-gray-200 animate-pulse" />
             ) : session ? (
-              <div className="relative">
-                <button
-                  onClick={() => setMenuOpen(!menuOpen)}
-                  className="flex items-center space-x-2 focus:outline-none"
-                >
+              <>
+                {/* Desktop profile dropdown */}
+                <div className="relative hidden md:block">
+                  <button
+                    onClick={() => setMenuOpen(!menuOpen)}
+                    className="flex items-center space-x-2 focus:outline-none"
+                  >
+                    {session.user?.image ? (
+                      <Image
+                        src={session.user.image}
+                        alt={session.user.name || "User"}
+                        width={32}
+                        height={32}
+                        className="rounded-full"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-medium">
+                        {session.user?.name?.[0] || "U"}
+                      </div>
+                    )}
+                  </button>
+                  {menuOpen && (
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-1 z-50 border border-gray-200">
+                      <div className="px-4 py-2 border-b border-gray-200">
+                        <p className="text-sm font-medium text-gray-900">{session.user?.name}</p>
+                        <p className="text-sm text-gray-500 truncate">{session.user?.email}</p>
+                      </div>
+                      <Link
+                        href="/profile"
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                        onClick={() => setMenuOpen(false)}
+                      >
+                        Profile
+                      </Link>
+                      <button
+                        onClick={() => signOut()}
+                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      >
+                        Sign out
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <Button onClick={() => signIn("google")} size="sm" className="hidden md:inline-flex">
+                Sign in with Google
+              </Button>
+            )}
+
+            {/* Mobile hamburger button */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden flex items-center justify-center w-11 h-11 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 focus:outline-none"
+              aria-label="Toggle menu"
+            >
+              {mobileMenuOpen ? (
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              ) : (
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile menu */}
+      {mobileMenuOpen && (
+        <div className="md:hidden border-t border-gray-200 bg-white">
+          <nav className="px-4 py-2 space-y-1">
+            <Link
+              href="/browse"
+              className="block px-3 py-3 rounded-md text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Browse Lines
+            </Link>
+            {session && (
+              <Link
+                href="/dashboard"
+                className="block px-3 py-3 rounded-md text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Dashboard
+              </Link>
+            )}
+            {session && (
+              <Link
+                href="/profile"
+                className="block px-3 py-3 rounded-md text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Profile
+              </Link>
+            )}
+          </nav>
+          <div className="border-t border-gray-200 px-4 py-3">
+            {status === "loading" ? (
+              <div className="w-8 h-8 rounded-full bg-gray-200 animate-pulse" />
+            ) : session ? (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
                   {session.user?.image ? (
                     <Image
                       src={session.user.image}
                       alt={session.user.name || "User"}
-                      width={32}
-                      height={32}
+                      width={36}
+                      height={36}
                       className="rounded-full"
                     />
                   ) : (
-                    <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-medium">
+                    <div className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-medium">
                       {session.user?.name?.[0] || "U"}
                     </div>
                   )}
-                </button>
-                {menuOpen && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-1 z-50 border border-gray-200">
-                    <div className="px-4 py-2 border-b border-gray-200">
-                      <p className="text-sm font-medium text-gray-900">{session.user?.name}</p>
-                      <p className="text-sm text-gray-500 truncate">{session.user?.email}</p>
-                    </div>
-                    <Link
-                      href="/dashboard"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 md:hidden"
-                      onClick={() => setMenuOpen(false)}
-                    >
-                      Dashboard
-                    </Link>
-                    <Link
-                      href="/profile"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                      onClick={() => setMenuOpen(false)}
-                    >
-                      Profile
-                    </Link>
-                    <button
-                      onClick={() => signOut()}
-                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    >
-                      Sign out
-                    </button>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{session.user?.name}</p>
+                    <p className="text-xs text-gray-500 truncate max-w-[180px]">{session.user?.email}</p>
                   </div>
-                )}
+                </div>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false)
+                    signOut()
+                  }}
+                  className="px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                >
+                  Sign out
+                </button>
               </div>
             ) : (
-              <Button onClick={() => signIn("google")} size="sm">
+              <Button onClick={() => { setMobileMenuOpen(false); signIn("google") }} className="w-full">
                 Sign in with Google
               </Button>
             )}
           </div>
         </div>
-      </div>
+      )}
     </header>
   )
 }

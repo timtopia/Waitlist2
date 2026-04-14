@@ -336,7 +336,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
             return (
               <div
                 key={pos.id}
-                className={`flex items-center justify-between p-4 rounded-lg border ${leftBorder} ${
+                className={`flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 rounded-lg border ${leftBorder} ${
                   isCurrentUser
                     ? "bg-blue-50 border-blue-200"
                     : isFront
@@ -348,8 +348,8 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                     : "bg-white border-gray-200"
                 }`}
               >
-                <div className="flex items-center space-x-4">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${
+                <div className="flex items-center space-x-4 min-w-0">
+                  <div className={`w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center font-bold ${
                     isFront ? "bg-green-200 text-green-700" : "bg-gray-200 text-gray-600"
                   }`}>
                     {pos.position}
@@ -360,15 +360,15 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                       alt={pos.user.name || "User"}
                       width={40}
                       height={40}
-                      className="rounded-full"
+                      className="rounded-full flex-shrink-0"
                     />
                   ) : (
-                    <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 font-medium">
+                    <div className="w-10 h-10 flex-shrink-0 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 font-medium">
                       {pos.user.name?.[0] || "?"}
                     </div>
                   )}
-                  <div>
-                    <p className="font-medium text-gray-900">
+                  <div className="min-w-0">
+                    <p className="font-medium text-gray-900 truncate">
                       {pos.user.name || "Anonymous"}
                       {isCurrentUser && (
                         <span className="ml-2 text-sm text-blue-600">(You)</span>
@@ -395,13 +395,13 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                   </div>
                 </div>
 
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center flex-wrap gap-2 mt-3 sm:mt-0 sm:ml-4 sm:flex-shrink-0">
                   {isCurrentUser && (
                     <>
                       {editingPrice === pos.id ? (
-                        <div className="space-y-1">
-                          <div className="flex items-center space-x-2">
-                            <div className="relative">
+                        <div className="space-y-1 w-full sm:w-auto">
+                          <div className="flex items-center gap-2">
+                            <div className="relative flex-1 sm:flex-none">
                               <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-gray-500">$</span>
                               <input
                                 type="number"
@@ -412,7 +412,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                                 onChange={(e) =>
                                   setPriceInput({ ...priceInput, [pos.id]: e.target.value })
                                 }
-                                className="w-28 pl-6 pr-2 py-1 border rounded text-sm"
+                                className="w-full sm:w-28 pl-6 pr-2 py-1 border rounded text-sm"
                               />
                             </div>
                             <Button
