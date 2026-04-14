@@ -36,16 +36,18 @@ model Session {
 }
 
 model User {
-  id            String         @id @default(cuid())
-  name          String?
-  email         String?        @unique
-  emailVerified DateTime?
-  image         String?
-  accounts      Account[]
-  sessions      Session[]
-  createdLines  Line[]         @relation("LineCreator")
-  positions     LinePosition[]
-  createdAt     DateTime       @default(now())
+  id                      String         @id @default(cuid())
+  name                    String?
+  email                   String?        @unique
+  emailVerified           DateTime?
+  image                   String?
+  stripeConnectId         String?
+  stripeConnectOnboarded  Boolean        @default(false)
+  accounts                Account[]
+  sessions                Session[]
+  createdLines            Line[]         @relation("LineCreator")
+  positions               LinePosition[]
+  createdAt               DateTime       @default(now())
 }
 
 model VerificationToken {
@@ -77,6 +79,8 @@ model Line {
   productImage    String?        // URL to product image
   productPrice    Float?         // Retail / MSRP price in dollars
   productUrl      String?        // Link to official product page
+  allowResale     Boolean        @default(true)  // Whether position trading is enabled
+  maxAskingPrice  Float?         // Maximum resale price cap (null = no limit)
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 

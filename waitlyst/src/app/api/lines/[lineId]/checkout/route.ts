@@ -25,6 +25,14 @@ export async function POST(
       )
     }
 
+    // Check if resale is allowed
+    if (!line.allowResale) {
+      return NextResponse.json(
+        { error: "Position trading is disabled for this line" },
+        { status: 400 }
+      )
+    }
+
     // Get buyer's current position
     const buyerPosition = await prisma.linePosition.findUnique({
       where: { lineId_userId: { lineId, userId: result.userId } },
@@ -117,11 +125,50 @@ export async function POST(
         return txn
       })
 
+      // Look up seller's Stripe Connect account for payment splitting
+      const seller = await prisma.user.findUnique({
+        where: { id: targetPosition.userId },
+        select: { stripeConnectId: true, stripeConnectOnboarded: true },
+      })
+
+      // Look up line owner's Stripe Connect account for owner fee transfer
+      const lineOwner = await prisma.user.findUnique({
+        where: { id: line.createdById },
+        select: { stripeConnectId: true, stripeConnectOnboarded: true },
+      })
+
       // Create Stripe Checkout Session
       const baseUrl = getBaseUrl()
       let checkoutSession
+
+      // Build payment_intent_data for Connect splits
+      // If seller has a connected account, send seller's amount via transfer_data
+      // and keep platform fee + owner fee as application_fee_amount.
+      // If seller has no connected account, all money goes to platform (transferred later).
+      const sellerConnected = seller?.stripeConnectId && seller?.stripeConnectOnboarded
+      const ownerConnected = lineOwner?.stripeConnectId && lineOwner?.stripeConnectOnboarded
+      // Owner fee transfer is only needed if the owner is different from the seller
+      const ownerIsNotSeller = line.createdById !== targetPosition.userId
+
+      const paymentIntentData: Record<string, unknown> = {}
+      if (sellerConnected) {
+        // application_fee_amount = platformFee + ownerFee (in cents)
+        // transfer_data.destination sends the rest (asking price) to seller
+        paymentIntentData.application_fee_amount = Math.round((fees.platformFee + fees.ownerFee) * 100)
+        paymentIntentData.transfer_data = {
+          destination: seller.stripeConnectId,
+        }
+        // Store owner transfer info in metadata for webhook handling
+        if (ownerConnected && ownerIsNotSeller && fees.ownerFee > 0) {
+          paymentIntentData.metadata = {
+            ownerConnectId: lineOwner.stripeConnectId,
+            ownerFeeAmountCents: String(Math.round(fees.ownerFee * 100)),
+          }
+        }
+      }
+
       try {
-        checkoutSession = await stripe.checkout.sessions.create({
+        const sessionParams: Record<string, unknown> = {
           mode: "payment",
           // automatic_tax: { enabled: true }, // Enable when Stripe Tax is configured in dashboard
           line_items: [
@@ -142,11 +189,20 @@ export async function POST(
             lineId,
             buyerId: result.userId,
             sellerId: targetPosition.userId,
+            ...(ownerConnected && ownerIsNotSeller && fees.ownerFee > 0 ? {
+              ownerConnectId: lineOwner.stripeConnectId,
+              ownerFeeAmountCents: String(Math.round(fees.ownerFee * 100)),
+            } : {}),
           },
           success_url: `${baseUrl}/api/lines/${lineId}/complete-payment?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${baseUrl}/api/lines/${lineId}/cancel-payment?transaction_id=${transaction.id}`,
           expires_at: Math.floor(lockUntil.getTime() / 1000),
-        })
+          ...(sellerConnected ? { payment_intent_data: paymentIntentData } : {}),
+        }
+
+        checkoutSession = await stripe.checkout.sessions.create(
+          sessionParams as Parameters<typeof stripe.checkout.sessions.create>[0]
+        )
       } catch (stripeError) {
         // Stripe API call failed — clean up the locked positions and pending transaction
         console.error("Stripe checkout session creation failed:", stripeError)

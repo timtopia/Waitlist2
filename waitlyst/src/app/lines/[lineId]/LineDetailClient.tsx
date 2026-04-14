@@ -41,6 +41,8 @@ interface Line {
   productImage: string | null
   productPrice: number | null
   productUrl: string | null
+  allowResale: boolean
+  maxAskingPrice: number | null
   createdAt: string
   createdBy: {
     id: string
@@ -89,6 +91,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [showQrModal, setShowQrModal] = useState(false)
   const [qrSvg, setQrSvg] = useState<string | null>(null)
   const [qrLoading, setQrLoading] = useState(false)
+  const [hasPayoutSetup, setHasPayoutSetup] = useState(false)
   const qrCanvasRef = useRef<HTMLCanvasElement>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -130,6 +133,23 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       setNotificationsEnabled(Notification.permission === "granted")
     }
   }, [])
+
+  // Fetch current user's payout setup status
+  useEffect(() => {
+    if (!session?.user?.id) return
+    async function fetchPayoutStatus() {
+      try {
+        const res = await fetch("/api/user")
+        if (res.ok) {
+          const data = await res.json()
+          setHasPayoutSetup(!!data.stripeConnectOnboarded)
+        }
+      } catch {
+        // Non-critical — default to false
+      }
+    }
+    fetchPayoutStatus()
+  }, [session?.user?.id])
 
   const fetchLine = useCallback(async () => {
     try {
@@ -700,6 +720,9 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             isCreator={isCreator}
             feeInfo={feeInfo}
             isPaused={linePaused}
+            hasPayoutSetup={hasPayoutSetup}
+            allowResale={line.allowResale}
+            maxAskingPrice={line.maxAskingPrice}
           />
         </CardContent>
       </Card>

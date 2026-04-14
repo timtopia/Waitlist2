@@ -253,6 +253,7 @@ describe("QueueDisplay", () => {
         lineId="line-1"
         positions={mockPositions}
         onRefresh={mockOnRefresh}
+        hasPayoutSetup={true}
       />
     )
 
@@ -261,6 +262,29 @@ describe("QueueDisplay", () => {
 
     expect(screen.getByPlaceholderText("0.00")).toBeInTheDocument()
     expect(screen.getByText("Set")).toBeInTheDocument()
+  })
+
+  it("shows payout setup prompt when selling without connected account", () => {
+    ;(useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      data: { user: { id: "user-3" } },
+      status: "authenticated",
+    })
+
+    render(
+      <QueueDisplay
+        lineId="line-1"
+        positions={mockPositions}
+        onRefresh={mockOnRefresh}
+        hasPayoutSetup={false}
+      />
+    )
+
+    const sellButton = screen.getByText("Sell Position")
+    fireEvent.click(sellButton)
+
+    expect(screen.getByText("Connect a payout account to sell your position")).toBeInTheDocument()
+    expect(screen.getByText("Set up payouts in Profile")).toBeInTheDocument()
+    expect(screen.queryByPlaceholderText("0.00")).not.toBeInTheDocument()
   })
 
   it("shows confirm modal before leaving a line", async () => {

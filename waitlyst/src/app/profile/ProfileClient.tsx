@@ -1,8 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Image from "next/image"
 import Link from "next/link"
+import { useSearchParams, useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { formatDate, formatDateTime, formatCurrency } from "@/lib/format"
@@ -42,6 +43,7 @@ interface ProfileClientProps {
   user: UserData
   stats: Stats
   recentTransactions: Transaction[]
+  stripeConnectOnboarded: boolean
 }
 
 const statusColors: Record<string, string> = {
@@ -51,12 +53,33 @@ const statusColors: Record<string, string> = {
   REFUNDED: "bg-gray-100 text-gray-700",
 }
 
-export function ProfileClient({ user, stats, recentTransactions }: ProfileClientProps) {
+export function ProfileClient({ user, stats, recentTransactions, stripeConnectOnboarded }: ProfileClientProps) {
   const [displayName, setDisplayName] = useState(user.name || "Anonymous")
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(user.name || "")
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [connectLoading, setConnectLoading] = useState(false)
+  const [connectError, setConnectError] = useState<string | null>(null)
+  const [connectOnboarded, setConnectOnboarded] = useState(stripeConnectOnboarded)
+  const [connectMessage, setConnectMessage] = useState<{ text: string; type: "success" | "info" | "error" } | null>(null)
+  const searchParams = useSearchParams()
+  const router = useRouter()
+
+  useEffect(() => {
+    const connectStatus = searchParams.get("connect")
+    if (connectStatus === "success") {
+      setConnectOnboarded(true)
+      setConnectMessage({ text: "Payout account connected successfully!", type: "success" })
+      router.replace("/profile", { scroll: false })
+    } else if (connectStatus === "incomplete") {
+      setConnectMessage({ text: "Payout setup is not complete. Please finish the onboarding process.", type: "info" })
+      router.replace("/profile", { scroll: false })
+    } else if (connectStatus === "error") {
+      setConnectMessage({ text: "Something went wrong connecting your payout account. Please try again.", type: "error" })
+      router.replace("/profile", { scroll: false })
+    }
+  }, [searchParams, router])
 
   async function handleSave() {
     const trimmed = editValue.trim()
@@ -102,8 +125,67 @@ export function ProfileClient({ user, stats, recentTransactions }: ProfileClient
     setIsEditing(true)
   }
 
+  async function handleConnectSetup() {
+    setConnectLoading(true)
+    setConnectError(null)
+    try {
+      const res = await fetch("/api/stripe/connect", { method: "POST" })
+      const data = await res.json()
+      if (res.ok && data.url) {
+        window.location.href = data.url
+      } else {
+        setConnectError(data.error || "Failed to start payout setup")
+        setConnectLoading(false)
+      }
+    } catch {
+      setConnectError("Failed to start payout setup")
+      setConnectLoading(false)
+    }
+  }
+
+  async function handleViewDashboard() {
+    setConnectLoading(true)
+    setConnectError(null)
+    try {
+      const res = await fetch("/api/stripe/connect/dashboard", { method: "POST" })
+      const data = await res.json()
+      if (res.ok && data.url) {
+        window.open(data.url, "_blank")
+      } else {
+        setConnectError(data.error || "Failed to open Stripe dashboard")
+      }
+    } catch {
+      setConnectError("Failed to open Stripe dashboard")
+    } finally {
+      setConnectLoading(false)
+    }
+  }
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
+      {/* Connect Status Banner */}
+      {connectMessage && (
+        <div className={`mb-6 rounded-lg p-4 ${
+          connectMessage.type === "success"
+            ? "bg-green-50 border border-green-200 text-green-800"
+            : connectMessage.type === "info"
+            ? "bg-amber-50 border border-amber-200 text-amber-800"
+            : "bg-red-50 border border-red-200 text-red-800"
+        }`}>
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium">{connectMessage.text}</p>
+            <button
+              onClick={() => setConnectMessage(null)}
+              className="ml-4 text-current opacity-50 hover:opacity-75"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* User Info */}
       <Card className="mb-6">
         <CardContent className="py-6">
@@ -308,6 +390,52 @@ export function ProfileClient({ user, stats, recentTransactions }: ProfileClient
               )}
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Payout Settings */}
+      <Card className="mb-6">
+        <CardContent className="py-5">
+          <h2 className="text-sm font-semibold text-gray-700 mb-3">Payout Settings</h2>
+          {connectOnboarded ? (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800">
+                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Payouts Active
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={handleViewDashboard}
+                isLoading={connectLoading}
+              >
+                View Stripe Dashboard
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-500">
+                Connect a payout account to receive earnings from selling positions and line owner fees.
+              </p>
+              <Button
+                size="sm"
+                onClick={handleConnectSetup}
+                isLoading={connectLoading}
+                className="ml-4 flex-shrink-0"
+              >
+                {stripeConnectOnboarded === false && !connectOnboarded
+                  ? "Set Up Payouts"
+                  : "Complete Payout Setup"}
+              </Button>
+            </div>
+          )}
+          {connectError && (
+            <p className="text-xs text-red-500 mt-2">{connectError}</p>
+          )}
         </CardContent>
       </Card>
 

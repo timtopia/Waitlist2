@@ -17,6 +17,26 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid price" }, { status: 400 })
   }
 
+  // Enforce resale controls
+  if (price !== null) {
+    const line = await prisma.line.findUnique({
+      where: { id: lineId },
+      select: { allowResale: true, maxAskingPrice: true },
+    })
+    if (line && !line.allowResale) {
+      return NextResponse.json(
+        { error: "Position trading is disabled for this line" },
+        { status: 400 }
+      )
+    }
+    if (line && line.maxAskingPrice !== null && price > line.maxAskingPrice) {
+      return NextResponse.json(
+        { error: `Price exceeds the maximum of $${line.maxAskingPrice.toFixed(2)} for this line` },
+        { status: 400 }
+      )
+    }
+  }
+
   try {
     const position = await prisma.linePosition.update({
       where: {

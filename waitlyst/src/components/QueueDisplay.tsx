@@ -51,6 +51,9 @@ interface QueueDisplayProps {
   isCreator?: boolean
   feeInfo?: FeeInfo
   isPaused?: boolean
+  hasPayoutSetup?: boolean
+  allowResale?: boolean
+  maxAskingPrice?: number | null
 }
 
 /** Format estimated wait time into a human-readable string */
@@ -62,7 +65,7 @@ function formatWaitTime(minutes: number): string {
   return `~${Math.round(hours)} hrs`
 }
 
-export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, feeInfo, isPaused = false }: QueueDisplayProps) {
+export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, feeInfo, isPaused = false, hasPayoutSetup = false, allowResale = true, maxAskingPrice = null }: QueueDisplayProps) {
   const { data: session } = useSession()
   const { addToast } = useToast()
   const [loadingAction, setLoadingAction] = useState<string | null>(null)
@@ -348,14 +351,15 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
       {(() => {
         const buyFees = positionInFront?.askingPrice && feeInfo ? calcFees(positionInFront.askingPrice, feeInfo.ownerFeePercent, feeInfo.platformFeePercent) : null
         const hasFees = buyFees && (buyFees.ownerFee > 0 || buyFees.platformFee > 0)
+        const maxPriceNote = maxAskingPrice != null ? `\nMax allowed price for this line: ${formatCurrency(maxAskingPrice)}` : ""
         return (
           <ConfirmModal
             open={showBuyConfirm}
             title="Buy Position"
             message={positionInFront?.askingPrice
               ? hasFees
-                ? `Position price: ${formatCurrency(positionInFront.askingPrice)}\nFees: ${formatCurrency(buyFees!.ownerFee + buyFees!.platformFee)}\nTotal: ${formatCurrency(buyFees!.total)}\n\nYou'll swap places with the person in front.`
-                : `Buy the position ahead of you for ${formatCurrency(positionInFront.askingPrice)}? You'll swap places with the person in front.`
+                ? `Position price: ${formatCurrency(positionInFront.askingPrice)}\nFees: ${formatCurrency(buyFees!.ownerFee + buyFees!.platformFee)}\nTotal: ${formatCurrency(buyFees!.total)}${maxPriceNote}\n\nYou'll swap places with the person in front.`
+                : `Buy the position ahead of you for ${formatCurrency(positionInFront.askingPrice)}?${maxPriceNote} You'll swap places with the person in front.`
               : "Buy the position ahead of you?"}
             confirmLabel={buyFees ? `Pay ${formatCurrency(buyFees.total)}` : "Buy"}
             variant="primary"
@@ -401,6 +405,13 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
               </Button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Resale disabled note */}
+      {!allowResale && positions.length > 0 && (
+        <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5">
+          <p className="text-sm text-gray-500">Position trading is disabled for this line</p>
         </div>
       )}
 
@@ -462,7 +473,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
             const isLocked = pos.lockedUntil && new Date(pos.lockedUntil) > new Date()
             const isForSale = pos.askingPrice !== null && !isLocked
             const canBuy =
-              positionInFront?.id === pos.id && pos.askingPrice !== null && !isLocked && !isPaused
+              positionInFront?.id === pos.id && pos.askingPrice !== null && !isLocked && !isPaused && allowResale
             const isFront = pos.position === 1
             const isSelected = selectedIds.has(pos.id)
             const canSelect = selectMode && isCreator && !isCurrentUser
@@ -552,7 +563,27 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                 <div className="flex items-center flex-wrap gap-2 mt-3 sm:mt-0 sm:ml-4 sm:flex-shrink-0">
                   {isCurrentUser && (
                     <>
-                      {editingPrice === pos.id ? (
+                      {allowResale && editingPrice === pos.id ? (
+                        !hasPayoutSetup ? (
+                          <div className="space-y-1 w-full sm:w-auto">
+                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                              <p className="text-sm text-amber-800 font-medium">Connect a payout account to sell your position</p>
+                              <a
+                                href="/profile"
+                                className="text-sm text-blue-600 hover:text-blue-800 hover:underline mt-1 inline-block"
+                              >
+                                Set up payouts in Profile
+                              </a>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setEditingPrice(null)}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        ) : (
                         <div className="space-y-1 w-full sm:w-auto">
                           <div className="flex items-center gap-2">
                             <div className="relative flex-1 sm:flex-none">
@@ -560,19 +591,25 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                               <input
                                 type="number"
                                 min="0"
+                                max={maxAskingPrice ?? undefined}
                                 step="0.01"
                                 placeholder="0.00"
                                 value={priceInput[pos.id] || ""}
                                 onChange={(e) =>
                                   setPriceInput({ ...priceInput, [pos.id]: e.target.value })
                                 }
-                                className="w-full sm:w-28 pl-6 pr-2 py-1 border rounded text-sm"
+                                className={`w-full sm:w-28 pl-6 pr-2 py-1 border rounded text-sm ${
+                                  maxAskingPrice != null && priceInput[pos.id] && parseFloat(priceInput[pos.id]) > maxAskingPrice
+                                    ? "border-red-300 focus:ring-red-500"
+                                    : ""
+                                }`}
                               />
                             </div>
                             <Button
                               size="sm"
                               onClick={() => handleSetPrice(pos.id)}
                               isLoading={loadingAction === `price-${pos.id}`}
+                              disabled={maxAskingPrice != null && !!priceInput[pos.id] && parseFloat(priceInput[pos.id]) > maxAskingPrice}
                             >
                               Set
                             </Button>
@@ -584,6 +621,17 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                               Cancel
                             </Button>
                           </div>
+                          {maxAskingPrice != null && (
+                            <p className={`text-xs pl-1 ${
+                              priceInput[pos.id] && parseFloat(priceInput[pos.id]) > maxAskingPrice
+                                ? "text-red-500 font-medium"
+                                : "text-gray-400"
+                            }`}>
+                              {priceInput[pos.id] && parseFloat(priceInput[pos.id]) > maxAskingPrice
+                                ? `Exceeds max price of ${formatCurrency(maxAskingPrice)}`
+                                : `Max price: ${formatCurrency(maxAskingPrice)}`}
+                            </p>
+                          )}
                           {priceInput[pos.id] && parseFloat(priceInput[pos.id]) > 0 && feeInfo && (feeInfo.ownerFeePercent > 0 || feeInfo.platformFeePercent > 0) && (() => {
                             const p = parseFloat(priceInput[pos.id])
                             const f = calcFees(p, feeInfo.ownerFeePercent, feeInfo.platformFeePercent)
@@ -595,32 +643,37 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                             )
                           })()}
                         </div>
+                        )
                       ) : (
                         <>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => {
-                              setEditingPrice(pos.id)
-                              setPriceInput({
-                                ...priceInput,
-                                [pos.id]: pos.askingPrice?.toString() || "",
-                              })
-                            }}
-                          >
-                            {pos.askingPrice !== null ? "Change Price" : "Sell Position"}
-                          </Button>
-                          {pos.askingPrice !== null && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => {
-                                setPriceInput({ ...priceInput, [pos.id]: "" })
-                                handleSetPrice(pos.id)
-                              }}
-                            >
-                              Remove
-                            </Button>
+                          {allowResale && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => {
+                                  setEditingPrice(pos.id)
+                                  setPriceInput({
+                                    ...priceInput,
+                                    [pos.id]: pos.askingPrice?.toString() || "",
+                                  })
+                                }}
+                              >
+                                {pos.askingPrice !== null ? "Change Price" : "Sell Position"}
+                              </Button>
+                              {pos.askingPrice !== null && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    setPriceInput({ ...priceInput, [pos.id]: "" })
+                                    handleSetPrice(pos.id)
+                                  }}
+                                >
+                                  Remove
+                                </Button>
+                              )}
+                            </>
                           )}
                           <Button
                             size="sm"

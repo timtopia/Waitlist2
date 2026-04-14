@@ -6,7 +6,7 @@ export async function POST(req: Request) {
   const result = await requireAuth()
   if (result instanceof NextResponse) return result
 
-  const { name, description, isPublic = true, opensAt, closesAt, maxCapacity, ownerFeePercent = 0, productName, productImage, productPrice, productUrl } = await req.json()
+  const { name, description, isPublic = true, opensAt, closesAt, maxCapacity, ownerFeePercent = 0, productName, productImage, productPrice, productUrl, allowResale = true, maxAskingPrice } = await req.json()
 
   if (!name || typeof name !== "string" || name.trim().length === 0) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 })
@@ -37,6 +37,13 @@ export async function POST(req: Request) {
     }
   }
 
+  // Validate resale controls
+  if (maxAskingPrice !== undefined && maxAskingPrice !== null) {
+    if (typeof maxAskingPrice !== "number" || maxAskingPrice <= 0) {
+      return NextResponse.json({ error: "Max asking price must be a positive number" }, { status: 400 })
+    }
+  }
+
   const feePercent = typeof ownerFeePercent === "number" ? Math.max(0, Math.min(ownerFeePercent, 50)) : 0
 
   const line = await prisma.line.create({
@@ -53,6 +60,8 @@ export async function POST(req: Request) {
       productImage: productImage?.trim() || null,
       productPrice: productPrice || null,
       productUrl: productUrl?.trim() || null,
+      allowResale: typeof allowResale === "boolean" ? allowResale : true,
+      maxAskingPrice: maxAskingPrice || null,
     },
   })
 

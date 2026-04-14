@@ -470,6 +470,7 @@ describe("POST /api/lines/[lineId]/checkout", () => {
     mockPrisma.line.findUnique.mockResolvedValue({
       id: "line-1",
       isActive: true,
+      allowResale: true,
     })
     mockPrisma.linePosition.findUnique.mockResolvedValue(null)
 
@@ -490,6 +491,7 @@ describe("POST /api/lines/[lineId]/checkout", () => {
     mockPrisma.line.findUnique.mockResolvedValue({
       id: "line-1",
       isActive: true,
+      allowResale: true,
     })
     mockPrisma.linePosition.findUnique.mockResolvedValue({
       id: "pos-buyer",
@@ -516,6 +518,7 @@ describe("POST /api/lines/[lineId]/checkout", () => {
     mockPrisma.line.findUnique.mockResolvedValue({
       id: "line-1",
       isActive: true,
+      allowResale: true,
     })
     mockPrisma.linePosition.findUnique.mockResolvedValue({
       id: "pos-buyer",
@@ -543,6 +546,7 @@ describe("POST /api/lines/[lineId]/checkout", () => {
     mockPrisma.line.findUnique.mockResolvedValue({
       id: "line-1",
       isActive: true,
+      allowResale: true,
     })
     mockPrisma.linePosition.findUnique.mockResolvedValue({
       id: "pos-buyer",
@@ -579,6 +583,7 @@ describe("POST /api/lines/[lineId]/checkout", () => {
     mockPrisma.line.findUnique.mockResolvedValue({
       id: "line-1",
       isActive: true,
+      allowResale: true,
     })
     mockPrisma.linePosition.findUnique.mockResolvedValue({
       id: "pos-buyer",
@@ -615,6 +620,7 @@ describe("POST /api/lines/[lineId]/checkout", () => {
     mockPrisma.line.findUnique.mockResolvedValue({
       id: "line-1",
       isActive: true,
+      allowResale: true,
     })
     mockPrisma.linePosition.findUnique.mockResolvedValue({
       id: "pos-buyer",
@@ -651,6 +657,7 @@ describe("POST /api/lines/[lineId]/checkout", () => {
     mockPrisma.line.findUnique.mockResolvedValue({
       id: "line-1",
       isActive: true,
+      allowResale: true,
     })
     mockPrisma.linePosition.findUnique.mockResolvedValue({
       id: "pos-buyer",
@@ -696,6 +703,7 @@ describe("POST /api/lines/[lineId]/checkout", () => {
     mockPrisma.line.findUnique.mockResolvedValue({
       id: "line-1",
       isActive: true,
+      allowResale: true,
     })
     mockPrisma.linePosition.findUnique.mockResolvedValue({
       id: "pos-buyer",

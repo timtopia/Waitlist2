@@ -20,6 +20,16 @@ vi.mock("next/image", () => ({
   ),
 }))
 
+// Mock next/navigation
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => ({
+    get: () => null,
+  }),
+  useRouter: () => ({
+    replace: vi.fn(),
+  }),
+}))
+
 const mockUser = {
   id: "user-1",
   name: "Jane Doe",
@@ -84,6 +94,7 @@ describe("ProfileClient", () => {
         user={mockUser}
         stats={mockStats}
         recentTransactions={mockTransactions}
+        stripeConnectOnboarded={false}
       />
     )
 
@@ -99,6 +110,7 @@ describe("ProfileClient", () => {
         user={mockUser}
         stats={mockStats}
         recentTransactions={mockTransactions}
+        stripeConnectOnboarded={false}
       />
     )
 
@@ -114,6 +126,7 @@ describe("ProfileClient", () => {
         user={userNoImage}
         stats={mockStats}
         recentTransactions={mockTransactions}
+        stripeConnectOnboarded={false}
       />
     )
 
@@ -126,6 +139,7 @@ describe("ProfileClient", () => {
         user={mockUser}
         stats={mockStats}
         recentTransactions={mockTransactions}
+        stripeConnectOnboarded={false}
       />
     )
 
@@ -141,6 +155,7 @@ describe("ProfileClient", () => {
         user={mockUser}
         stats={mockStats}
         recentTransactions={mockTransactions}
+        stripeConnectOnboarded={false}
       />
     )
 
@@ -177,6 +192,7 @@ describe("ProfileClient", () => {
         user={mockUser}
         stats={statsNoPending}
         recentTransactions={mockTransactions}
+        stripeConnectOnboarded={false}
       />
     )
 
@@ -190,6 +206,7 @@ describe("ProfileClient", () => {
         user={mockUser}
         stats={mockStats}
         recentTransactions={mockTransactions}
+        stripeConnectOnboarded={false}
       />
     )
 
@@ -219,6 +236,7 @@ describe("ProfileClient", () => {
         user={mockUser}
         stats={{ ...mockStats, totalTransactions: 0 }}
         recentTransactions={[]}
+        stripeConnectOnboarded={false}
       />
     )
 
@@ -237,6 +255,7 @@ describe("ProfileClient", () => {
           user={mockUser}
           stats={mockStats}
           recentTransactions={mockTransactions}
+          stripeConnectOnboarded={false}
         />
       )
 
@@ -260,6 +279,7 @@ describe("ProfileClient", () => {
           user={mockUser}
           stats={mockStats}
           recentTransactions={mockTransactions}
+          stripeConnectOnboarded={false}
         />
       )
 
@@ -293,6 +313,7 @@ describe("ProfileClient", () => {
           user={mockUser}
           stats={mockStats}
           recentTransactions={mockTransactions}
+          stripeConnectOnboarded={false}
         />
       )
 
@@ -317,6 +338,7 @@ describe("ProfileClient", () => {
           user={mockUser}
           stats={mockStats}
           recentTransactions={mockTransactions}
+          stripeConnectOnboarded={false}
         />
       )
 
@@ -352,6 +374,7 @@ describe("ProfileClient", () => {
           user={mockUser}
           stats={mockStats}
           recentTransactions={mockTransactions}
+          stripeConnectOnboarded={false}
         />
       )
 
@@ -377,6 +400,7 @@ describe("ProfileClient", () => {
           user={userNoName}
           stats={mockStats}
           recentTransactions={mockTransactions}
+          stripeConnectOnboarded={false}
         />
       )
 

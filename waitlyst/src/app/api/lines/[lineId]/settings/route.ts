@@ -90,6 +90,22 @@ export async function PATCH(
       }
     }
 
+    // Resale controls
+    if (typeof updates.allowResale === "boolean") {
+      allowedUpdates.allowResale = updates.allowResale
+    }
+    if (updates.maxAskingPrice !== undefined) {
+      if (updates.maxAskingPrice === null) {
+        allowedUpdates.maxAskingPrice = null
+      } else {
+        const cap = parseFloat(updates.maxAskingPrice)
+        if (isNaN(cap) || cap <= 0) {
+          return NextResponse.json({ error: "Max asking price must be a positive number" }, { status: 400 })
+        }
+        allowedUpdates.maxAskingPrice = cap
+      }
+    }
+
     const updatedLine = await prisma.line.update({
       where: { id: lineId },
       data: allowedUpdates,

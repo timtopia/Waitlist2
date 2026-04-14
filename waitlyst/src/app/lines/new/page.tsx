@@ -23,6 +23,9 @@ export default function CreateLinePage() {
   const [productImage, setProductImage] = useState("")
   const [productPrice, setProductPrice] = useState("")
   const [productUrl, setProductUrl] = useState("")
+  const [showResaleControls, setShowResaleControls] = useState(false)
+  const [allowResale, setAllowResale] = useState(true)
+  const [maxAskingPrice, setMaxAskingPrice] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -79,6 +82,8 @@ export default function CreateLinePage() {
           productImage: productImage.trim() || null,
           productPrice: productPrice ? parseFloat(productPrice) : null,
           productUrl: productUrl.trim() || null,
+          allowResale,
+          maxAskingPrice: maxAskingPrice ? parseFloat(maxAskingPrice) : null,
         }),
       })
 
@@ -336,6 +341,77 @@ export default function CreateLinePage() {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
+                </div>
+              )}
+            </div>
+
+            {/* Resale Controls (collapsible) */}
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowResaleControls(!showResaleControls)}
+                className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                <span>Resale Controls (optional)</span>
+                <svg
+                  className={`h-4 w-4 text-gray-400 transition-transform ${showResaleControls ? "rotate-180" : ""}`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {showResaleControls && (
+                <div className="px-4 pb-4 space-y-4 border-t border-gray-200 pt-4">
+                  <div className="flex items-center space-x-3">
+                    <button
+                      type="button"
+                      onClick={() => setAllowResale(!allowResale)}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        allowResale ? "bg-blue-600" : "bg-gray-300"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          allowResale ? "translate-x-6" : "translate-x-1"
+                        }`}
+                      />
+                    </button>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">
+                        Allow position trading
+                      </label>
+                      <p className="text-xs text-gray-500">
+                        {allowResale
+                          ? "People can sell their positions to others"
+                          : "Position trading is disabled — no one can sell or buy positions"}
+                      </p>
+                    </div>
+                  </div>
+                  {allowResale && (
+                    <div>
+                      <label htmlFor="maxAskingPrice" className="block text-sm font-medium text-gray-700 mb-1">
+                        Max Asking Price (optional)
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">$</span>
+                        <input
+                          id="maxAskingPrice"
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          placeholder="No limit"
+                          value={maxAskingPrice}
+                          onChange={(e) => setMaxAskingPrice(e.target.value)}
+                          className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Cap the maximum price anyone can ask for their position. Leave empty for no limit.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

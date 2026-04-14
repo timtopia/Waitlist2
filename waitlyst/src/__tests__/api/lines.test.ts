@@ -428,6 +428,7 @@ describe("Price API", () => {
 
   it("should set asking price for a position", async () => {
     mockAuth.mockResolvedValue({ user: { id: "user-1" } })
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", allowResale: true, maxAskingPrice: null })
     mockPrisma.linePosition.update.mockResolvedValue({
       id: "pos-1",
       askingPrice: 25.0,

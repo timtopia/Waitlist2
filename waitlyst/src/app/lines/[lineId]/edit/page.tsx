@@ -49,6 +49,8 @@ export default async function EditLinePage({ params }: Props) {
         productImage: line.productImage,
         productPrice: line.productPrice,
         productUrl: line.productUrl,
+        allowResale: line.allowResale,
+        maxAskingPrice: line.maxAskingPrice,
       }}
     />
   )
