@@ -19,10 +19,12 @@ interface Stats {
   linesCreated: number
   activePositions: number
   totalTransactions: number
-  sellerBalance: number
-  pendingSellerEarnings: number
-  ownerBalance: number
-  pendingOwnerEarnings: number
+  sellerAvailable: number
+  sellerPendingSettlement: number
+  sellerPendingPayment: number
+  ownerAvailable: number
+  ownerPendingSettlement: number
+  ownerPendingPayment: number
   purchaseCount: number
   saleCount: number
 }
@@ -207,22 +209,101 @@ export function ProfileClient({ user, stats, recentTransactions }: ProfileClient
             <span className="text-gray-300">·</span>
             <span>{stats.saleCount} sold</span>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-green-50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-green-700">{formatCurrency(stats.sellerBalance)}</p>
-              <p className="text-sm text-green-600">Seller Balance</p>
-              {stats.pendingSellerEarnings > 0 && (
-                <p className="text-xs text-green-400 mt-1">
-                  +{formatCurrency(stats.pendingSellerEarnings)} pending
+
+          {/* Total Available — hero number */}
+          <div className="bg-green-50 border border-green-200 rounded-lg p-5 text-center mb-4">
+            <p className="text-sm font-medium text-green-600 mb-1">Total Available</p>
+            <p className="text-3xl font-bold text-green-700">
+              {formatCurrency(stats.sellerAvailable + stats.ownerAvailable)}
+            </p>
+            <p className="text-xs text-green-500 mt-1">Ready to withdraw</p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Seller Earnings */}
+            <div className="bg-gray-50 rounded-lg p-4">
+              <p className="text-sm font-semibold text-gray-700 mb-3">Seller Earnings</p>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+                    <span className="text-sm text-gray-600">Available</span>
+                  </div>
+                  <span className="text-sm font-semibold text-green-700">
+                    {formatCurrency(stats.sellerAvailable)}
+                  </span>
+                </div>
+                {stats.sellerPendingSettlement > 0 && (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
+                      <span className="text-sm text-gray-600">Pending settlement</span>
+                    </div>
+                    <span className="text-sm font-semibold text-amber-600">
+                      {formatCurrency(stats.sellerPendingSettlement)}
+                    </span>
+                  </div>
+                )}
+                {stats.sellerPendingPayment > 0 && (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-gray-300 flex-shrink-0" />
+                      <span className="text-sm text-gray-600">Pending payment</span>
+                    </div>
+                    <span className="text-sm font-semibold text-gray-500">
+                      {formatCurrency(stats.sellerPendingPayment)}
+                    </span>
+                  </div>
+                )}
+              </div>
+              {(stats.sellerPendingSettlement > 0 || stats.sellerPendingPayment > 0) && (
+                <p className="text-xs text-gray-400 mt-3 pt-2 border-t border-gray-200">
+                  {stats.sellerPendingSettlement > 0 && "Settlement completes when both parties leave the line. "}
+                  {stats.sellerPendingPayment > 0 && "Pending payments are transactions in progress."}
                 </p>
               )}
             </div>
-            <div className="bg-blue-50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-blue-700">{formatCurrency(stats.ownerBalance)}</p>
-              <p className="text-sm text-blue-600">Owner Balance</p>
-              {stats.pendingOwnerEarnings > 0 && (
-                <p className="text-xs text-blue-400 mt-1">
-                  +{formatCurrency(stats.pendingOwnerEarnings)} pending
+
+            {/* Owner Fee Earnings */}
+            <div className="bg-gray-50 rounded-lg p-4">
+              <p className="text-sm font-semibold text-gray-700 mb-3">Owner Fee Earnings</p>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+                    <span className="text-sm text-gray-600">Available</span>
+                  </div>
+                  <span className="text-sm font-semibold text-green-700">
+                    {formatCurrency(stats.ownerAvailable)}
+                  </span>
+                </div>
+                {stats.ownerPendingSettlement > 0 && (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
+                      <span className="text-sm text-gray-600">Pending settlement</span>
+                    </div>
+                    <span className="text-sm font-semibold text-amber-600">
+                      {formatCurrency(stats.ownerPendingSettlement)}
+                    </span>
+                  </div>
+                )}
+                {stats.ownerPendingPayment > 0 && (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-gray-300 flex-shrink-0" />
+                      <span className="text-sm text-gray-600">Pending payment</span>
+                    </div>
+                    <span className="text-sm font-semibold text-gray-500">
+                      {formatCurrency(stats.ownerPendingPayment)}
+                    </span>
+                  </div>
+                )}
+              </div>
+              {(stats.ownerPendingSettlement > 0 || stats.ownerPendingPayment > 0) && (
+                <p className="text-xs text-gray-400 mt-3 pt-2 border-t border-gray-200">
+                  {stats.ownerPendingSettlement > 0 && "Settlement completes when both parties leave the line. "}
+                  {stats.ownerPendingPayment > 0 && "Pending payments are transactions in progress."}
                 </p>
               )}
             </div>

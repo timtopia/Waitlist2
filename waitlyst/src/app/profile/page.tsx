@@ -65,16 +65,28 @@ export default async function ProfilePage() {
   const completedAsBuyer = asBuyer.filter((t) => t.status === "COMPLETED")
   const completedAsSeller = asSeller.filter((t) => t.status === "COMPLETED")
 
-  // Seller balance (from selling positions)
-  const sellerBalance = completedAsSeller.reduce((sum, t) => sum + t.amount, 0)
-  const pendingAsSeller = asSeller.filter((t) => t.status === "PENDING")
-  const pendingSellerEarnings = pendingAsSeller.reduce((sum, t) => sum + t.amount, 0)
+  // Seller earnings: split by settlement status
+  const sellerAvailable = completedAsSeller
+    .filter((t) => t.settledAt !== null)
+    .reduce((sum, t) => sum + t.amount, 0)
+  const sellerPendingSettlement = completedAsSeller
+    .filter((t) => t.settledAt === null)
+    .reduce((sum, t) => sum + t.amount, 0)
+  const sellerPendingPayment = asSeller
+    .filter((t) => t.status === "PENDING")
+    .reduce((sum, t) => sum + t.amount, 0)
 
-  // Owner balance (fees earned from lines user owns)
+  // Owner fee earnings: split by settlement status
   const completedOwnerTxns = ownerTransactions.filter((t) => t.status === "COMPLETED")
-  const pendingOwnerTxns = ownerTransactions.filter((t) => t.status === "PENDING")
-  const ownerBalance = completedOwnerTxns.reduce((sum, t) => sum + t.ownerFee, 0)
-  const pendingOwnerEarnings = pendingOwnerTxns.reduce((sum, t) => sum + t.ownerFee, 0)
+  const ownerAvailable = completedOwnerTxns
+    .filter((t) => t.settledAt !== null)
+    .reduce((sum, t) => sum + t.ownerFee, 0)
+  const ownerPendingSettlement = completedOwnerTxns
+    .filter((t) => t.settledAt === null)
+    .reduce((sum, t) => sum + t.ownerFee, 0)
+  const ownerPendingPayment = ownerTransactions
+    .filter((t) => t.status === "PENDING")
+    .reduce((sum, t) => sum + t.ownerFee, 0)
 
   return (
     <ProfileClient
@@ -86,10 +98,12 @@ export default async function ProfilePage() {
         linesCreated: ownedLineIds.length,
         activePositions,
         totalTransactions: transactions.length,
-        sellerBalance,
-        pendingSellerEarnings,
-        ownerBalance,
-        pendingOwnerEarnings,
+        sellerAvailable,
+        sellerPendingSettlement,
+        sellerPendingPayment,
+        ownerAvailable,
+        ownerPendingSettlement,
+        ownerPendingPayment,
         purchaseCount: completedAsBuyer.length,
         saleCount: completedAsSeller.length,
       }}

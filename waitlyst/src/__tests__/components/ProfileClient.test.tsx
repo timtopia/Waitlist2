@@ -32,10 +32,12 @@ const mockStats = {
   linesCreated: 5,
   activePositions: 3,
   totalTransactions: 12,
-  sellerBalance: 150.5,
-  pendingSellerEarnings: 25.0,
-  ownerBalance: 75.25,
-  pendingOwnerEarnings: 10.0,
+  sellerAvailable: 100.50,
+  sellerPendingSettlement: 50.00,
+  sellerPendingPayment: 25.00,
+  ownerAvailable: 55.25,
+  ownerPendingSettlement: 20.00,
+  ownerPendingPayment: 10.00,
   purchaseCount: 8,
   saleCount: 4,
 }
@@ -133,7 +135,7 @@ describe("ProfileClient", () => {
     expect(screen.getByText("4 sold")).toBeInTheDocument()
   })
 
-  it("renders financial summary with seller and owner balances", () => {
+  it("renders financial summary with total available and breakdowns", () => {
     render(
       <ProfileClient
         user={mockUser}
@@ -142,30 +144,33 @@ describe("ProfileClient", () => {
       />
     )
 
-    expect(screen.getByText("$150.50")).toBeInTheDocument()
-    expect(screen.getByText("Seller Balance")).toBeInTheDocument()
-    expect(screen.getByText("$75.25")).toBeInTheDocument()
-    expect(screen.getByText("Owner Balance")).toBeInTheDocument()
+    // Total available hero number (sellerAvailable + ownerAvailable = 100.50 + 55.25 = 155.75)
+    expect(screen.getByText("$155.75")).toBeInTheDocument()
+    expect(screen.getByText("Total Available")).toBeInTheDocument()
+    expect(screen.getByText("Ready to withdraw")).toBeInTheDocument()
+
+    // Seller and Owner section headings
+    expect(screen.getByText("Seller Earnings")).toBeInTheDocument()
+    expect(screen.getByText("Owner Fee Earnings")).toBeInTheDocument()
+
+    // Seller breakdown amounts
+    expect(screen.getByText("$100.50")).toBeInTheDocument()
+    expect(screen.getByText("$50.00")).toBeInTheDocument()
+    expect(screen.getByText("$25.00")).toBeInTheDocument()
+
+    // Owner breakdown amounts
+    expect(screen.getByText("$55.25")).toBeInTheDocument()
+    expect(screen.getByText("$20.00")).toBeInTheDocument()
+    expect(screen.getByText("$10.00")).toBeInTheDocument()
   })
 
-  it("renders pending earnings when greater than zero", () => {
-    render(
-      <ProfileClient
-        user={mockUser}
-        stats={mockStats}
-        recentTransactions={mockTransactions}
-      />
-    )
-
-    expect(screen.getByText("+$25.00 pending")).toBeInTheDocument()
-    expect(screen.getByText("+$10.00 pending")).toBeInTheDocument()
-  })
-
-  it("does not render pending earnings when zero", () => {
+  it("hides pending rows when amounts are zero", () => {
     const statsNoPending = {
       ...mockStats,
-      pendingSellerEarnings: 0,
-      pendingOwnerEarnings: 0,
+      sellerPendingSettlement: 0,
+      sellerPendingPayment: 0,
+      ownerPendingSettlement: 0,
+      ownerPendingPayment: 0,
     }
     render(
       <ProfileClient
@@ -175,7 +180,8 @@ describe("ProfileClient", () => {
       />
     )
 
-    expect(screen.queryByText(/pending/)).not.toBeInTheDocument()
+    expect(screen.queryByText("Pending settlement")).not.toBeInTheDocument()
+    expect(screen.queryByText("Pending payment")).not.toBeInTheDocument()
   })
 
   it("renders transaction history with amounts and statuses", () => {

@@ -125,9 +125,9 @@ describe("DashboardClient", () => {
     expect(screen.getByText(/Next: Alice/)).toBeInTheDocument()
   })
 
-  it("shows Serve Next button for lines with front person", () => {
+  it("shows Call Next button for lines with front person", () => {
     render(<DashboardClient createdLines={mockCreatedLines} positions={[]} />)
-    expect(screen.getByText("Serve Next")).toBeInTheDocument()
+    expect(screen.getByText("Call Next")).toBeInTheDocument()
   })
 
   it("copies link to clipboard via overflow menu", async () => {
@@ -240,7 +240,7 @@ describe("DashboardClient", () => {
       await waitFor(() => {
         expect(screen.getByText("$75.00")).toBeInTheDocument()
         expect(screen.getByText("Pending Settlement (3)")).toBeInTheDocument()
-        expect(screen.getByText("Settles when both parties leave")).toBeInTheDocument()
+        expect(screen.getByText("Settles automatically when both buyer and seller leave the line")).toBeInTheDocument()
       })
     })
 
@@ -459,29 +459,27 @@ describe("DashboardClient", () => {
     })
   })
 
-  describe("Serve Next (Remove Front)", () => {
-    it("shows confirm modal before serving next person", async () => {
+  describe("Call Next (Remove Front)", () => {
+    it("calls call-next API when Call Next is clicked", async () => {
+      ;(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ calledUser: "Alice", position: 1 }),
+      })
+
       render(<DashboardClient createdLines={mockCreatedLines} positions={[]} />)
 
-      const serveButton = screen.getByText("Serve Next")
-      fireEvent.click(serveButton)
+      const callButton = screen.getByText("Call Next")
+      fireEvent.click(callButton)
 
-      // Confirm modal should appear
       await waitFor(() => {
-        expect(screen.getByText("Remove Person")).toBeInTheDocument()
+        expect(fetch).toHaveBeenCalledWith(
+          "/api/lines/line-1/call-next",
+          expect.objectContaining({ method: "POST" })
+        )
       })
-      expect(screen.getByText(/Remove the person at the front/)).toBeInTheDocument()
-
-      // Clicking cancel should not call the remove-front API
-      const cancelButton = screen.getByText("Cancel")
-      fireEvent.click(cancelButton)
-      expect(fetch).not.toHaveBeenCalledWith(
-        "/api/lines/line-1/remove-front",
-        expect.anything()
-      )
     })
 
-    it("calls remove-front API when confirmed", async () => {
+    it("shows confirm modal when Remove is clicked and calls remove-front API", async () => {
       ;(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ success: true }),
@@ -489,16 +487,19 @@ describe("DashboardClient", () => {
 
       render(<DashboardClient createdLines={mockCreatedLines} positions={[]} />)
 
-      const serveButton = screen.getByText("Serve Next")
-      fireEvent.click(serveButton)
+      // Click the small "Remove" link (not the modal button — it's the text-xs one)
+      const removeLinks = screen.getAllByText("Remove")
+      const smallRemoveLink = removeLinks.find(el => el.className.includes("text-xs"))!
+      fireEvent.click(smallRemoveLink)
 
       // Wait for confirm modal
       await waitFor(() => {
         expect(screen.getByText("Remove Person")).toBeInTheDocument()
       })
 
-      // Click "Remove" button in the modal to confirm
-      const confirmButton = screen.getByRole("button", { name: "Remove" })
+      // Click "Remove" confirm button in the modal (the styled button, not the link)
+      const allRemoveButtons = screen.getAllByRole("button", { name: "Remove" })
+      const confirmButton = allRemoveButtons.find(el => el.className.includes("bg-red-600"))!
       fireEvent.click(confirmButton)
 
       await waitFor(() => {

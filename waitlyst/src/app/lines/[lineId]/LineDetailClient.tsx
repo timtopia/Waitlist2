@@ -15,6 +15,7 @@ import { DropdownMenu } from "@/components/ui/DropdownMenu"
 import { useToast } from "@/components/ui/Toast"
 import { useLineUpdates, LineUpdateEvent } from "@/hooks/useLineUpdates"
 import { useNotifications } from "@/hooks/useNotifications"
+import { MemberStatusCard } from "@/components/MemberStatusCard"
 import { timeAgo } from "@/lib/format"
 
 interface ActivityItem {
@@ -646,6 +647,17 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             currentCount={line.positions.length}
           />
         </div>
+      )}
+
+      {/* My Status Card — only for authenticated members in the line */}
+      {isInLine && userPosition && (
+        <MemberStatusCard
+          position={userPosition.position}
+          maxCapacity={line.maxCapacity}
+          totalPositions={line.positions.length}
+          askingPrice={userPosition.askingPrice}
+          lineId={line.id}
+        />
       )}
 
       <Card>

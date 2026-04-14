@@ -211,6 +211,25 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
     setLines(initialLines)
   }, [initialLines])
 
+  async function handleCallNext(lineId: string) {
+    setLoadingAction(`call-${lineId}`)
+    try {
+      const res = await fetch(`/api/lines/${lineId}/call-next`, {
+        method: "POST",
+      })
+      if (res.ok) {
+        const data = await res.json()
+        addToast(`Called ${data.calledUser} to the front!`, "success")
+        router.refresh()
+      } else {
+        const data = await res.json()
+        addToast(data.error || "Failed to call next person", "error")
+      }
+    } finally {
+      setLoadingAction(null)
+    }
+  }
+
   async function handleRemoveFront(lineId: string) {
     setRemoveConfirm(null)
     setLoadingAction(`remove-${lineId}`)
@@ -417,7 +436,7 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
                       Pending Settlement ({statsModal.stats.pendingSettlementCount})
                     </p>
                     <p className="text-xs text-yellow-500 mt-1">
-                      Settles when both parties leave
+                      Settles automatically when both buyer and seller leave the line
                     </p>
                   </div>
                 )}
@@ -649,17 +668,29 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
                     </Link>
                     <div className="flex items-center gap-2 ml-4 flex-shrink-0">
                       {line.frontPerson && (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={(e) => {
-                            e.preventDefault()
-                            setRemoveConfirm({ lineId: line.id })
-                          }}
-                          isLoading={loadingAction === `remove-${line.id}`}
-                        >
-                          Serve Next
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={(e) => {
+                              e.preventDefault()
+                              handleCallNext(line.id)
+                            }}
+                            isLoading={loadingAction === `call-${line.id}`}
+                          >
+                            Call Next
+                          </Button>
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault()
+                              setRemoveConfirm({ lineId: line.id })
+                            }}
+                            disabled={loadingAction === `remove-${line.id}`}
+                            className="text-xs text-red-600 hover:text-red-800 hover:underline px-1 py-0.5 disabled:opacity-50"
+                          >
+                            Remove
+                          </button>
+                        </div>
                       )}
                       {!line.isActive && (
                         <Button

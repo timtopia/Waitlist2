@@ -73,6 +73,12 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
   const [showBuyConfirm, setShowBuyConfirm] = useState(false)
   const [waitTimeData, setWaitTimeData] = useState<{ estimatedMinutesPerPerson: number | null; basedOn: number } | null>(null)
 
+  // Batch select state
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [showBatchConfirm, setShowBatchConfirm] = useState(false)
+  const [batchLoading, setBatchLoading] = useState(false)
+
   const fetchWaitTime = useCallback(async () => {
     try {
       const res = await fetch(`/api/lines/${lineId}/wait-time`)
@@ -206,6 +212,52 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
     }
   }
 
+  function toggleSelection(positionId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(positionId)) {
+        next.delete(positionId)
+      } else {
+        next.add(positionId)
+      }
+      return next
+    })
+  }
+
+  function cancelSelectMode() {
+    setSelectMode(false)
+    setSelectedIds(new Set())
+  }
+
+  async function handleBatchRemove(action: "payout" | "refund") {
+    setShowBatchConfirm(false)
+    setBatchLoading(true)
+    try {
+      const res = await fetch(`/api/lines/${lineId}/batch-remove`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          positionIds: Array.from(selectedIds),
+          action,
+        }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        const msg = data.failed > 0
+          ? `Removed ${data.removed}, ${data.failed} failed`
+          : `Removed ${data.removed} ${data.removed === 1 ? "person" : "people"} from line`
+        addToast(msg, data.failed > 0 ? "info" : "success")
+        cancelSelectMode()
+        onRefresh()
+      } else {
+        const data = await res.json()
+        addToast(data.error || "Batch remove failed", "error")
+      }
+    } finally {
+      setBatchLoading(false)
+    }
+  }
+
   return (
     <div className="space-y-4">
       {/* Removal Modal */}
@@ -314,10 +366,97 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
         )
       })()}
 
+      {/* Batch Remove Confirm Modal */}
+      {showBatchConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-sm w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Remove {selectedIds.size} {selectedIds.size === 1 ? "person" : "people"}?
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Choose how to handle their transactions:
+            </p>
+            <div className="flex flex-col space-y-2">
+              <Button
+                onClick={() => handleBatchRemove("payout")}
+                isLoading={batchLoading}
+                className="w-full"
+              >
+                Payout (Keep Transactions Final)
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => handleBatchRemove("refund")}
+                isLoading={batchLoading}
+                className="w-full"
+              >
+                Refund All Purchases
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setShowBatchConfirm(false)}
+                className="w-full"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {positions.length === 0 ? (
         <p className="text-center text-gray-500 py-8">No one in line yet.</p>
       ) : (
         <div className="space-y-2">
+          {/* Select mode toggle for creators */}
+          {isCreator && positions.length > 0 && (
+            <div className="flex items-center justify-between pb-2">
+              {selectMode ? (
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      // Select all non-self positions
+                      const allIds = positions
+                        .filter((p) => p.user.id !== session?.user?.id)
+                        .map((p) => p.id)
+                      if (selectedIds.size === allIds.length) {
+                        setSelectedIds(new Set())
+                      } else {
+                        setSelectedIds(new Set(allIds))
+                      }
+                    }}
+                    className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
+                  >
+                    {selectedIds.size === positions.filter((p) => p.user.id !== session?.user?.id).length
+                      ? "Deselect All"
+                      : "Select All"}
+                  </button>
+                  <span className="text-sm text-gray-500">
+                    {selectedIds.size} selected
+                  </span>
+                </div>
+              ) : (
+                <div />
+              )}
+              <button
+                onClick={() => {
+                  if (selectMode) {
+                    cancelSelectMode()
+                  } else {
+                    setSelectMode(true)
+                  }
+                }}
+                className={`text-sm px-3 py-1.5 rounded-lg transition-colors ${
+                  selectMode
+                    ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                    : "text-gray-600 hover:bg-gray-100"
+                }`}
+              >
+                {selectMode ? "Done" : "Select"}
+              </button>
+            </div>
+          )}
+
           {positions.map((pos) => {
             const isCurrentUser = pos.user.id === session?.user?.id
             const isLocked = pos.lockedUntil && new Date(pos.lockedUntil) > new Date()
@@ -325,6 +464,8 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
             const canBuy =
               positionInFront?.id === pos.id && pos.askingPrice !== null && !isLocked && !isPaused
             const isFront = pos.position === 1
+            const isSelected = selectedIds.has(pos.id)
+            const canSelect = selectMode && isCreator && !isCurrentUser
 
             // Left border accent: green for sale, amber for pending, transparent otherwise
             const leftBorder = isLocked
@@ -336,8 +477,11 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
             return (
               <div
                 key={pos.id}
+                onClick={canSelect ? () => toggleSelection(pos.id) : undefined}
                 className={`flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 rounded-lg border ${leftBorder} ${
-                  isCurrentUser
+                  isSelected
+                    ? "bg-blue-50 border-blue-300 ring-1 ring-blue-300"
+                    : isCurrentUser
                     ? "bg-blue-50 border-blue-200"
                     : isFront
                     ? "bg-green-50 border-green-200"
@@ -346,9 +490,18 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                     : isForSale
                     ? "bg-white border-gray-200"
                     : "bg-white border-gray-200"
-                }`}
+                } ${canSelect ? "cursor-pointer" : ""}`}
               >
                 <div className="flex items-center space-x-4 min-w-0">
+                  {canSelect && (
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelection(pos.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 flex-shrink-0"
+                    />
+                  )}
                   <div className={`w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center font-bold ${
                     isFront ? "bg-green-200 text-green-700" : "bg-gray-200 text-gray-600"
                   }`}>
@@ -395,6 +548,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                   </div>
                 </div>
 
+                {!selectMode && (
                 <div className="flex items-center flex-wrap gap-2 mt-3 sm:mt-0 sm:ml-4 sm:flex-shrink-0">
                   {isCurrentUser && (
                     <>
@@ -503,9 +657,38 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                     </Button>
                   )}
                 </div>
+                )}
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Floating action bar for batch select mode */}
+      {selectMode && selectedIds.size > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-40 px-4 py-3">
+          <div className="max-w-4xl mx-auto flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-700">
+              {selectedIds.size} selected
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={() => setShowBatchConfirm(true)}
+                isLoading={batchLoading}
+              >
+                Remove All
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={cancelSelectMode}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>
