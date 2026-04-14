@@ -428,6 +428,7 @@ describe("QueueDisplay", () => {
           totalRefundedToBuyer: 0,
           totalRefundedAsSeller: 0,
           netAmount: 0,
+            downstreamBuyers: [],
         }),
       })
 
@@ -462,6 +463,7 @@ describe("QueueDisplay", () => {
           totalPaid: 50,
           totalReceived: 20,
           netAmount: -30,
+          downstreamBuyers: [],
         }),
       })
 
@@ -500,6 +502,7 @@ describe("QueueDisplay", () => {
           totalRefundedToBuyer: 0,
           totalRefundedAsSeller: 0,
           netAmount: 0,
+          downstreamBuyers: [],
         }),
       })
 
@@ -536,6 +539,7 @@ describe("QueueDisplay", () => {
           totalRefundedToBuyer: 0,
           totalRefundedAsSeller: 0,
           netAmount: -50,
+          downstreamBuyers: [],
         }),
       })
 
@@ -575,6 +579,7 @@ describe("QueueDisplay", () => {
             totalPaid: 0,
             totalReceived: 0,
             netAmount: 0,
+            downstreamBuyers: [],
           }),
         })
         .mockResolvedValueOnce({
@@ -633,6 +638,7 @@ describe("QueueDisplay", () => {
             totalRefundedToBuyer: 0,
             totalRefundedAsSeller: 0,
             netAmount: -50,
+            downstreamBuyers: [],
           }),
         })
         .mockResolvedValueOnce({
@@ -686,6 +692,7 @@ describe("QueueDisplay", () => {
           totalRefundedToBuyer: 0,
           totalRefundedAsSeller: 0,
           netAmount: 0,
+          downstreamBuyers: [],
         }),
       })
 

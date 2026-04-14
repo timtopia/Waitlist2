@@ -39,14 +39,33 @@ export async function GET(
     }),
   ])
 
+  // Find downstream buyers — people who bought positions from this user.
+  // If this user is removed, these buyers' transactions may be affected.
+  const completedSales = asSeller.filter((t) => t.status === "COMPLETED")
+  const buyerIds = [...new Set(completedSales.map((t) => t.buyerId))]
+
+  let downstreamBuyers: { id: string; name: string | null; amount: number; transactionId: string }[] = []
+  if (buyerIds.length > 0) {
+    const buyers = await prisma.user.findMany({
+      where: { id: { in: buyerIds } },
+      select: { id: true, name: true },
+    })
+    const buyerMap = new Map(buyers.map((b) => [b.id, b.name]))
+    downstreamBuyers = completedSales.map((t) => ({
+      id: t.buyerId,
+      name: buyerMap.get(t.buyerId) ?? null,
+      amount: t.amount,
+      transactionId: t.id,
+    }))
+  }
+
   // Only count COMPLETED (non-refunded) transactions for the financial summary
   const completedBuyer = asBuyer.filter((t) => t.status === "COMPLETED")
-  const completedSeller = asSeller.filter((t) => t.status === "COMPLETED")
   const refundedBuyer = asBuyer.filter((t) => t.status === "REFUNDED")
   const refundedSeller = asSeller.filter((t) => t.status === "REFUNDED")
 
   const totalPaid = completedBuyer.reduce((sum, t) => sum + t.amount, 0)
-  const totalReceived = completedSeller.reduce((sum, t) => sum + t.amount, 0)
+  const totalReceived = completedSales.reduce((sum, t) => sum + t.amount, 0)
   const totalRefundedToBuyer = refundedBuyer.reduce((sum, t) => sum + t.amount, 0)
   const totalRefundedAsSeller = refundedSeller.reduce((sum, t) => sum + t.amount, 0)
 
@@ -58,5 +77,6 @@ export async function GET(
     totalRefundedToBuyer,
     totalRefundedAsSeller,
     netAmount: totalReceived - totalPaid,
+    downstreamBuyers,
   })
 }

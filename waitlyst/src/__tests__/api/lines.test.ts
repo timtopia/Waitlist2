@@ -23,6 +23,9 @@ const mockPrisma = {
     update: vi.fn(),
     updateMany: vi.fn(),
   },
+  user: {
+    findMany: vi.fn(),
+  },
   $transaction: vi.fn((fn) => fn(mockPrisma)),
 }
 
@@ -575,12 +578,15 @@ describe("Position Transactions API", () => {
     })
     mockPrisma.transaction.findMany
       .mockResolvedValueOnce([
-        { id: "txn-1", amount: 50, status: "COMPLETED" },
-        { id: "txn-2", amount: 30, status: "COMPLETED" },
+        { id: "txn-1", amount: 50, status: "COMPLETED", buyerId: "user-1" },
+        { id: "txn-2", amount: 30, status: "COMPLETED", buyerId: "user-1" },
       ])
       .mockResolvedValueOnce([
-        { id: "txn-3", amount: 20, status: "COMPLETED" },
+        { id: "txn-3", amount: 20, status: "COMPLETED", buyerId: "buyer-1", sellerId: "user-1" },
       ])
+    mockPrisma.user.findMany.mockResolvedValue([
+      { id: "buyer-1", name: "Buyer One" },
+    ])
 
     const { GET } = await import("@/app/api/lines/[lineId]/position-transactions/route")
     const req = new Request("http://localhost/api/lines/line-1/position-transactions?userId=user-1")
@@ -594,6 +600,9 @@ describe("Position Transactions API", () => {
     expect(data.netAmount).toBe(-60)
     expect(data.asBuyer.length).toBe(2)
     expect(data.asSeller.length).toBe(1)
+    expect(data.downstreamBuyers.length).toBe(1)
+    expect(data.downstreamBuyers[0].name).toBe("Buyer One")
+    expect(data.downstreamBuyers[0].amount).toBe(20)
   })
 })
 

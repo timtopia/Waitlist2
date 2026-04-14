@@ -29,6 +29,7 @@ interface TransactionInfo {
   totalRefundedAsSeller: number
   asBuyer: { id: string; amount: number; status: string }[]
   asSeller: { id: string; amount: number; status: string }[]
+  downstreamBuyers: { id: string; name: string | null; amount: number; transactionId: string }[]
 }
 
 interface RemovalModal {
@@ -296,6 +297,25 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                     Net: {formatCurrency(removalModal.transactionInfo.netAmount)}
                   </p>
                 </div>
+
+                {removalModal.transactionInfo.downstreamBuyers.length > 0 && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <p className="text-sm font-medium text-amber-800 mb-2">
+                      Buyers who purchased from this person:
+                    </p>
+                    <ul className="space-y-1">
+                      {removalModal.transactionInfo.downstreamBuyers.map((buyer) => (
+                        <li key={buyer.transactionId} className="flex items-center justify-between text-sm">
+                          <span className="text-amber-700">{buyer.name || "Anonymous"}</span>
+                          <span className="text-amber-600 font-medium">{formatCurrency(buyer.amount)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-xs text-amber-600 mt-2">
+                      Removing this person may affect these buyers. Consider refunding if the removal invalidates their purchase.
+                    </p>
+                  </div>
+                )}
 
                 <p className="text-sm text-gray-600">
                   Choose how to handle their transactions:
