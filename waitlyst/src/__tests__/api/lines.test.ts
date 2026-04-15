@@ -118,7 +118,8 @@ describe("Lines API", () => {
       ])
 
       const { GET } = await import("@/app/api/lines/route")
-      const response = await GET()
+      const req = new Request("http://localhost/api/lines")
+      const response = await GET(req)
 
       expect(response.status).toBe(200)
       expect(mockPrisma.line.findMany).toHaveBeenCalledWith(

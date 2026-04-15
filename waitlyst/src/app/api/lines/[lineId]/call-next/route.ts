@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
+import { sendEmail } from "@/lib/email"
+import { positionCalledEmail } from "@/lib/email-templates"
 
 export async function POST(
   req: Request,
@@ -15,7 +17,7 @@ export async function POST(
     // Find the front person (position 1)
     const frontPosition = await prisma.linePosition.findFirst({
       where: { lineId, position: 1 },
-      include: { user: { select: { name: true } } },
+      include: { user: { select: { name: true, email: true, emailNotifications: true } } },
     })
 
     if (!frontPosition) {
@@ -28,7 +30,7 @@ export async function POST(
     const userName = frontPosition.user?.name || "Next person"
 
     // Update the line's announcement and now-serving display
-    await prisma.line.update({
+    const line = await prisma.line.update({
       where: { id: lineId },
       data: {
         announcement: `\u{1F4E2} ${userName}, you're up! Please come forward.`,
@@ -37,6 +39,15 @@ export async function POST(
         nowServingAt: new Date(),
       },
     })
+
+    // Send email notification (fire-and-forget)
+    const calledUser = frontPosition.user
+    if (calledUser?.email && calledUser.emailNotifications) {
+      const baseUrl = process.env.NEXTAUTH_URL || process.env.AUTH_URL || "http://localhost:3000"
+      const lineUrl = `${baseUrl}/lines/${lineId}`
+      const { subject, html } = positionCalledEmail(userName, line.name, lineUrl)
+      sendEmail(calledUser.email, subject, html).catch(() => {})
+    }
 
     return NextResponse.json({
       calledUser: userName,

@@ -3,6 +3,8 @@ import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { getStripe, getBaseUrl, performPositionSwap } from "@/lib/stripe"
 import { calculateFees } from "@/lib/fees"
+import { sendEmail } from "@/lib/email"
+import { swapAcceptedEmail } from "@/lib/email-templates"
 
 const LOCK_DURATION_MS = 30 * 60 * 1000 // 30 minutes
 
@@ -116,6 +118,22 @@ export async function PATCH(
       where: { id: offerId },
       data: { status: "ACCEPTED" },
     })
+
+    // Send email notification to the offerer (fire-and-forget)
+    const offerer = await prisma.user.findUnique({
+      where: { id: offer.fromUserId },
+      select: { name: true, email: true, emailNotifications: true },
+    })
+    if (offerer?.email && offerer.emailNotifications) {
+      const baseUrl = getBaseUrl()
+      const lineUrl = `${baseUrl}/lines/${lineId}`
+      const { subject, html } = swapAcceptedEmail(
+        offerer.name || "there",
+        line.name,
+        lineUrl
+      )
+      sendEmail(offerer.email, subject, html).catch(() => {})
+    }
 
     // --- STRIPE MODE ---
     const stripe = getStripe()

@@ -709,6 +709,7 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
                         items={(() => {
                           const menuItems: DropdownMenuItem[] = [
                             { label: "View Stats", onClick: () => openStatsModal(line.id, line.name) },
+                            { label: "Settlement", onClick: () => router.push(`/lines/${line.id}/settlement`) },
                             { label: copiedId === line.id ? "Copied!" : "Copy Link", onClick: () => handleCopyLink(line.id) },
                             { label: "Edit", onClick: () => router.push(`/lines/${line.id}/edit`) },
                             { label: loadingAction === `duplicate-${line.id}` ? "Duplicating..." : "Duplicate", onClick: () => handleDuplicateLine(line.id), disabled: loadingAction === `duplicate-${line.id}` },
@@ -720,7 +721,7 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
                           menuItems.push({ label: "Delete", onClick: () => setDeleteConfirm({ lineId: line.id, lineName: line.name }), variant: "danger" })
                           return menuItems
                         })()}
-                        separatorBefore={[line.isActive ? 6 : 5]}
+                        separatorBefore={[line.isActive ? 7 : 6]}
                       />
                     </div>
                   </div>

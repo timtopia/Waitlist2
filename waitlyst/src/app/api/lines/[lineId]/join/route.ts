@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
+import { rateLimit } from "@/lib/rate-limit"
+
+const limiter = rateLimit({ interval: 60_000, limit: 5 })
 
 export async function POST(
   req: Request,
@@ -8,6 +11,14 @@ export async function POST(
 ) {
   const result = await requireAuth()
   if (result instanceof NextResponse) return result
+
+  const { success: allowed } = limiter.check(result.userId)
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Please try again later." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    )
+  }
 
   const { lineId } = await params
 

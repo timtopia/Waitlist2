@@ -3,6 +3,9 @@ import { prisma } from "@/lib/prisma"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { refundTransactions } from "@/lib/stripe"
 import { getPlatformFeePercent } from "@/lib/fees"
+import { rateLimit } from "@/lib/rate-limit"
+
+const getLimiter = rateLimit({ interval: 60_000, limit: 60 })
 
 export const dynamic = "force-dynamic"
 
@@ -10,6 +13,15 @@ export async function GET(
   req: Request,
   { params }: { params: Promise<{ lineId: string }> }
 ) {
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "anonymous"
+  const { success: allowed } = getLimiter.check(ip)
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Please try again later." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    )
+  }
+
   const { lineId } = await params
 
   const line = await prisma.line.findUnique({

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { getStripe, captureAuthorization } from "@/lib/stripe"
+import { sendEmail } from "@/lib/email"
+import { fulfilledEmail } from "@/lib/email-templates"
 
 export async function POST(
   req: Request,
@@ -66,7 +68,7 @@ export async function POST(
         payoutsReleased = buyerTransactions.length
       }
 
-      return { buyerTransactions, payoutsReleased }
+      return { position, buyerTransactions, payoutsReleased }
     })
 
     // Capture authorized payments and process Stripe Connect transfers
@@ -142,6 +144,22 @@ export async function POST(
         } catch (err) {
           console.error(`Failed to process payout for transaction ${txn.id}:`, err)
         }
+      }
+    }
+
+    // Send email notification to the fulfilled person (fire-and-forget)
+    const fulfilledUser = result.position.user
+    if (fulfilledUser?.email && fulfilledUser.emailNotifications) {
+      const baseUrl = process.env.NEXTAUTH_URL || process.env.AUTH_URL || "http://localhost:3000"
+      const line = await prisma.line.findUnique({ where: { id: lineId }, select: { name: true } })
+      if (line) {
+        const lineUrl = `${baseUrl}/lines/${lineId}`
+        const { subject, html } = fulfilledEmail(
+          fulfilledUser.name || "there",
+          line.name,
+          lineUrl
+        )
+        sendEmail(fulfilledUser.email, subject, html).catch(() => {})
       }
     }
 

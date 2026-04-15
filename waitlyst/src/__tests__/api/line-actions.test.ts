@@ -789,6 +789,7 @@ describe("PATCH /api/user", () => {
         name: true,
         email: true,
         image: true,
+        emailNotifications: true,
         createdAt: true,
       },
     })

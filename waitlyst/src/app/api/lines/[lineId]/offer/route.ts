@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
+import { rateLimit } from "@/lib/rate-limit"
+import { sendEmail } from "@/lib/email"
+import { swapOfferEmail } from "@/lib/email-templates"
+
+const offerLimiter = rateLimit({ interval: 60_000, limit: 10 })
 
 export async function POST(
   req: Request,
@@ -8,6 +13,14 @@ export async function POST(
 ) {
   const result = await requireAuth()
   if (result instanceof NextResponse) return result
+
+  const { success: allowed } = offerLimiter.check(result.userId)
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Please try again later." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    )
+  }
 
   const { lineId } = await params
   const { toUserId, amount } = await req.json()
@@ -110,6 +123,23 @@ export async function POST(
         status: "PENDING",
       },
     })
+
+    // Send email notification to the recipient (fire-and-forget)
+    const toUser = await prisma.user.findUnique({
+      where: { id: toUserId },
+      select: { name: true, email: true, emailNotifications: true },
+    })
+    if (toUser?.email && toUser.emailNotifications) {
+      const baseUrl = process.env.NEXTAUTH_URL || process.env.AUTH_URL || "http://localhost:3000"
+      const lineUrl = `${baseUrl}/lines/${lineId}`
+      const { subject, html } = swapOfferEmail(
+        toUser.name || "there",
+        line.name,
+        amount,
+        lineUrl
+      )
+      sendEmail(toUser.email, subject, html).catch(() => {})
+    }
 
     return NextResponse.json(offer, { status: 201 })
   } catch (error) {

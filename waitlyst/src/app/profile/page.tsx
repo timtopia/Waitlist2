@@ -31,6 +31,7 @@ export default async function ProfilePage() {
         image: true,
         createdAt: true,
         stripeConnectOnboarded: true,
+        emailNotifications: true,
       },
     }),
     prisma.transaction.findMany({
@@ -96,6 +97,7 @@ export default async function ProfilePage() {
         createdAt: user.createdAt.toISOString(),
       }}
       stripeConnectOnboarded={user.stripeConnectOnboarded}
+      emailNotifications={user.emailNotifications}
       stats={{
         linesCreated: ownedLineIds.length,
         activePositions,

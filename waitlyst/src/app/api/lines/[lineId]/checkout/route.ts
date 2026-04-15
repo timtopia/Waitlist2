@@ -3,6 +3,9 @@ import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { getStripe, getBaseUrl, performPositionSwap } from "@/lib/stripe"
 import { calculateFees } from "@/lib/fees"
+import { rateLimit } from "@/lib/rate-limit"
+
+const checkoutLimiter = rateLimit({ interval: 60_000, limit: 10 })
 
 const LOCK_DURATION_MS = 30 * 60 * 1000 // 30 minutes (Stripe minimum for checkout session expiry)
 
@@ -12,6 +15,14 @@ export async function POST(
 ) {
   const result = await requireAuth()
   if (result instanceof NextResponse) return result
+
+  const { success: allowed } = checkoutLimiter.check(result.userId)
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Please try again later." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    )
+  }
 
   const { lineId } = await params
 

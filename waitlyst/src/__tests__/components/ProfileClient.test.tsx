@@ -95,6 +95,7 @@ describe("ProfileClient", () => {
         stats={mockStats}
         recentTransactions={mockTransactions}
         stripeConnectOnboarded={false}
+        emailNotifications={true}
       />
     )
 
@@ -111,6 +112,7 @@ describe("ProfileClient", () => {
         stats={mockStats}
         recentTransactions={mockTransactions}
         stripeConnectOnboarded={false}
+        emailNotifications={true}
       />
     )
 
@@ -127,6 +129,7 @@ describe("ProfileClient", () => {
         stats={mockStats}
         recentTransactions={mockTransactions}
         stripeConnectOnboarded={false}
+        emailNotifications={true}
       />
     )
 
@@ -140,6 +143,7 @@ describe("ProfileClient", () => {
         stats={mockStats}
         recentTransactions={mockTransactions}
         stripeConnectOnboarded={false}
+        emailNotifications={true}
       />
     )
 
@@ -156,6 +160,7 @@ describe("ProfileClient", () => {
         stats={mockStats}
         recentTransactions={mockTransactions}
         stripeConnectOnboarded={false}
+        emailNotifications={true}
       />
     )
 
@@ -193,6 +198,7 @@ describe("ProfileClient", () => {
         stats={statsNoPending}
         recentTransactions={mockTransactions}
         stripeConnectOnboarded={false}
+        emailNotifications={true}
       />
     )
 
@@ -207,6 +213,7 @@ describe("ProfileClient", () => {
         stats={mockStats}
         recentTransactions={mockTransactions}
         stripeConnectOnboarded={false}
+        emailNotifications={true}
       />
     )
 
@@ -237,6 +244,7 @@ describe("ProfileClient", () => {
         stats={{ ...mockStats, totalTransactions: 0 }}
         recentTransactions={[]}
         stripeConnectOnboarded={false}
+        emailNotifications={true}
       />
     )
 
@@ -256,6 +264,7 @@ describe("ProfileClient", () => {
           stats={mockStats}
           recentTransactions={mockTransactions}
           stripeConnectOnboarded={false}
+          emailNotifications={true}
         />
       )
 
@@ -280,6 +289,7 @@ describe("ProfileClient", () => {
           stats={mockStats}
           recentTransactions={mockTransactions}
           stripeConnectOnboarded={false}
+          emailNotifications={true}
         />
       )
 
@@ -314,6 +324,7 @@ describe("ProfileClient", () => {
           stats={mockStats}
           recentTransactions={mockTransactions}
           stripeConnectOnboarded={false}
+          emailNotifications={true}
         />
       )
 
@@ -339,6 +350,7 @@ describe("ProfileClient", () => {
           stats={mockStats}
           recentTransactions={mockTransactions}
           stripeConnectOnboarded={false}
+          emailNotifications={true}
         />
       )
 
@@ -375,6 +387,7 @@ describe("ProfileClient", () => {
           stats={mockStats}
           recentTransactions={mockTransactions}
           stripeConnectOnboarded={false}
+          emailNotifications={true}
         />
       )
 
@@ -401,6 +414,7 @@ describe("ProfileClient", () => {
           stats={mockStats}
           recentTransactions={mockTransactions}
           stripeConnectOnboarded={false}
+          emailNotifications={true}
         />
       )
 

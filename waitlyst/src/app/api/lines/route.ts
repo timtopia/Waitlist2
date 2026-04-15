@@ -1,10 +1,22 @@
 import { NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
+import { rateLimit } from "@/lib/rate-limit"
+
+const createLimiter = rateLimit({ interval: 60_000, limit: 5 })
+const browseLimiter = rateLimit({ interval: 60_000, limit: 30 })
 
 export async function POST(req: Request) {
   const result = await requireAuth()
   if (result instanceof NextResponse) return result
+
+  const { success: allowed } = createLimiter.check(result.userId)
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Please try again later." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    )
+  }
 
   const { name, description, isPublic = true, opensAt, closesAt, maxCapacity, ownerFeePercent = 0, productName, productImage, productPrice, productUrl, allowResale = true, maxAskingPrice, hideCapacity = false } = await req.json()
 
@@ -69,7 +81,16 @@ export async function POST(req: Request) {
   return NextResponse.json(line)
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "anonymous"
+  const { success: allowed } = browseLimiter.check(ip)
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Please try again later." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    )
+  }
+
   const lines = await prisma.line.findMany({
     where: { isActive: true, isPublic: true },
     include: {

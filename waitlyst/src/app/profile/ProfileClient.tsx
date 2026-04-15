@@ -44,6 +44,7 @@ interface ProfileClientProps {
   stats: Stats
   recentTransactions: Transaction[]
   stripeConnectOnboarded: boolean
+  emailNotifications: boolean
 }
 
 const statusColors: Record<string, string> = {
@@ -53,7 +54,7 @@ const statusColors: Record<string, string> = {
   REFUNDED: "bg-gray-100 text-gray-700",
 }
 
-export function ProfileClient({ user, stats, recentTransactions, stripeConnectOnboarded }: ProfileClientProps) {
+export function ProfileClient({ user, stats, recentTransactions, stripeConnectOnboarded, emailNotifications }: ProfileClientProps) {
   const [displayName, setDisplayName] = useState(user.name || "Anonymous")
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(user.name || "")
@@ -63,6 +64,8 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
   const [connectError, setConnectError] = useState<string | null>(null)
   const [connectOnboarded, setConnectOnboarded] = useState(stripeConnectOnboarded)
   const [connectMessage, setConnectMessage] = useState<{ text: string; type: "success" | "info" | "error" } | null>(null)
+  const [emailNotifs, setEmailNotifs] = useState(emailNotifications)
+  const [emailNotifsLoading, setEmailNotifsLoading] = useState(false)
   const [visibleCount, setVisibleCount] = useState(5)
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -159,6 +162,24 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
       setConnectError("Failed to open Stripe dashboard")
     } finally {
       setConnectLoading(false)
+    }
+  }
+
+  async function handleToggleEmailNotifs() {
+    setEmailNotifsLoading(true)
+    try {
+      const res = await fetch("/api/user", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emailNotifications: !emailNotifs }),
+      })
+      if (res.ok) {
+        setEmailNotifs(!emailNotifs)
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      setEmailNotifsLoading(false)
     }
   }
 
@@ -437,6 +458,36 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
           {connectError && (
             <p className="text-xs text-red-500 mt-2">{connectError}</p>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Notification Settings */}
+      <Card className="mb-6">
+        <CardContent className="py-5">
+          <h2 className="text-sm font-semibold text-gray-700 mb-3">Notification Settings</h2>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-900">Email Notifications</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Receive emails when you&apos;re called, get swap offers, or are fulfilled
+              </p>
+            </div>
+            <button
+              onClick={handleToggleEmailNotifs}
+              disabled={emailNotifsLoading}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 ${
+                emailNotifs ? "bg-blue-600" : "bg-gray-200"
+              }`}
+              role="switch"
+              aria-checked={emailNotifs}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  emailNotifs ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </div>
         </CardContent>
       </Card>
 

@@ -43,6 +43,7 @@ model User {
   image                   String?
   stripeConnectId         String?
   stripeConnectOnboarded  Boolean        @default(false)
+  emailNotifications      Boolean        @default(true)
   accounts                Account[]
   sessions                Session[]
   createdLines            Line[]         @relation("LineCreator")
