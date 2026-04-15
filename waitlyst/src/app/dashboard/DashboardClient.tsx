@@ -62,6 +62,7 @@ interface StatsModal {
 interface DashboardClientProps {
   createdLines: CreatedLine[]
   positions: Position[]
+  isNewUser?: boolean
 }
 
 interface Activity {
@@ -74,7 +75,7 @@ interface Activity {
   createdAt: string
 }
 
-export function DashboardClient({ createdLines: initialLines, positions }: DashboardClientProps) {
+export function DashboardClient({ createdLines: initialLines, positions, isNewUser }: DashboardClientProps) {
   const router = useRouter()
   const { addToast } = useToast()
   const [lines, setLines] = useState(initialLines)
@@ -83,6 +84,19 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
   const [statsModal, setStatsModal] = useState<StatsModal | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ lineId: string; lineName: string } | null>(null)
   const [removeConfirm, setRemoveConfirm] = useState<{ lineId: string } | null>(null)
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false)
+
+  // Check localStorage for dismissed onboarding
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setOnboardingDismissed(localStorage.getItem("waitlyst_onboarding_dismissed") === "true")
+    }
+  }, [])
+
+  function dismissOnboarding() {
+    setOnboardingDismissed(true)
+    localStorage.setItem("waitlyst_onboarding_dismissed", "true")
+  }
 
   // Search, filter, and sort state
   const [searchText, setSearchText] = useState("")
@@ -362,6 +376,41 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold text-gray-900 mb-6">Dashboard</h1>
+
+      {/* Onboarding Card */}
+      {isNewUser && !onboardingDismissed && (
+        <Card className="mb-6 border-blue-200 bg-blue-50">
+          <CardContent className="py-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 mb-1">
+                  Welcome to Waitlyst!
+                </h2>
+                <p className="text-gray-600 mb-4">
+                  Get started by creating your first line or browsing existing ones.
+                </p>
+                <div className="flex gap-3">
+                  <Link href="/lines/new">
+                    <Button size="sm">Create a Line</Button>
+                  </Link>
+                  <Link href="/browse">
+                    <Button size="sm" variant="secondary">Browse Lines</Button>
+                  </Link>
+                </div>
+              </div>
+              <button
+                onClick={dismissOnboarding}
+                className="text-gray-400 hover:text-gray-600 ml-4 flex-shrink-0"
+                aria-label="Dismiss"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Search Bar */}
       <div className="relative mb-6">

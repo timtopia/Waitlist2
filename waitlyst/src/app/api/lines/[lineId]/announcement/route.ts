@@ -46,6 +46,9 @@ export async function PATCH(
     return NextResponse.json({ ...updatedLine, platformFeePercent: getPlatformFeePercent() })
   } catch (error) {
     console.error("Announcement update error:", error)
-    return NextResponse.json({ error: "Failed to update announcement" }, { status: 500 })
+    return NextResponse.json(
+      { error: "Something went wrong while updating the announcement. Please try again." },
+      { status: 500 }
+    )
   }
 }

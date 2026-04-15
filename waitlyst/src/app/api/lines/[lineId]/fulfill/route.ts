@@ -12,8 +12,8 @@ export async function POST(
   const { lineId } = await params
   const { positionId } = await req.json()
 
-  if (!positionId) {
-    return NextResponse.json({ error: "Position ID required" }, { status: 400 })
+  if (!positionId || typeof positionId !== "string") {
+    return NextResponse.json({ error: "Position ID is required" }, { status: 400 })
   }
 
   const authResult = await requireLineOwner(lineId)
@@ -168,7 +168,23 @@ export async function POST(
       payoutsReleased: result.payoutsReleased,
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to fulfill position"
-    return NextResponse.json({ error: message }, { status: 400 })
+    const message = error instanceof Error ? error.message : ""
+    if (message === "Position not found") {
+      return NextResponse.json(
+        { error: "Could not find this position. The person may have already left the line." },
+        { status: 404 }
+      )
+    }
+    if (message === "Position already fulfilled") {
+      return NextResponse.json(
+        { error: "This position has already been fulfilled" },
+        { status: 400 }
+      )
+    }
+    console.error("Fulfill error:", error)
+    return NextResponse.json(
+      { error: "Something went wrong while fulfilling this position. Please try again." },
+      { status: 500 }
+    )
   }
 }

@@ -18,8 +18,16 @@ export async function POST(
     action: "capture" | "cancel" | "capture-all" | "cancel-all-unfulfilled"
   }
 
-  if (!action) {
+  if (!action || typeof action !== "string") {
     return NextResponse.json({ error: "Action is required" }, { status: 400 })
+  }
+
+  const validActions = ["capture", "cancel", "capture-all", "cancel-all-unfulfilled"]
+  if (!validActions.includes(action)) {
+    return NextResponse.json(
+      { error: `Action must be one of: ${validActions.join(", ")}` },
+      { status: 400 }
+    )
   }
 
   try {
@@ -150,9 +158,10 @@ export async function POST(
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 })
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Settlement action failed"
     console.error("Settlement action error:", error)
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json(
+      { error: "Something went wrong while processing the settlement. Please try again." },
+      { status: 500 }
+    )
   }
 }

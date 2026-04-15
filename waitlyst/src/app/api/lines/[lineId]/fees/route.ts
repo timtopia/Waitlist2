@@ -13,17 +13,25 @@ export async function GET(
 ) {
   const { lineId } = await params
 
-  const line = await prisma.line.findUnique({
-    where: { id: lineId },
-    select: { ownerFeePercent: true },
-  })
+  try {
+    const line = await prisma.line.findUnique({
+      where: { id: lineId },
+      select: { ownerFeePercent: true },
+    })
 
-  if (!line) {
-    return NextResponse.json({ error: "Line not found" }, { status: 404 })
+    if (!line) {
+      return NextResponse.json({ error: "Line not found" }, { status: 404 })
+    }
+
+    return NextResponse.json({
+      ownerFeePercent: line.ownerFeePercent,
+      platformFeePercent: getPlatformFeePercent(),
+    })
+  } catch (error) {
+    console.error("Fees error:", error)
+    return NextResponse.json(
+      { error: "Something went wrong. Please try again." },
+      { status: 500 }
+    )
   }
-
-  return NextResponse.json({
-    ownerFeePercent: line.ownerFeePercent,
-    platformFeePercent: getPlatformFeePercent(),
-  })
 }

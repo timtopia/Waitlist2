@@ -298,7 +298,9 @@ export async function PATCH(
     })
   } catch (error) {
     console.error("Respond to offer error:", error)
-    const message = error instanceof Error ? error.message : "Failed to process offer response"
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json(
+      { error: "Something went wrong while processing the offer. Please try again." },
+      { status: 500 }
+    )
   }
 }

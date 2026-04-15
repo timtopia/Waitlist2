@@ -55,7 +55,9 @@ export async function POST() {
     return NextResponse.json({ url: accountLink.url })
   } catch (error) {
     console.error("Stripe Connect onboarding error:", error)
-    const message = error instanceof Error ? error.message : "Failed to start payout setup"
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json(
+      { error: "Something went wrong while setting up payouts. Please try again." },
+      { status: 500 }
+    )
   }
 }

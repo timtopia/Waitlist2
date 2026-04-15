@@ -13,8 +13,16 @@ export async function PATCH(
   const { price } = await req.json() // null to remove from sale
 
   // Validate price if provided
-  if (price !== null && (typeof price !== "number" || price < 0)) {
-    return NextResponse.json({ error: "Invalid price" }, { status: 400 })
+  if (price !== null) {
+    if (typeof price !== "number" || isNaN(price)) {
+      return NextResponse.json({ error: "Price must be a number" }, { status: 400 })
+    }
+    if (price < 0) {
+      return NextResponse.json({ error: "Price cannot be negative" }, { status: 400 })
+    }
+    if (price > 10000) {
+      return NextResponse.json({ error: "Price must be no more than $10,000" }, { status: 400 })
+    }
   }
 
   // Enforce resale controls
@@ -53,6 +61,10 @@ export async function PATCH(
 
     return NextResponse.json(position)
   } catch (error) {
-    return NextResponse.json({ error: "Position not found" }, { status: 404 })
+    console.error("Update price error:", error)
+    return NextResponse.json(
+      { error: "Could not update the price. You may not be in this line." },
+      { status: 404 }
+    )
   }
 }

@@ -54,8 +54,10 @@ export async function POST(
       position: 1,
     })
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to call next person"
-    return NextResponse.json({ error: message }, { status: 400 })
+    console.error("Call next error:", error)
+    return NextResponse.json(
+      { error: "Something went wrong while calling the next person. Please try again." },
+      { status: 500 }
+    )
   }
 }

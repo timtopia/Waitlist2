@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
+import { validateString, validateNumber, validateUrl } from "@/lib/validate"
 
 export async function PATCH(
   req: Request,
@@ -21,11 +22,25 @@ export async function PATCH(
     if (typeof updates.isActive === "boolean") {
       allowedUpdates.isActive = updates.isActive
     }
-    if (typeof updates.name === "string" && updates.name.trim()) {
+    // Validate name (1-100 chars)
+    if (updates.name !== undefined) {
+      if (typeof updates.name !== "string" || !updates.name.trim()) {
+        return NextResponse.json({ error: "Name is required" }, { status: 400 })
+      }
+      const nameErr = validateString(updates.name, "Name", { min: 1, max: 100 })
+      if (nameErr) {
+        return NextResponse.json({ error: nameErr }, { status: 400 })
+      }
       allowedUpdates.name = updates.name.trim()
     }
-    if (typeof updates.description === "string") {
-      allowedUpdates.description = updates.description.trim() || null
+    // Validate description (max 500 chars)
+    if (updates.description !== undefined) {
+      if (typeof updates.description === "string" && updates.description.trim().length > 500) {
+        return NextResponse.json({ error: "Description must be 500 characters or fewer" }, { status: 400 })
+      }
+      allowedUpdates.description = typeof updates.description === "string"
+        ? updates.description.trim() || null
+        : null
     }
     // Schedule fields
     if (updates.opensAt !== undefined) {
@@ -38,20 +53,23 @@ export async function PATCH(
     if (updates.maxCapacity !== undefined) {
       const cap = updates.maxCapacity === null ? null : parseInt(updates.maxCapacity)
       if (cap !== null) {
+        if (isNaN(cap) || cap < 1) {
+          return NextResponse.json({ error: "Capacity must be a positive whole number" }, { status: 400 })
+        }
         // Verify capacity is not less than current participants
         const currentCount = await prisma.linePosition.count({
           where: { lineId },
         })
         if (cap < currentCount) {
           return NextResponse.json(
-            { error: `Capacity cannot be less than current participants (${currentCount})` },
+            { error: `Capacity cannot be less than the ${currentCount} people currently in line` },
             { status: 400 }
           )
         }
       }
       allowedUpdates.maxCapacity = cap
     }
-    // Owner fee percentage
+    // Owner fee percentage (clamped to 0-50)
     if (typeof updates.ownerFeePercent === "number") {
       allowedUpdates.ownerFeePercent = Math.max(0, Math.min(updates.ownerFeePercent, 50))
     }
@@ -66,6 +84,7 @@ export async function PATCH(
         ? updates.productImage.trim()
         : null
     }
+    // Product price (positive number, max $10,000)
     if (updates.productPrice !== undefined) {
       if (updates.productPrice === null) {
         allowedUpdates.productPrice = null
@@ -74,19 +93,22 @@ export async function PATCH(
         if (isNaN(price) || price <= 0) {
           return NextResponse.json({ error: "Product price must be a positive number" }, { status: 400 })
         }
+        if (price > 10000) {
+          return NextResponse.json({ error: "Product price must be no more than $10,000" }, { status: 400 })
+        }
         allowedUpdates.productPrice = price
       }
     }
+    // Product URL (must be valid)
     if (updates.productUrl !== undefined) {
       if (updates.productUrl === null || updates.productUrl === "") {
         allowedUpdates.productUrl = null
       } else {
-        try {
-          new URL(updates.productUrl)
-          allowedUpdates.productUrl = updates.productUrl.trim()
-        } catch {
-          return NextResponse.json({ error: "Product URL must be a valid URL" }, { status: 400 })
+        const urlErr = validateUrl(updates.productUrl, "Product URL")
+        if (urlErr) {
+          return NextResponse.json({ error: urlErr }, { status: 400 })
         }
+        allowedUpdates.productUrl = updates.productUrl.trim()
       }
     }
 
@@ -107,6 +129,9 @@ export async function PATCH(
         if (isNaN(cap) || cap <= 0) {
           return NextResponse.json({ error: "Max asking price must be a positive number" }, { status: 400 })
         }
+        if (cap > 10000) {
+          return NextResponse.json({ error: "Max asking price must be no more than $10,000" }, { status: 400 })
+        }
         allowedUpdates.maxAskingPrice = cap
       }
     }
@@ -119,6 +144,9 @@ export async function PATCH(
     return NextResponse.json(updatedLine)
   } catch (error) {
     console.error("Settings update error:", error)
-    return NextResponse.json({ error: "Failed to update settings" }, { status: 400 })
+    return NextResponse.json(
+      { error: "Something went wrong while updating settings. Please try again." },
+      { status: 500 }
+    )
   }
 }

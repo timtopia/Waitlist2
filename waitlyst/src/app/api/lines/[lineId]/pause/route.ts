@@ -20,6 +20,9 @@ export async function POST(
     return NextResponse.json({ isActive: updatedLine.isActive })
   } catch (error) {
     console.error("Pause toggle error:", error)
-    return NextResponse.json({ error: "Failed to update line status" }, { status: 500 })
+    return NextResponse.json(
+      { error: "Something went wrong while updating the line status. Please try again." },
+      { status: 500 }
+    )
   }
 }

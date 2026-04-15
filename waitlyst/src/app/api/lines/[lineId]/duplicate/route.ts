@@ -11,17 +11,25 @@ export async function POST(
   const result = await requireLineOwner(lineId)
   if (result instanceof NextResponse) return result
 
-  const newLine = await prisma.line.create({
-    data: {
-      name: `${result.line.name} (Copy)`,
-      description: result.line.description,
-      createdById: result.userId,
-      isPublic: result.line.isPublic,
-      isActive: true,
-      maxCapacity: result.line.maxCapacity,
-      ownerFeePercent: result.line.ownerFeePercent,
-    },
-  })
+  try {
+    const newLine = await prisma.line.create({
+      data: {
+        name: `${result.line.name} (Copy)`,
+        description: result.line.description,
+        createdById: result.userId,
+        isPublic: result.line.isPublic,
+        isActive: true,
+        maxCapacity: result.line.maxCapacity,
+        ownerFeePercent: result.line.ownerFeePercent,
+      },
+    })
 
-  return NextResponse.json(newLine)
+    return NextResponse.json(newLine)
+  } catch (error) {
+    console.error("Duplicate line error:", error)
+    return NextResponse.json(
+      { error: "Something went wrong while duplicating the line. Please try again." },
+      { status: 500 }
+    )
+  }
 }

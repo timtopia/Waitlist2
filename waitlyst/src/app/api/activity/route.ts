@@ -90,6 +90,9 @@ export async function GET() {
     return NextResponse.json(activities.slice(0, 20))
   } catch (error) {
     console.error("Activity fetch error:", error)
-    return NextResponse.json({ error: "Failed to fetch activity" }, { status: 500 })
+    return NextResponse.json(
+      { error: "Something went wrong while loading your activity. Please try again." },
+      { status: 500 }
+    )
   }
 }

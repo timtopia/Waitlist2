@@ -134,7 +134,14 @@ export async function POST(
       refundedAmount,
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to remove person"
-    return NextResponse.json({ error: message }, { status: 400 })
+    const message = error instanceof Error ? error.message : ""
+    if (message === "No one in line to remove") {
+      return NextResponse.json({ error: message }, { status: 400 })
+    }
+    console.error("Remove front error:", error)
+    return NextResponse.json(
+      { error: "Could not remove this person. They may have already left the line." },
+      { status: 500 }
+    )
   }
 }

@@ -1,7 +1,12 @@
+import type { Metadata } from "next"
 import { redirect } from "next/navigation"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { ProfileClient } from "./ProfileClient"
+
+export const metadata: Metadata = {
+  title: "Profile",
+}
 
 export const dynamic = "force-dynamic"
 

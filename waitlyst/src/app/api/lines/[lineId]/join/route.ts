@@ -87,7 +87,8 @@ export async function POST(
 
     return NextResponse.json(position)
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to join line"
+    const message = error instanceof Error ? error.message : "Could not join this line. Please try again."
+    console.error("Join line error:", error)
     return NextResponse.json({ error: message }, { status: 400 })
   }
 }

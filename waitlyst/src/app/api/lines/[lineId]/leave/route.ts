@@ -49,7 +49,14 @@ export async function DELETE(
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to leave line"
-    return NextResponse.json({ error: message }, { status: 400 })
+    const message = error instanceof Error ? error.message : ""
+    if (message === "Not in this line") {
+      return NextResponse.json({ error: "You are not in this line" }, { status: 400 })
+    }
+    console.error("Leave line error:", error)
+    return NextResponse.json(
+      { error: "Something went wrong while leaving the line. Please try again." },
+      { status: 500 }
+    )
   }
 }

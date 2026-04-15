@@ -27,10 +27,16 @@ export async function POST(
 
   // Validate inputs
   if (!toUserId || typeof toUserId !== "string") {
-    return NextResponse.json({ error: "toUserId is required" }, { status: 400 })
+    return NextResponse.json({ error: "Target user is required" }, { status: 400 })
   }
-  if (typeof amount !== "number" || amount <= 0) {
-    return NextResponse.json({ error: "Amount must be greater than 0" }, { status: 400 })
+  if (typeof amount !== "number" || isNaN(amount)) {
+    return NextResponse.json({ error: "Amount must be a number" }, { status: 400 })
+  }
+  if (amount <= 0) {
+    return NextResponse.json({ error: "Amount must be greater than $0" }, { status: 400 })
+  }
+  if (amount > 10000) {
+    return NextResponse.json({ error: "Amount must be no more than $10,000" }, { status: 400 })
   }
 
   try {
@@ -144,8 +150,10 @@ export async function POST(
     return NextResponse.json(offer, { status: 201 })
   } catch (error) {
     console.error("Create offer error:", error)
-    const message = error instanceof Error ? error.message : "Failed to create offer"
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json(
+      { error: "Something went wrong while creating the offer. Please try again." },
+      { status: 500 }
+    )
   }
 }
 
@@ -174,7 +182,9 @@ export async function GET(
     return NextResponse.json({ sent, received })
   } catch (error) {
     console.error("Get offers error:", error)
-    const message = error instanceof Error ? error.message : "Failed to fetch offers"
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json(
+      { error: "Something went wrong while loading offers. Please try again." },
+      { status: 500 }
+    )
   }
 }

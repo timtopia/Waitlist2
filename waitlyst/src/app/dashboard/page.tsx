@@ -1,7 +1,12 @@
+import type { Metadata } from "next"
 import { redirect } from "next/navigation"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { DashboardClient } from "./DashboardClient"
+
+export const metadata: Metadata = {
+  title: "Dashboard",
+}
 
 export const dynamic = "force-dynamic"
 
@@ -40,6 +45,8 @@ export default async function DashboardPage() {
     }),
   ])
 
+  const isNewUser = createdLines.length === 0 && positions.length === 0
+
   return (
     <DashboardClient
       createdLines={createdLines.map((line) => ({
@@ -59,6 +66,7 @@ export default async function DashboardPage() {
           updatedAt: pos.line.updatedAt.toISOString(),
         },
       }))}
+      isNewUser={isNewUser}
     />
   )
 }

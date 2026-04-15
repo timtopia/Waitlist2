@@ -24,26 +24,34 @@ export async function GET(
 
   const { lineId } = await params
 
-  const line = await prisma.line.findUnique({
-    where: { id: lineId },
-    include: {
-      createdBy: { select: { id: true, name: true, image: true } },
-      positions: {
-        include: { user: { select: { id: true, name: true, image: true } } },
-        orderBy: { position: "asc" },
+  try {
+    const line = await prisma.line.findUnique({
+      where: { id: lineId },
+      include: {
+        createdBy: { select: { id: true, name: true, image: true } },
+        positions: {
+          include: { user: { select: { id: true, name: true, image: true } } },
+          orderBy: { position: "asc" },
+        },
       },
-    },
-  })
+    })
 
-  if (!line) {
-    return NextResponse.json({ error: "Line not found" }, { status: 404 })
+    if (!line) {
+      return NextResponse.json({ error: "Line not found" }, { status: 404 })
+    }
+
+    return NextResponse.json({ ...line, platformFeePercent: getPlatformFeePercent() }, {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+      },
+    })
+  } catch (error) {
+    console.error("Get line error:", error)
+    return NextResponse.json(
+      { error: "Something went wrong. Please try again." },
+      { status: 500 }
+    )
   }
-
-  return NextResponse.json({ ...line, platformFeePercent: getPlatformFeePercent() }, {
-    headers: {
-      "Cache-Control": "no-store, no-cache, must-revalidate",
-    },
-  })
 }
 
 export async function DELETE(
@@ -88,7 +96,8 @@ export async function DELETE(
 
     return NextResponse.json({ success: true, refundedCount })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to delete line"
+    console.error("Delete line error:", error)
+    const message = error instanceof Error ? error.message : "Something went wrong. Please try again."
     const status = message === "Line not found" ? 404 : message === "Not authorized" ? 403 : 500
     return NextResponse.json({ error: message }, { status })
   }

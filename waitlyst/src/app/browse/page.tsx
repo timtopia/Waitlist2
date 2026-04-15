@@ -6,6 +6,8 @@ import { LineCard } from "@/components/LineCard"
 import { Button } from "@/components/ui/Button"
 import { getLineStatus } from "@/lib/line-status"
 
+// Note: metadata for this page is exported from ./layout.tsx since this is a client component
+
 interface Line {
   id: string
   name: string
@@ -166,7 +168,10 @@ export default function BrowsePage() {
           {lines.length === 0 ? (
             <>
               <p className="text-gray-500 mb-2">No active lines yet.</p>
-              <p className="text-sm text-gray-400">Be the first to create one!</p>
+              <p className="text-sm text-gray-400 mb-4">Be the first to create one!</p>
+              <Link href="/lines/new">
+                <Button>Create a Line</Button>
+              </Link>
             </>
           ) : (
             <>

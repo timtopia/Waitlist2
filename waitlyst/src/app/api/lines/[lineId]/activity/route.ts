@@ -107,7 +107,7 @@ export async function GET(
   } catch (error) {
     console.error("Line activity fetch error:", error)
     return NextResponse.json(
-      { error: "Failed to fetch activity" },
+      { error: "Something went wrong while loading activity. Please try again." },
       { status: 500 }
     )
   }

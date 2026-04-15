@@ -94,7 +94,7 @@ export async function GET(
   } catch (error) {
     console.error("Wait time calculation error:", error)
     return NextResponse.json(
-      { error: "Failed to calculate wait time" },
+      { error: "Something went wrong while estimating wait time. Please try again." },
       { status: 500 }
     )
   }
