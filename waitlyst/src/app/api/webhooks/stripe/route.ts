@@ -56,8 +56,6 @@ export async function POST(req: Request) {
           break
         }
 
-        console.log(`Webhook: checkout.session.completed for transaction ${transactionId}`)
-
         // Perform the position swap (idempotent — won't swap if already done).
         // With auth-then-capture, this fires on authorization (not capture).
         // The payment is held but not charged yet — capture happens on fulfillment.
@@ -77,8 +75,6 @@ export async function POST(req: Request) {
         const transactionId = session.metadata?.transactionId
 
         if (transactionId) {
-          console.log(`Webhook: checkout.session.expired for transaction ${transactionId}`)
-
           try {
             await prisma.$transaction(async (tx) => {
               // Unlock positions
@@ -109,8 +105,6 @@ export async function POST(req: Request) {
           : charge.payment_intent?.id
 
         if (paymentIntentId) {
-          console.log(`Webhook: charge.refunded for payment intent ${paymentIntentId}`)
-
           // Find the checkout session associated with this payment intent
           const sessions = await stripe.checkout.sessions.list({
             payment_intent: paymentIntentId,
@@ -137,7 +131,7 @@ export async function POST(req: Request) {
 
       default:
         // Unhandled event type — that's fine
-        console.log(`Webhook: unhandled event type ${event.type}`)
+        break
     }
   } catch (error) {
     console.error(`Webhook handler error for ${event.type}:`, error)

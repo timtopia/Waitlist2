@@ -5,8 +5,10 @@ import { getStripe, getBaseUrl, performPositionSwap } from "@/lib/stripe"
 import { calculateFees } from "@/lib/fees"
 import { sendEmail } from "@/lib/email"
 import { swapAcceptedEmail } from "@/lib/email-templates"
+import { rateLimit } from "@/lib/rate-limit"
 
 const LOCK_DURATION_MS = 30 * 60 * 1000 // 30 minutes
+const offerRespondLimiter = rateLimit({ interval: 60000, limit: 10 })
 
 export async function PATCH(
   req: Request,
@@ -14,6 +16,11 @@ export async function PATCH(
 ) {
   const result = await requireAuth()
   if (result instanceof NextResponse) return result
+
+  const { success } = offerRespondLimiter.check(result.userId)
+  if (!success) {
+    return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429, headers: { "Retry-After": "60" } })
+  }
 
   const { lineId, offerId } = await params
   const { action } = await req.json()

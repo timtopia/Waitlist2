@@ -80,7 +80,7 @@ export async function POST(
           if (txn.stripePaymentId) {
             const capturedAmount = await captureAuthorization(txn.stripePaymentId)
             if (capturedAmount !== null) {
-              console.log(`Captured payment of ${capturedAmount} cents for transaction ${txn.id}`)
+              // Payment captured successfully
             } else {
               console.warn(`Could not capture payment for transaction ${txn.id} — may already be captured`)
             }
@@ -134,7 +134,7 @@ export async function POST(
                       type: "owner_fee",
                     },
                   })
-                  console.log(`Owner fee transfer of ${ownerFeeAmountCents} cents to ${ownerConnectId} for transaction ${txn.id}`)
+                  // Owner fee transferred successfully
                 } catch (transferError) {
                   console.error(`Owner fee transfer failed for transaction ${txn.id}:`, transferError)
                 }

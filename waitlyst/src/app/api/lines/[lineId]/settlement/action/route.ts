@@ -2,6 +2,9 @@ import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { captureAuthorization, cancelAuthorization } from "@/lib/stripe"
+import { rateLimit } from "@/lib/rate-limit"
+
+const settlementLimiter = rateLimit({ interval: 60000, limit: 20 })
 
 export async function POST(
   req: Request,
@@ -11,6 +14,11 @@ export async function POST(
 
   const authResult = await requireLineOwner(lineId)
   if (authResult instanceof NextResponse) return authResult
+
+  const { success } = settlementLimiter.check(authResult.userId)
+  if (!success) {
+    return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429, headers: { "Retry-After": "60" } })
+  }
 
   const body = await req.json()
   const { transactionId, action } = body as {
