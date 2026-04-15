@@ -29,6 +29,67 @@ export default function CreateLinePage() {
   const [maxAskingPrice, setMaxAskingPrice] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [selectedTemplate, setSelectedTemplate] = useState<string>("custom")
+
+  const templates = [
+    {
+      id: "product-drop",
+      icon: "\uD83C\uDFAF",
+      name: "Product Drop",
+      desc: "Limited release drop",
+      apply: () => {
+        setMaxCapacity("100")
+        setOwnerFeePercent("10")
+        setAllowResale(true)
+        setHideCapacity(true)
+        setDescription("Limited release drop")
+        setShowResaleControls(true)
+      },
+    },
+    {
+      id: "live-queue",
+      icon: "\uD83C\uDFAB",
+      name: "Live Queue",
+      desc: "First come, first served",
+      apply: () => {
+        setMaxCapacity("")
+        setOwnerFeePercent("0")
+        setAllowResale(false)
+        setHideCapacity(false)
+        setDescription("Live queue - first come, first served")
+        setShowResaleControls(true)
+      },
+    },
+    {
+      id: "event-waitlist",
+      icon: "\uD83D\uDCCB",
+      name: "Event Waitlist",
+      desc: "Waitlist with position trading",
+      apply: () => {
+        setMaxCapacity("500")
+        setOwnerFeePercent("5")
+        setAllowResale(true)
+        setHideCapacity(false)
+        setDescription("Event waitlist with position trading")
+        setShowResaleControls(true)
+      },
+    },
+    {
+      id: "custom",
+      icon: "\u2699\uFE0F",
+      name: "Custom",
+      desc: "Start from scratch",
+      apply: () => {
+        // Don't fill anything — leave form as-is
+      },
+    },
+  ]
+
+  function applyTemplate(id: string) {
+    setSelectedTemplate(id)
+    const tpl = templates.find((t) => t.id === id)
+    tpl?.apply()
+  }
 
   if (status === "loading") {
     return (
@@ -114,6 +175,31 @@ export default function CreateLinePage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Quick-start templates */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Quick Start
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {templates.map((tpl) => (
+                  <button
+                    key={tpl.id}
+                    type="button"
+                    onClick={() => applyTemplate(tpl.id)}
+                    className={`flex flex-col items-center text-center rounded-lg border-2 p-3 transition-all hover:shadow-sm ${
+                      selectedTemplate === tpl.id
+                        ? "border-blue-500 bg-blue-50"
+                        : "border-gray-200 bg-white hover:border-gray-300"
+                    }`}
+                  >
+                    <span className="text-2xl leading-none mb-1">{tpl.icon}</span>
+                    <span className="text-sm font-medium text-gray-900">{tpl.name}</span>
+                    <span className="text-xs text-gray-500 mt-0.5 leading-tight">{tpl.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <Input
               id="name"
               label="Line Name"

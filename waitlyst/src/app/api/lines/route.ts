@@ -75,11 +75,28 @@ export async function GET() {
     include: {
       createdBy: { select: { name: true, image: true } },
       _count: { select: { positions: true } },
+      positions: {
+        where: {
+          askingPrice: { not: null },
+          OR: [
+            { lockedUntil: null },
+            { lockedUntil: { lt: new Date() } },
+          ],
+        },
+        select: { askingPrice: true },
+        orderBy: { askingPrice: "asc" },
+        take: 1,
+      },
     },
     orderBy: { createdAt: "desc" },
   })
 
-  return NextResponse.json(lines, {
+  const result = lines.map(({ positions, ...line }) => ({
+    ...line,
+    lowestAskingPrice: positions[0]?.askingPrice ?? null,
+  }))
+
+  return NextResponse.json(result, {
     headers: {
       "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
     },

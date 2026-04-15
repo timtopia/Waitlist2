@@ -5,7 +5,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { Card, CardContent } from "./ui/Card"
 import { getStatusBadge } from "@/lib/line-status"
-import { formatDropCountdown } from "@/lib/format"
+import { formatDropCountdown, formatCurrency } from "@/lib/format"
 
 interface LineCardProps {
   line: {
@@ -19,6 +19,7 @@ interface LineCardProps {
     productImage?: string | null
     productPrice?: number | null
     productUrl?: string | null
+    lowestAskingPrice?: number | null
     createdBy: {
       name: string | null
       image: string | null
@@ -88,6 +89,13 @@ export function LineCard({ line }: LineCardProps) {
               {line.productPrice != null && (
                 <span className="inline-block text-xs font-medium bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded mb-2">
                   Retail: ${line.productPrice.toFixed(2)}
+                </span>
+              )}
+
+              {/* Trading badge */}
+              {line.lowestAskingPrice != null && (
+                <span className="inline-block text-xs font-medium bg-green-100 text-green-700 px-1.5 py-0.5 rounded mb-2 ml-1">
+                  From {formatCurrency(line.lowestAskingPrice)}
                 </span>
               )}
 

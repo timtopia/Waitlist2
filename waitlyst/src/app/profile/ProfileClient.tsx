@@ -63,6 +63,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
   const [connectError, setConnectError] = useState<string | null>(null)
   const [connectOnboarded, setConnectOnboarded] = useState(stripeConnectOnboarded)
   const [connectMessage, setConnectMessage] = useState<{ text: string; type: "success" | "info" | "error" } | null>(null)
+  const [visibleCount, setVisibleCount] = useState(5)
   const searchParams = useSearchParams()
   const router = useRouter()
 
@@ -456,7 +457,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
             </div>
           ) : (
             <div className="space-y-2">
-              {recentTransactions.map((tx) => (
+              {recentTransactions.slice(0, visibleCount).map((tx) => (
                 <div
                   key={tx.id}
                   className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
@@ -494,6 +495,23 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                   </div>
                 </div>
               ))}
+              {visibleCount < recentTransactions.length && (
+                <div className="pt-2 flex justify-center gap-3">
+                  <button
+                    onClick={() => setVisibleCount((c) => c + 5)}
+                    className="text-sm text-gray-500 hover:text-gray-700"
+                  >
+                    Show more
+                  </button>
+                  <span className="text-gray-300">·</span>
+                  <button
+                    onClick={() => setVisibleCount(recentTransactions.length)}
+                    className="text-sm text-gray-500 hover:text-gray-700"
+                  >
+                    View all {recentTransactions.length} transactions
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </CardContent>

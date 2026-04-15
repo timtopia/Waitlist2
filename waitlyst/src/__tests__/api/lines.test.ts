@@ -114,7 +114,7 @@ describe("Lines API", () => {
   describe("GET /api/lines", () => {
     it("should return only public active lines", async () => {
       mockPrisma.line.findMany.mockResolvedValue([
-        { id: "line-1", name: "Public Line", isPublic: true, isActive: true },
+        { id: "line-1", name: "Public Line", isPublic: true, isActive: true, positions: [] },
       ])
 
       const { GET } = await import("@/app/api/lines/route")

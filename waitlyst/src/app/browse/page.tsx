@@ -20,6 +20,7 @@ interface Line {
   createdBy: { name: string | null; image: string | null }
   _count: { positions: number }
   createdAt: string
+  lowestAskingPrice: number | null
 }
 
 type FilterStatus = "all" | "open" | "upcoming" | "closed"

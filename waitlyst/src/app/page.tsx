@@ -1,10 +1,17 @@
 import Link from "next/link"
 import { auth } from "@/auth"
+import { prisma } from "@/lib/prisma"
+import { StatsBar } from "@/components/StatsBar"
 
 export const revalidate = 60 // Cache landing page for 60 seconds
 
 export default async function HomePage() {
-  const session = await auth()
+  const [session, activeLines, peopleInQueues, positionsTraded] = await Promise.all([
+    auth(),
+    prisma.line.count({ where: { isActive: true } }),
+    prisma.linePosition.count(),
+    prisma.transaction.count({ where: { status: "COMPLETED" } }),
+  ])
 
   return (
     <div>
@@ -53,6 +60,13 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* Live Platform Stats */}
+      <StatsBar
+        activeLines={activeLines}
+        peopleInQueues={peopleInQueues}
+        positionsTraded={positionsTraded}
+      />
 
       {/* How It Works */}
       <section id="how-it-works" className="bg-white py-16 sm:py-20">
