@@ -3,12 +3,12 @@ import { AnimatedStat } from "./AnimatedStat"
 interface StatsBarProps {
   activeLines: number
   peopleInQueues: number
-  positionsTraded: number
+  swapsCompleted: number
 }
 
-export function StatsBar({ activeLines, peopleInQueues, positionsTraded }: StatsBarProps) {
+export function StatsBar({ activeLines, peopleInQueues, swapsCompleted }: StatsBarProps) {
   // Hide entirely if there are no stats to show
-  if (activeLines === 0 && peopleInQueues === 0 && positionsTraded === 0) {
+  if (activeLines === 0 && peopleInQueues === 0 && swapsCompleted === 0) {
     return null
   }
 
@@ -18,7 +18,7 @@ export function StatsBar({ activeLines, peopleInQueues, positionsTraded }: Stats
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-12">
           <AnimatedStat value={activeLines} label="Active Lines" />
           <AnimatedStat value={peopleInQueues} label="People in Queues" />
-          <AnimatedStat value={positionsTraded} label="Positions Traded" />
+          <AnimatedStat value={swapsCompleted} label="Swaps Completed" />
         </div>
       </div>
     </section>

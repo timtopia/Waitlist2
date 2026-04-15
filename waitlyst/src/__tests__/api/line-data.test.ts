@@ -129,7 +129,7 @@ describe("GET /api/lines/[lineId]/export", () => {
     expect(lines[1]).toContain("1,Alice,alice@test.com,")
     expect(lines[1]).toContain(",In Line")
     expect(lines[2]).toContain("2,Bob,bob@test.com,")
-    expect(lines[2]).toContain("$25.00,For Sale")
+    expect(lines[2]).toContain("$25.00,Open to Swap")
   })
 
   it("should handle names with commas by quoting them", async () => {

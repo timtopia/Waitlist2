@@ -6,7 +6,7 @@ import { StatsBar } from "@/components/StatsBar"
 export const revalidate = 60 // Cache landing page for 60 seconds
 
 export default async function HomePage() {
-  const [session, activeLines, peopleInQueues, positionsTraded] = await Promise.all([
+  const [session, activeLines, peopleInQueues, swapsCompleted] = await Promise.all([
     auth(),
     prisma.line.count({ where: { isActive: true } }),
     prisma.linePosition.count(),
@@ -22,11 +22,11 @@ export default async function HomePage() {
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight mb-6">
               Skip the wait.
               <br />
-              <span className="text-blue-200">Trade your place in line.</span>
+              <span className="text-blue-200">Swap your place in line.</span>
             </h1>
             <p className="text-lg sm:text-xl text-blue-100 mb-8 max-w-2xl">
               Waitlyst lets you create virtual queues for drops, launches, and events.
-              People join your line and can trade positions — buy the spot ahead or sell yours for profit.
+              People join your line and can swap spots with the person next to you.
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
               {session ? (
@@ -65,7 +65,7 @@ export default async function HomePage() {
       <StatsBar
         activeLines={activeLines}
         peopleInQueues={peopleInQueues}
-        positionsTraded={positionsTraded}
+        swapsCompleted={swapsCompleted}
       />
 
       {/* How It Works */}
@@ -114,10 +114,10 @@ export default async function HomePage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                 </svg>
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">Trade Positions</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">Swap Spots</h3>
               <p className="text-gray-600">
-                Don't want to wait? Buy the spot ahead of you.
-                Want to leave? Sell your position and earn money.
+                Don't want to wait? Swap with the person ahead of you for a small fee.
+                Want to leave? Set a swap price and let someone take your spot.
               </p>
             </div>
           </div>
@@ -136,7 +136,7 @@ export default async function HomePage() {
               <div className="text-3xl mb-3">👟</div>
               <h3 className="font-semibold text-gray-900 mb-2">Sneaker Drops</h3>
               <p className="text-sm text-gray-600">
-                Queue up before the drop goes live. Trade your spot or buy your way to the front of the line.
+                Queue up before the drop goes live. Swap spots with the person next to you to move up.
               </p>
             </div>
             <div className="bg-white rounded-xl p-6 border border-gray-200">
@@ -150,14 +150,14 @@ export default async function HomePage() {
               <div className="text-3xl mb-3">🚀</div>
               <h3 className="font-semibold text-gray-900 mb-2">Product Launches</h3>
               <p className="text-sm text-gray-600">
-                Build hype before launch day. Fans join the waitlist and trade positions as demand grows.
+                Build hype before launch day. Fans join the waitlist and swap positions as demand grows.
               </p>
             </div>
             <div className="bg-white rounded-xl p-6 border border-gray-200">
               <div className="text-3xl mb-3">🎪</div>
               <h3 className="font-semibold text-gray-900 mb-2">Pop-Up Events</h3>
               <p className="text-sm text-gray-600">
-                Limited-capacity pop-ups, tastings, or experiences. First come, first served — with position trading.
+                Limited-capacity pop-ups, tastings, or experiences. First come, first served — with position swapping.
               </p>
             </div>
           </div>

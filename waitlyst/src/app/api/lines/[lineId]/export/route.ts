@@ -40,8 +40,8 @@ export async function GET(
     const isLocked = pos.lockedUntil && new Date(pos.lockedUntil) > new Date()
     const status = pos.askingPrice !== null
       ? isLocked
-        ? "For Sale (Locked)"
-        : "For Sale"
+        ? "Open to Swap (Locked)"
+        : "Open to Swap"
       : "In Line"
 
     return [

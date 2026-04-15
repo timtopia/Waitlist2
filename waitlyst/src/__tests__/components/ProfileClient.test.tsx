@@ -145,8 +145,8 @@ describe("ProfileClient", () => {
 
     expect(screen.getByText("5 lines created")).toBeInTheDocument()
     expect(screen.getByText("3 active positions")).toBeInTheDocument()
-    expect(screen.getByText("8 bought")).toBeInTheDocument()
-    expect(screen.getByText("4 sold")).toBeInTheDocument()
+    expect(screen.getByText("8 swaps made")).toBeInTheDocument()
+    expect(screen.getByText("4 swaps received")).toBeInTheDocument()
   })
 
   it("renders financial summary with total available and breakdowns", () => {
@@ -165,7 +165,7 @@ describe("ProfileClient", () => {
     expect(screen.getByText("Ready to withdraw")).toBeInTheDocument()
 
     // Seller and Owner section headings
-    expect(screen.getByText("Seller Earnings")).toBeInTheDocument()
+    expect(screen.getByText("Swap Earnings")).toBeInTheDocument()
     expect(screen.getByText("Owner Fee Earnings")).toBeInTheDocument()
 
     // Seller breakdown amounts
@@ -216,12 +216,12 @@ describe("ProfileClient", () => {
 
     // Buyer transaction shows negative amount
     expect(screen.getByText("-$25.00")).toBeInTheDocument()
-    expect(screen.getByText("Bought position")).toBeInTheDocument()
+    expect(screen.getByText("Swapped up")).toBeInTheDocument()
 
     // Seller transactions show positive amounts
     expect(screen.getByText("+$50.00")).toBeInTheDocument()
     expect(screen.getByText("+$15.00")).toBeInTheDocument()
-    const soldLabels = screen.getAllByText("Sold position")
+    const soldLabels = screen.getAllByText("Swapped down")
     expect(soldLabels).toHaveLength(2)
 
     // Statuses are displayed
@@ -243,7 +243,7 @@ describe("ProfileClient", () => {
     expect(screen.getByText("No transactions yet.")).toBeInTheDocument()
     expect(
       screen.getByText(
-        "Buy or sell a position in a line to see your transaction history here."
+        "Swap a position in a line to see your transaction history here."
       )
     ).toBeInTheDocument()
   })

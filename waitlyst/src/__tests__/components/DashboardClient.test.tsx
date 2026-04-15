@@ -103,7 +103,7 @@ describe("DashboardClient", () => {
     render(<DashboardClient createdLines={[]} positions={mockPositions} />)
     expect(screen.getByText("Another Line")).toBeInTheDocument()
     expect(screen.getByText("#2")).toBeInTheDocument()
-    expect(screen.getByText("For sale: $15.00")).toBeInTheDocument()
+    expect(screen.getByText("Open to swap: $15.00")).toBeInTheDocument()
   })
 
   it("renders created lines", () => {

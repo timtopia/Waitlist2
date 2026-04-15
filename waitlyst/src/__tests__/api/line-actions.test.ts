@@ -15,6 +15,7 @@ const mockPrisma = {
   },
   transaction: {
     update: vi.fn(),
+    findMany: vi.fn(),
   },
   user: {
     update: vi.fn(),
@@ -36,6 +37,11 @@ vi.mock("@/auth", () => ({
 // Mock settle-transactions
 vi.mock("@/lib/settle-transactions", () => ({
   settleTransactionsForUser: vi.fn().mockResolvedValue(0),
+}))
+
+// Mock stripe
+vi.mock("@/lib/stripe", () => ({
+  refundTransactions: vi.fn().mockResolvedValue(0),
 }))
 
 // Mock fees
@@ -618,8 +624,10 @@ describe("POST /api/lines/[lineId]/remove-front", () => {
       userId: "user-1",
       position: 1,
       lockedBy: null,
+      fulfilled: false,
       user: { name: "Alice" },
     })
+    mockPrisma.transaction.findMany.mockResolvedValue([])
     mockPrisma.linePosition.delete.mockResolvedValue({ id: "pos-1" })
     mockPrisma.linePosition.updateMany.mockResolvedValue({ count: 2 })
 
@@ -655,8 +663,10 @@ describe("POST /api/lines/[lineId]/remove-front", () => {
       userId: "user-1",
       position: 1,
       lockedBy: "txn-pending",
+      fulfilled: false,
       user: { name: "Bob" },
     })
+    mockPrisma.transaction.findMany.mockResolvedValue([])
     mockPrisma.transaction.update.mockResolvedValue({ id: "txn-pending", status: "FAILED" })
     mockPrisma.linePosition.updateMany.mockResolvedValue({ count: 0 })
     mockPrisma.linePosition.delete.mockResolvedValue({ id: "pos-1" })

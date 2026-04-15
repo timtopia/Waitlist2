@@ -58,9 +58,14 @@ export async function POST(
           })
         }
 
-        if (action === "refund") {
-          // Get unsettled completed transactions where this user was the buyer
-          const purchasesToRefund = await tx.transaction.findMany({
+        // Determine if we need to refund buyer transactions.
+        // If the position is NOT fulfilled, swap payments should be refunded
+        // since the buyer never received the item.
+        const shouldRefundBuyer = action === "refund" || !positionToRemove.fulfilled
+
+        let purchasesToRefund: { id: string; stripePaymentId: string | null; amount: number }[] = []
+        if (shouldRefundBuyer) {
+          purchasesToRefund = await tx.transaction.findMany({
             where: {
               lineId,
               buyerId: userId,
@@ -68,7 +73,9 @@ export async function POST(
               settledAt: null,
             },
           })
+        }
 
+        if (purchasesToRefund.length > 0) {
           return {
             userId,
             positionToRemove,
@@ -99,7 +106,7 @@ export async function POST(
       })
 
       // Process refunds outside the transaction (Stripe calls)
-      if (action === "refund" && result.purchasesToRefund.length > 0) {
+      if (result.purchasesToRefund.length > 0) {
         await refundTransactions(result.purchasesToRefund)
 
         // Now delete the position after refunds are processed

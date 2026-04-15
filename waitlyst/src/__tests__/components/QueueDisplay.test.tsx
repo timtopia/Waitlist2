@@ -39,9 +39,17 @@ describe("QueueDisplay", () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({}),
+    ;(fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (typeof url === "string" && url.includes("/offer")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ sent: [], received: [] }),
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      })
     })
   })
 
@@ -115,24 +123,7 @@ describe("QueueDisplay", () => {
     expect(screen.getByText("(Next up)")).toBeInTheDocument()
   })
 
-  it("shows asking price for positions that are for sale", () => {
-    ;(useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
-      data: { user: { id: "viewer" } },
-      status: "authenticated",
-    })
-
-    render(
-      <QueueDisplay
-        lineId="line-1"
-        positions={mockPositions}
-        onRefresh={mockOnRefresh}
-      />
-    )
-
-    expect(screen.getByText("For sale: $25.00")).toBeInTheDocument()
-  })
-
-  it("shows buy button when position in front is for sale", () => {
+  it("shows Offer to Swap button for position directly in front", () => {
     ;(useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       data: { user: { id: "user-2" } },
       status: "authenticated",
@@ -146,12 +137,12 @@ describe("QueueDisplay", () => {
       />
     )
 
-    expect(screen.getByText("Buy for $25.00")).toBeInTheDocument()
+    expect(screen.getByText("Offer to Swap")).toBeInTheDocument()
   })
 
-  it("shows Sell Position button for current user", () => {
+  it("shows offer input when Offer to Swap is clicked", () => {
     ;(useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
-      data: { user: { id: "user-3" } },
+      data: { user: { id: "user-2" } },
       status: "authenticated",
     })
 
@@ -163,7 +154,105 @@ describe("QueueDisplay", () => {
       />
     )
 
-    expect(screen.getByText("Sell Position")).toBeInTheDocument()
+    const offerButton = screen.getByText("Offer to Swap")
+    fireEvent.click(offerButton)
+
+    expect(screen.getByPlaceholderText("0.00")).toBeInTheDocument()
+    expect(screen.getByText("Send Offer")).toBeInTheDocument()
+  })
+
+  it("shows incoming offer with accept/decline buttons", async () => {
+    ;(useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      data: { user: { id: "user-1" } },
+      status: "authenticated",
+    })
+
+    ;(fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (typeof url === "string" && url.includes("/offer")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            sent: [],
+            received: [
+              {
+                id: "offer-1",
+                lineId: "line-1",
+                fromUserId: "user-2",
+                toUserId: "user-1",
+                amount: 15,
+                status: "PENDING",
+                createdAt: new Date().toISOString(),
+              },
+            ],
+          }),
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      })
+    })
+
+    render(
+      <QueueDisplay
+        lineId="line-1"
+        positions={mockPositions}
+        onRefresh={mockOnRefresh}
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText(/Swap offer: \$15\.00 from Bob/)).toBeInTheDocument()
+    })
+
+    expect(screen.getByText("Accept")).toBeInTheDocument()
+    expect(screen.getByText("Decline")).toBeInTheDocument()
+  })
+
+  it("shows pending offer status", async () => {
+    ;(useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      data: { user: { id: "user-2" } },
+      status: "authenticated",
+    })
+
+    ;(fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (typeof url === "string" && url.includes("/offer")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            sent: [
+              {
+                id: "offer-1",
+                lineId: "line-1",
+                fromUserId: "user-2",
+                toUserId: "user-1",
+                amount: 20,
+                status: "PENDING",
+                createdAt: new Date().toISOString(),
+              },
+            ],
+            received: [],
+          }),
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      })
+    })
+
+    render(
+      <QueueDisplay
+        lineId="line-1"
+        positions={mockPositions}
+        onRefresh={mockOnRefresh}
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText(/Offer sent: \$20\.00/)).toBeInTheDocument()
+      expect(screen.getByText(/Waiting for response/)).toBeInTheDocument()
+    })
   })
 
   it("shows Leave button for current user", () => {
@@ -202,91 +291,6 @@ describe("QueueDisplay", () => {
     expect(removeButtons.length).toBe(3) // One for each position
   })
 
-  it("calls checkout API when buy button is clicked", async () => {
-    ;(useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
-      data: { user: { id: "user-2" } },
-      status: "authenticated",
-    })
-    ;(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ url: "https://checkout.stripe.com/session" }),
-    })
-
-    // Mock window.location
-    const mockLocation = { href: "" }
-    Object.defineProperty(window, "location", {
-      value: mockLocation,
-      writable: true,
-    })
-
-    render(
-      <QueueDisplay
-        lineId="line-1"
-        positions={mockPositions}
-        onRefresh={mockOnRefresh}
-      />
-    )
-
-    // Click buy button to open confirmation modal
-    const buyButton = screen.getByText("Buy for $25.00")
-    fireEvent.click(buyButton)
-
-    // Confirm the purchase in the modal (no feeInfo prop → label is "Buy")
-    const confirmButton = screen.getByText("Buy")
-    fireEvent.click(confirmButton)
-
-    await waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith("/api/lines/line-1/checkout", {
-        method: "POST",
-      })
-    })
-  })
-
-  it("opens price editing when Sell Position is clicked", () => {
-    ;(useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
-      data: { user: { id: "user-3" } },
-      status: "authenticated",
-    })
-
-    render(
-      <QueueDisplay
-        lineId="line-1"
-        positions={mockPositions}
-        onRefresh={mockOnRefresh}
-        hasPayoutSetup={true}
-      />
-    )
-
-    const sellButton = screen.getByText("Sell Position")
-    fireEvent.click(sellButton)
-
-    expect(screen.getByPlaceholderText("0.00")).toBeInTheDocument()
-    expect(screen.getByText("Set")).toBeInTheDocument()
-  })
-
-  it("shows payout setup prompt when selling without connected account", () => {
-    ;(useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
-      data: { user: { id: "user-3" } },
-      status: "authenticated",
-    })
-
-    render(
-      <QueueDisplay
-        lineId="line-1"
-        positions={mockPositions}
-        onRefresh={mockOnRefresh}
-        hasPayoutSetup={false}
-      />
-    )
-
-    const sellButton = screen.getByText("Sell Position")
-    fireEvent.click(sellButton)
-
-    expect(screen.getByText("Connect a payout account to sell your position")).toBeInTheDocument()
-    expect(screen.getByText("Set up payouts in Profile")).toBeInTheDocument()
-    expect(screen.queryByPlaceholderText("0.00")).not.toBeInTheDocument()
-  })
-
   it("shows confirm modal before leaving a line", async () => {
     ;(useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       data: { user: { id: "user-3" } },
@@ -316,12 +320,12 @@ describe("QueueDisplay", () => {
     // Clicking cancel should dismiss the modal and not call any leave/action fetch
     const cancelButton = screen.getByText("Cancel")
     fireEvent.click(cancelButton)
-    // The only fetch call should be the wait-time estimate (automatic on mount)
+    // The only fetch calls should be automatic on mount (wait-time + offers)
     const fetchCalls = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const nonWaitTimeCalls = fetchCalls.filter(
-      (call: unknown[]) => typeof call[0] === "string" && !call[0].includes("wait-time")
+    const nonAutoFetchCalls = fetchCalls.filter(
+      (call: unknown[]) => typeof call[0] === "string" && !call[0].includes("wait-time") && !call[0].includes("/offer")
     )
-    expect(nonWaitTimeCalls).toHaveLength(0)
+    expect(nonAutoFetchCalls).toHaveLength(0)
   })
 
   describe("Position Locking", () => {
@@ -359,7 +363,7 @@ describe("QueueDisplay", () => {
       expect(screen.getByText(/pending/i)).toBeInTheDocument()
     })
 
-    it("does not show buy button for locked positions", () => {
+    it("does not show offer button for locked positions", () => {
       ;(useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
         data: { user: { id: "user-2" } },
         status: "authenticated",
@@ -373,10 +377,10 @@ describe("QueueDisplay", () => {
         />
       )
 
-      expect(screen.queryByText(/Buy for/)).not.toBeInTheDocument()
+      expect(screen.queryByText("Offer to Swap")).not.toBeInTheDocument()
     })
 
-    it("shows buy button when lock has expired", () => {
+    it("shows offer button when lock has expired", () => {
       const expiredLockPositions = [
         {
           id: "pos-1",
@@ -407,7 +411,7 @@ describe("QueueDisplay", () => {
         />
       )
 
-      expect(screen.getByText("Buy for $25.00")).toBeInTheDocument()
+      expect(screen.getByText("Offer to Swap")).toBeInTheDocument()
     })
   })
 
@@ -566,26 +570,26 @@ describe("QueueDisplay", () => {
         status: "authenticated",
       })
 
-      ;(fetch as unknown as ReturnType<typeof vi.fn>)
-        .mockResolvedValueOnce({
+      const fetchResponses: Record<string, unknown> = {
+        "wait-time": { estimatedMinutesPerPerson: null, basedOn: 0 },
+        "offer": { sent: [], received: [] },
+        "position-transactions": {
+          asBuyer: [],
+          asSeller: [],
+          totalPaid: 0,
+          totalReceived: 0,
+          netAmount: 0,
+          downstreamBuyers: [],
+        },
+        "remove-position": { success: true },
+      }
+      ;(fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+        const key = Object.keys(fetchResponses).find(k => url.includes(k))
+        return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({ estimatedMinutesPerPerson: null, basedOn: 0 }),
+          json: () => Promise.resolve(key ? fetchResponses[key] : {}),
         })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({
-            asBuyer: [],
-            asSeller: [],
-            totalPaid: 0,
-            totalReceived: 0,
-            netAmount: 0,
-            downstreamBuyers: [],
-          }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ success: true }),
-        })
+      })
 
       render(
         <QueueDisplay
@@ -623,28 +627,28 @@ describe("QueueDisplay", () => {
         status: "authenticated",
       })
 
-      ;(fetch as unknown as ReturnType<typeof vi.fn>)
-        .mockResolvedValueOnce({
+      const fetchResponses: Record<string, unknown> = {
+        "wait-time": { estimatedMinutesPerPerson: null, basedOn: 0 },
+        "offer": { sent: [], received: [] },
+        "position-transactions": {
+          asBuyer: [{ id: "txn-1", amount: 50, status: "COMPLETED" }],
+          asSeller: [],
+          totalPaid: 50,
+          totalReceived: 0,
+          totalRefundedToBuyer: 0,
+          totalRefundedAsSeller: 0,
+          netAmount: -50,
+          downstreamBuyers: [],
+        },
+        "remove-position": { success: true, refundedAmount: 50, refundedCount: 1 },
+      }
+      ;(fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+        const key = Object.keys(fetchResponses).find(k => url.includes(k))
+        return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({ estimatedMinutesPerPerson: null, basedOn: 0 }),
+          json: () => Promise.resolve(key ? fetchResponses[key] : {}),
         })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({
-            asBuyer: [{ id: "txn-1", amount: 50, status: "COMPLETED" }],
-            asSeller: [],
-            totalPaid: 50,
-            totalReceived: 0,
-            totalRefundedToBuyer: 0,
-            totalRefundedAsSeller: 0,
-            netAmount: -50,
-            downstreamBuyers: [],
-          }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ success: true, refundedAmount: 50, refundedCount: 1 }),
-        })
+      })
 
       render(
         <QueueDisplay

@@ -57,22 +57,14 @@ interface Line {
     position: number
     askingPrice: number | null
     lockedUntil: string | null
+    fulfilled: boolean
+    fulfilledAt: string | null
     user: {
       id: string
       name: string | null
       image: string | null
     }
   }[]
-}
-
-interface MarketData {
-  avgPrice: number
-  minPrice: number
-  maxPrice: number
-  volume: number
-  count: number
-  currentListings: number
-  lowestAsk: number | null
 }
 
 export function LineDetailClient({ lineId }: { lineId: string }) {
@@ -90,7 +82,6 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [activities, setActivities] = useState<ActivityItem[]>([])
   const [activitiesLoading, setActivitiesLoading] = useState(true)
   const [showAllActivity, setShowAllActivity] = useState(false)
-  const [marketData, setMarketData] = useState<MarketData | null>(null)
   const [showQrModal, setShowQrModal] = useState(false)
   const [qrSvg, setQrSvg] = useState<string | null>(null)
   const [qrLoading, setQrLoading] = useState(false)
@@ -193,36 +184,17 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     fetchActivity()
   }, [fetchActivity])
 
-  // Fetch market data
-  const fetchMarketData = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/lines/${lineId}/market`)
-      if (res.ok) {
-        const data = await res.json()
-        setMarketData(data)
-      }
-    } catch {
-      // Market data is non-critical
-    }
-  }, [lineId])
-
-  useEffect(() => {
-    fetchMarketData()
-  }, [fetchMarketData])
-
   const handleLineUpdate = useCallback((event: LineUpdateEvent) => {
     if (event.type === "poll-update" && event.data) {
       // Poll detected a change — use the fresh data directly (no extra fetch)
       setLine(event.data as Line)
       fetchActivity()
-      fetchMarketData()
       return
     }
 
     // SSE event — refetch and notify
     fetchLine()
     fetchActivity()
-    fetchMarketData()
 
     const messages: Record<string, string> = {
       join: `${event.userName || "Someone"} joined the line`,
@@ -236,7 +208,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     if (message) {
       sendNotification(`Waitlyst - ${line?.name || "Line Update"}`, { body: message })
     }
-  }, [fetchLine, fetchActivity, fetchMarketData, sendNotification, line?.name])
+  }, [fetchLine, fetchActivity, sendNotification, line?.name])
 
   // Subscribe to real-time updates
   useLineUpdates(lineId, handleLineUpdate)
@@ -252,7 +224,6 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const canJoin = !isInLine && !isCreator && !lineNotYetOpen && !lineClosed && !lineFull && !linePaused
   const userPosition = line?.positions.find((p) => p.user.id === session?.user?.id)
   const hasProductInfo = !!(line?.productName || line?.productImage)
-  const hasMarketData = marketData && (marketData.count > 0 || marketData.currentListings > 0)
 
   async function handleJoin() {
     if (!session) {
@@ -423,42 +394,6 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         </Card>
       )}
 
-      {/* Market Data Strip */}
-      {hasMarketData && (
-        <div className="mb-6 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600">
-            <span className="font-medium text-gray-500 text-xs uppercase tracking-wide">Market</span>
-            {marketData.count > 0 && (
-              <>
-                <span>
-                  Avg: <span className="font-semibold text-gray-800">${marketData.avgPrice.toFixed(2)}</span>
-                </span>
-                <span className="text-gray-300">|</span>
-                <span>
-                  Range: <span className="font-semibold text-gray-800">${marketData.minPrice.toFixed(2)}&ndash;${marketData.maxPrice.toFixed(2)}</span>
-                </span>
-              </>
-            )}
-            {marketData.currentListings > 0 && (
-              <>
-                {marketData.count > 0 && <span className="text-gray-300">|</span>}
-                <span>
-                  <span className="font-semibold text-gray-800">{marketData.currentListings}</span> listing{marketData.currentListings !== 1 ? "s" : ""}
-                </span>
-              </>
-            )}
-            {marketData.lowestAsk != null && (
-              <>
-                <span className="text-gray-300">|</span>
-                <span>
-                  Lowest ask: <span className="font-semibold text-gray-800">${marketData.lowestAsk.toFixed(2)}</span>
-                </span>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
       <Card className="mb-6">
         <CardHeader>
           <div className="flex items-start justify-between">
@@ -566,8 +501,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                 <p className="font-semibold text-amber-800">This line is currently paused</p>
                 <p className="text-sm text-amber-600">
                   {isCreator
-                    ? "You have paused this line. No one can join or buy positions until you resume it."
-                    : "New joins and position purchases are temporarily disabled."}
+                    ? "You have paused this line. No one can join or swap positions until you resume it."
+                    : "New joins and position swaps are temporarily disabled."}
                 </p>
               </div>
             </div>

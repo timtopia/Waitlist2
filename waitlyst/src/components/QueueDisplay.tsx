@@ -6,7 +6,6 @@ import { ConfirmModal } from "./ui/ConfirmModal"
 import { useToast } from "./ui/Toast"
 import { useState, useEffect, useCallback } from "react"
 import { useSession } from "next-auth/react"
-import { calcFees } from "@/lib/fees"
 import { formatCurrency } from "@/lib/format"
 
 interface Position {
@@ -14,11 +13,23 @@ interface Position {
   position: number
   askingPrice: number | null
   lockedUntil: string | null
+  fulfilled?: boolean
+  fulfilledAt?: string | null
   user: {
     id: string
     name: string | null
     image: string | null
   }
+}
+
+interface SwapOffer {
+  id: string
+  lineId: string
+  fromUserId: string
+  toUserId: string
+  amount: number
+  status: "PENDING" | "ACCEPTED" | "DECLINED"
+  createdAt: string
 }
 
 interface TransactionInfo {
@@ -67,16 +78,21 @@ function formatWaitTime(minutes: number): string {
   return `~${Math.round(hours)} hrs`
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, feeInfo, isPaused = false, hasPayoutSetup = false, allowResale = true, maxAskingPrice = null, hideCapacity = false }: QueueDisplayProps) {
   const { data: session } = useSession()
   const { addToast } = useToast()
   const [loadingAction, setLoadingAction] = useState<string | null>(null)
-  const [priceInput, setPriceInput] = useState<{ [key: string]: string }>({})
-  const [editingPrice, setEditingPrice] = useState<string | null>(null)
   const [removalModal, setRemovalModal] = useState<RemovalModal | null>(null)
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
-  const [showBuyConfirm, setShowBuyConfirm] = useState(false)
   const [waitTimeData, setWaitTimeData] = useState<{ estimatedMinutesPerPerson: number | null; basedOn: number } | null>(null)
+
+  // Offer system state
+  const [sentOffers, setSentOffers] = useState<SwapOffer[]>([])
+  const [receivedOffers, setReceivedOffers] = useState<SwapOffer[]>([])
+  const [offerFormOpen, setOfferFormOpen] = useState<string | null>(null)
+  const [offerAmount, setOfferAmount] = useState("")
+  const [offerLoading, setOfferLoading] = useState(false)
 
   // Batch select state
   const [selectMode, setSelectMode] = useState(false)
@@ -92,56 +108,99 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
         setWaitTimeData(data)
       }
     } catch {
-      // Silently fail — wait time is non-critical
+      // Silently fail
     }
   }, [lineId])
+
+  const fetchOffers = useCallback(async () => {
+    if (!session?.user?.id) return
+    try {
+      const res = await fetch(`/api/lines/${lineId}/offer`)
+      if (res.ok) {
+        const data = await res.json()
+        setSentOffers(data.sent)
+        setReceivedOffers(data.received)
+      }
+    } catch {
+      // Silently fail
+    }
+  }, [lineId, session?.user?.id])
 
   useEffect(() => {
     fetchWaitTime()
   }, [fetchWaitTime, positions.length])
+
+  useEffect(() => {
+    fetchOffers()
+  }, [fetchOffers, positions.length])
 
   const currentUserPosition = positions.find((p) => p.user.id === session?.user?.id)
   const positionInFront = currentUserPosition
     ? positions.find((p) => p.position === currentUserPosition.position - 1)
     : null
 
-  async function handleSetPrice(positionId: string) {
-    const price = priceInput[positionId]
-    if (!price && price !== "") return
+  // Find the sent offer for the person directly in front
+  const sentOfferToFront = positionInFront
+    ? sentOffers.find((o) => o.toUserId === positionInFront.user.id)
+    : null
 
-    setLoadingAction(`price-${positionId}`)
-    try {
-      const res = await fetch(`/api/lines/${lineId}/price`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ price: price === "" ? null : parseFloat(price) }),
-      })
-      if (res.ok) {
-        onRefresh()
-        setEditingPrice(null)
-      }
-    } finally {
-      setLoadingAction(null)
+  async function handleSendOffer(toUserId: string) {
+    const amount = parseFloat(offerAmount)
+    if (!amount || amount <= 0) {
+      addToast("Please enter a valid amount", "error")
+      return
     }
-  }
+    if (maxAskingPrice != null && amount > maxAskingPrice) {
+      addToast(`Amount exceeds max price of ${formatCurrency(maxAskingPrice)}`, "error")
+      return
+    }
 
-  async function handleBuy() {
-    setShowBuyConfirm(false)
-    setLoadingAction("buy")
+    setOfferLoading(true)
     try {
-      const res = await fetch(`/api/lines/${lineId}/checkout`, {
+      const res = await fetch(`/api/lines/${lineId}/offer`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ toUserId, amount }),
       })
       const data = await res.json()
       if (res.ok) {
-        if (data.url) {
-          window.location.href = data.url
-        } else if (data.devMode) {
-          addToast("Position purchased! You moved up.", "success")
-          onRefresh()
-        }
+        addToast("Offer sent", "success")
+        setOfferFormOpen(null)
+        setOfferAmount("")
+        fetchOffers()
       } else {
-        addToast(data.error || "Failed to start checkout", "error")
+        addToast(data.error || "Failed to send offer", "error")
+      }
+    } finally {
+      setOfferLoading(false)
+    }
+  }
+
+  async function handleRespondToOffer(offerId: string, action: "accept" | "decline") {
+    setLoadingAction(`offer-${offerId}`)
+    try {
+      const res = await fetch(`/api/lines/${lineId}/offer/${offerId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        if (action === "accept") {
+          if (data.checkoutUrl) {
+            window.location.href = data.checkoutUrl
+            return
+          } else if (data.devMode) {
+            addToast("Swap completed!", "success")
+            onRefresh()
+          }
+        } else {
+          addToast("Offer declined", "info")
+        }
+        fetchOffers()
+        onRefresh()
+      } else {
+        addToast(data.error || "Failed to respond to offer", "error")
       }
     } finally {
       setLoadingAction(null)
@@ -211,6 +270,30 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
       } else {
         const data = await res.json()
         addToast(data.error || "Failed to remove person", "error")
+      }
+    } finally {
+      setLoadingAction(null)
+    }
+  }
+
+  async function handleFulfill(positionId: string) {
+    setLoadingAction(`fulfill-${positionId}`)
+    try {
+      const res = await fetch(`/api/lines/${lineId}/fulfill`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ positionId }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        const payoutMsg = data.payoutsReleased > 0
+          ? ` (${data.payoutsReleased} payout${data.payoutsReleased === 1 ? "" : "s"} released)`
+          : ""
+        addToast(`Marked as fulfilled${payoutMsg}`, "success")
+        onRefresh()
+      } else {
+        const data = await res.json()
+        addToast(data.error || "Failed to fulfill", "error")
       }
     } finally {
       setLoadingAction(null)
@@ -368,29 +451,6 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
         onCancel={() => setShowLeaveConfirm(false)}
       />
 
-      {/* Buy Confirmation */}
-      {(() => {
-        const buyFees = positionInFront?.askingPrice && feeInfo ? calcFees(positionInFront.askingPrice, feeInfo.ownerFeePercent, feeInfo.platformFeePercent) : null
-        const hasFees = buyFees && (buyFees.ownerFee > 0 || buyFees.platformFee > 0)
-        const maxPriceNote = maxAskingPrice != null ? `\nMax allowed price for this line: ${formatCurrency(maxAskingPrice)}` : ""
-        return (
-          <ConfirmModal
-            open={showBuyConfirm}
-            title="Buy Position"
-            message={positionInFront?.askingPrice
-              ? hasFees
-                ? `Position price: ${formatCurrency(positionInFront.askingPrice)}\nFees: ${formatCurrency(buyFees!.ownerFee + buyFees!.platformFee)}\nTotal: ${formatCurrency(buyFees!.total)}${maxPriceNote}\n\nYou'll swap places with the person in front.`
-                : `Buy the position ahead of you for ${formatCurrency(positionInFront.askingPrice)}?${maxPriceNote} You'll swap places with the person in front.`
-              : "Buy the position ahead of you?"}
-            confirmLabel={buyFees ? `Pay ${formatCurrency(buyFees.total)}` : "Buy"}
-            variant="primary"
-            isLoading={loadingAction === "buy"}
-            onConfirm={handleBuy}
-            onCancel={() => setShowBuyConfirm(false)}
-          />
-        )
-      })()}
-
       {/* Batch Remove Confirm Modal */}
       {showBatchConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -432,7 +492,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
       {/* Resale disabled note */}
       {!allowResale && positions.length > 0 && (
         <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5">
-          <p className="text-sm text-gray-500">Position trading is disabled for this line</p>
+          <p className="text-sm text-gray-500">Swapping is disabled for this line</p>
         </div>
       )}
 
@@ -447,7 +507,6 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => {
-                      // Select all non-self positions
                       const allIds = positions
                         .filter((p) => p.user.id !== session?.user?.id)
                         .map((p) => p.id)
@@ -492,245 +551,232 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
           {positions.map((pos) => {
             const isCurrentUser = pos.user.id === session?.user?.id
             const isLocked = pos.lockedUntil && new Date(pos.lockedUntil) > new Date()
-            const isForSale = pos.askingPrice !== null && !isLocked
-            const canBuy =
-              positionInFront?.id === pos.id && pos.askingPrice !== null && !isLocked && !isPaused && allowResale
             const isFront = pos.position === 1
             const isSelected = selectedIds.has(pos.id)
             const canSelect = selectMode && isCreator && !isCurrentUser
+            const isDirectlyInFront = positionInFront?.id === pos.id
+            const hasIncomingOffer = isCurrentUser && receivedOffers.some((o) => o.status === "PENDING")
 
-            // Left border accent: green for sale, amber for pending, transparent otherwise
-            const leftBorder = isLocked
+            const leftBorder = hasIncomingOffer
               ? "border-l-4 border-l-amber-400"
-              : isForSale
-              ? "border-l-4 border-l-green-400"
+              : isLocked
+              ? "border-l-4 border-l-amber-400"
               : "border-l-4 border-l-transparent"
 
             return (
               <div
                 key={pos.id}
                 onClick={canSelect ? () => toggleSelection(pos.id) : undefined}
-                className={`flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 rounded-lg border ${leftBorder} ${
+                className={`flex flex-col p-4 rounded-lg border ${leftBorder} ${
                   isSelected
                     ? "bg-blue-50 border-blue-300 ring-1 ring-blue-300"
+                    : hasIncomingOffer
+                    ? "bg-amber-50 border-amber-200"
                     : isCurrentUser
                     ? "bg-blue-50 border-blue-200"
                     : isFront
                     ? "bg-green-50 border-green-200"
                     : isLocked
                     ? "bg-amber-50/50 border-amber-200"
-                    : isForSale
-                    ? "bg-white border-gray-200"
                     : "bg-white border-gray-200"
                 } ${canSelect ? "cursor-pointer" : ""}`}
               >
-                <div className="flex items-center space-x-4 min-w-0">
-                  {canSelect && (
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => toggleSelection(pos.id)}
-                      onClick={(e) => e.stopPropagation()}
-                      className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 flex-shrink-0"
-                    />
-                  )}
-                  <div className={`w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center font-bold ${
-                    isFront ? "bg-green-200 text-green-700" : "bg-gray-200 text-gray-600"
-                  }`}>
-                    {pos.position}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-4 min-w-0">
+                    {canSelect && (
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSelection(pos.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 flex-shrink-0"
+                      />
+                    )}
+                    <div className={`w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center font-bold ${
+                      isFront ? "bg-green-200 text-green-700" : "bg-gray-200 text-gray-600"
+                    }`}>
+                      {pos.position}
+                    </div>
+                    {pos.user.image ? (
+                      <Image
+                        src={pos.user.image}
+                        alt={pos.user.name || "User"}
+                        width={40}
+                        height={40}
+                        className="rounded-full flex-shrink-0"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 flex-shrink-0 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 font-medium">
+                        {pos.user.name?.[0] || "?"}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="font-medium text-gray-900 truncate">
+                        {pos.user.name || "Anonymous"}
+                        {isCurrentUser && (
+                          <span className="ml-2 text-sm text-blue-600">(You)</span>
+                        )}
+                        {isFront && !pos.fulfilled && (
+                          <span className="ml-2 text-sm text-green-600">(Next up)</span>
+                        )}
+                        {pos.fulfilled && (
+                          <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                            Fulfilled
+                          </span>
+                        )}
+                      </p>
+                      {isLocked && (
+                        <p className="text-sm text-amber-600 flex items-center gap-1.5">
+                          <span className="inline-block w-2 h-2 rounded-full flex-shrink-0 bg-amber-500" />
+                          Swap pending
+                        </p>
+                      )}
+                      {!isFront && waitTimeData?.estimatedMinutesPerPerson != null && (
+                        <p className="text-xs text-gray-400">
+                          Est. wait: {formatWaitTime(waitTimeData.estimatedMinutesPerPerson * (pos.position - 1))}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  {pos.user.image ? (
-                    <Image
-                      src={pos.user.image}
-                      alt={pos.user.name || "User"}
-                      width={40}
-                      height={40}
-                      className="rounded-full flex-shrink-0"
-                    />
-                  ) : (
-                    <div className="w-10 h-10 flex-shrink-0 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 font-medium">
-                      {pos.user.name?.[0] || "?"}
+
+                  {!selectMode && (
+                    <div className="flex items-center flex-wrap gap-2 sm:flex-shrink-0">
+                      {isCurrentUser && (
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          onClick={() => setShowLeaveConfirm(true)}
+                          isLoading={loadingAction === "leave"}
+                        >
+                          Leave
+                        </Button>
+                      )}
+                      {isCreator && !isCurrentUser && !pos.fulfilled && (
+                        <button
+                          onClick={() => handleFulfill(pos.id)}
+                          disabled={loadingAction === `fulfill-${pos.id}`}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors disabled:opacity-50"
+                          title="Mark as fulfilled"
+                        >
+                          {loadingAction === `fulfill-${pos.id}` ? (
+                            <div className="w-3.5 h-3.5 border-2 border-green-400 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                          Fulfill
+                        </button>
+                      )}
+                      {isCreator && !isCurrentUser && (
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          onClick={() => openRemovalModal(pos.id, pos.user.id, pos.user.name)}
+                          isLoading={loadingAction === `remove-${pos.id}`}
+                        >
+                          Remove
+                        </Button>
+                      )}
                     </div>
                   )}
-                  <div className="min-w-0">
-                    <p className="font-medium text-gray-900 truncate">
-                      {pos.user.name || "Anonymous"}
-                      {isCurrentUser && (
-                        <span className="ml-2 text-sm text-blue-600">(You)</span>
-                      )}
-                      {isFront && (
-                        <span className="ml-2 text-sm text-green-600">(Next up)</span>
-                      )}
-                    </p>
-                    {pos.askingPrice !== null && (() => {
-                      const posFees = feeInfo ? calcFees(pos.askingPrice, feeInfo.ownerFeePercent, feeInfo.platformFeePercent) : { ownerFee: 0, platformFee: 0, total: pos.askingPrice }
-                      const hasFees = posFees.ownerFee > 0 || posFees.platformFee > 0
-                      return (
-                        <p className={`text-sm font-medium flex items-center gap-1.5 ${isLocked ? "text-amber-600" : "text-green-600"}`}>
-                          <span className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${isLocked ? "bg-amber-500" : "bg-green-500"}`} />
-                          {isLocked ? "Pending" : "For sale"}: {formatCurrency(hasFees ? posFees.total : pos.askingPrice)}
-                        </p>
-                      )
-                    })()}
-                    {!isFront && waitTimeData?.estimatedMinutesPerPerson != null && (
-                      <p className="text-xs text-gray-400">
-                        Est. wait: {formatWaitTime(waitTimeData.estimatedMinutesPerPerson * (pos.position - 1))}
-                      </p>
-                    )}
-                  </div>
                 </div>
 
-                {!selectMode && (
-                <div className="flex items-center flex-wrap gap-2 mt-3 sm:mt-0 sm:ml-4 sm:flex-shrink-0">
-                  {isCurrentUser && (
-                    <>
-                      {allowResale && editingPrice === pos.id ? (
-                        !hasPayoutSetup ? (
-                          <div className="space-y-1 w-full sm:w-auto">
-                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                              <p className="text-sm text-amber-800 font-medium">Connect a payout account to sell your position</p>
-                              <a
-                                href="/profile"
-                                className="text-sm text-blue-600 hover:text-blue-800 hover:underline mt-1 inline-block"
-                              >
-                                Set up payouts in Profile
-                              </a>
-                            </div>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => setEditingPrice(null)}
-                            >
-                              Cancel
-                            </Button>
-                          </div>
-                        ) : (
-                        <div className="space-y-1 w-full sm:w-auto">
-                          <div className="flex items-center gap-2">
-                            <div className="relative flex-1 sm:flex-none">
-                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-gray-500">$</span>
-                              <input
-                                type="number"
-                                min="0"
-                                max={maxAskingPrice ?? undefined}
-                                step="0.01"
-                                placeholder="0.00"
-                                value={priceInput[pos.id] || ""}
-                                onChange={(e) =>
-                                  setPriceInput({ ...priceInput, [pos.id]: e.target.value })
-                                }
-                                className={`w-full sm:w-28 pl-6 pr-2 py-1 border rounded text-sm ${
-                                  maxAskingPrice != null && priceInput[pos.id] && parseFloat(priceInput[pos.id]) > maxAskingPrice
-                                    ? "border-red-300 focus:ring-red-500"
-                                    : ""
-                                }`}
-                              />
-                            </div>
-                            <Button
-                              size="sm"
-                              onClick={() => handleSetPrice(pos.id)}
-                              isLoading={loadingAction === `price-${pos.id}`}
-                              disabled={maxAskingPrice != null && !!priceInput[pos.id] && parseFloat(priceInput[pos.id]) > maxAskingPrice}
-                            >
-                              Set
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => setEditingPrice(null)}
-                            >
-                              Cancel
-                            </Button>
-                          </div>
-                          {maxAskingPrice != null && (
-                            <p className={`text-xs pl-1 ${
-                              priceInput[pos.id] && parseFloat(priceInput[pos.id]) > maxAskingPrice
-                                ? "text-red-500 font-medium"
-                                : "text-gray-400"
-                            }`}>
-                              {priceInput[pos.id] && parseFloat(priceInput[pos.id]) > maxAskingPrice
-                                ? `Exceeds max price of ${formatCurrency(maxAskingPrice)}`
-                                : `Max price: ${formatCurrency(maxAskingPrice)}`}
-                            </p>
-                          )}
-                          {priceInput[pos.id] && parseFloat(priceInput[pos.id]) > 0 && feeInfo && (feeInfo.ownerFeePercent > 0 || feeInfo.platformFeePercent > 0) && (() => {
-                            const p = parseFloat(priceInput[pos.id])
-                            const f = calcFees(p, feeInfo.ownerFeePercent, feeInfo.platformFeePercent)
-                            return (
-                              <p className="text-xs text-gray-500 pl-1">
-                                You receive {formatCurrency(p)} · Buyer pays {formatCurrency(f.total)}
-                                <span className="text-gray-400"> ({feeInfo.ownerFeePercent}% owner + {feeInfo.platformFeePercent}% platform fee)</span>
-                              </p>
-                            )
-                          })()}
+                {/* Incoming offers to the current user */}
+                {isCurrentUser && receivedOffers.filter((o) => o.status === "PENDING").map((offer) => {
+                  const offerer = positions.find((p) => p.user.id === offer.fromUserId)
+                  return (
+                    <div key={offer.id} className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                      <p className="text-sm font-medium text-amber-800">
+                        Swap offer: {formatCurrency(offer.amount)} from {offerer?.user.name || "someone behind you"}
+                      </p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <Button
+                          size="sm"
+                          onClick={() => handleRespondToOffer(offer.id, "accept")}
+                          isLoading={loadingAction === `offer-${offer.id}`}
+                        >
+                          Accept
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleRespondToOffer(offer.id, "decline")}
+                          isLoading={loadingAction === `offer-${offer.id}`}
+                        >
+                          Decline
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {/* Offer to swap -- shown on the position directly in front */}
+                {isDirectlyInFront && !isCurrentUser && allowResale && !isPaused && !isLocked && !selectMode && (
+                  <div className="mt-3">
+                    {sentOfferToFront?.status === "PENDING" ? (
+                      <p className="text-sm text-gray-500">
+                        Offer sent: {formatCurrency(sentOfferToFront.amount)} -- Waiting for response
+                      </p>
+                    ) : sentOfferToFront?.status === "DECLINED" ? (
+                      <p className="text-sm text-gray-400">
+                        Offer declined
+                      </p>
+                    ) : offerFormOpen === pos.user.id ? (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className="relative flex-1 sm:flex-none">
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-gray-500">$</span>
+                          <input
+                            type="number"
+                            min="0.01"
+                            max={maxAskingPrice ?? undefined}
+                            step="0.01"
+                            placeholder="0.00"
+                            value={offerAmount}
+                            onChange={(e) => setOfferAmount(e.target.value)}
+                            className={`w-full sm:w-28 pl-6 pr-2 py-1 border rounded text-sm ${
+                              maxAskingPrice != null && offerAmount && parseFloat(offerAmount) > maxAskingPrice
+                                ? "border-red-300 focus:ring-red-500"
+                                : ""
+                            }`}
+                          />
                         </div>
-                        )
-                      ) : (
-                        <>
-                          {allowResale && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                onClick={() => {
-                                  setEditingPrice(pos.id)
-                                  setPriceInput({
-                                    ...priceInput,
-                                    [pos.id]: pos.askingPrice?.toString() || "",
-                                  })
-                                }}
-                              >
-                                {pos.askingPrice !== null ? "Change Price" : "Sell Position"}
-                              </Button>
-                              {pos.askingPrice !== null && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => {
-                                    setPriceInput({ ...priceInput, [pos.id]: "" })
-                                    handleSetPrice(pos.id)
-                                  }}
-                                >
-                                  Remove
-                                </Button>
-                              )}
-                            </>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="danger"
-                            onClick={() => setShowLeaveConfirm(true)}
-                            isLoading={loadingAction === "leave"}
-                          >
-                            Leave
-                          </Button>
-                        </>
-                      )}
-                    </>
-                  )}
-                  {canBuy && (() => {
-                    const buyTotal = feeInfo ? calcFees(pos.askingPrice!, feeInfo.ownerFeePercent, feeInfo.platformFeePercent).total : pos.askingPrice!
-                    return (
-                      <Button
-                        size="sm"
-                        onClick={() => setShowBuyConfirm(true)}
-                        isLoading={loadingAction === "buy"}
+                        <Button
+                          size="sm"
+                          onClick={() => handleSendOffer(pos.user.id)}
+                          isLoading={offerLoading}
+                          disabled={maxAskingPrice != null && !!offerAmount && parseFloat(offerAmount) > maxAskingPrice}
+                        >
+                          Send Offer
+                        </Button>
+                        <button
+                          onClick={() => { setOfferFormOpen(null); setOfferAmount("") }}
+                          className="text-sm text-gray-500 hover:text-gray-700"
+                        >
+                          Cancel
+                        </button>
+                        {maxAskingPrice != null && (
+                          <span className={`text-xs ${
+                            offerAmount && parseFloat(offerAmount) > maxAskingPrice
+                              ? "text-red-500"
+                              : "text-gray-400"
+                          }`}>
+                            Max: {formatCurrency(maxAskingPrice)}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setOfferFormOpen(pos.user.id)}
+                        className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
                       >
-                        Buy for {formatCurrency(buyTotal)}
-                      </Button>
-                    )
-                  })()}
-                  {isCreator && !isCurrentUser && (
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      onClick={() => openRemovalModal(pos.id, pos.user.id, pos.user.name)}
-                      isLoading={loadingAction === `remove-${pos.id}`}
-                    >
-                      Remove
-                    </Button>
-                  )}
-                </div>
+                        Offer to Swap
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             )

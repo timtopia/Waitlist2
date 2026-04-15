@@ -278,7 +278,7 @@ export function EditLineClient({ line }: { line: LineData }) {
             {/* Owner Fee */}
             <div>
               <label htmlFor="ownerFee" className="block text-sm font-medium text-gray-700 mb-1">
-                Your Fee on Position Sales (%)
+                Your Fee on Position Swaps (%)
               </label>
               <input
                 id="ownerFee"
@@ -292,13 +292,13 @@ export function EditLineClient({ line }: { line: LineData }) {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
               <p className="text-xs text-gray-500 mt-1">
-                Percentage you earn when someone buys a position.
+                Percentage you earn when someone swaps a position.
                 {ownerFeePercent && parseFloat(ownerFeePercent) > 0 ? (
                   <span className="text-blue-600 ml-1">
-                    e.g. on a $10 sale, you earn ${(10 * parseFloat(ownerFeePercent) / 100).toFixed(2)}
+                    e.g. on a $10 swap, you earn ${(10 * parseFloat(ownerFeePercent) / 100).toFixed(2)}
                   </span>
                 ) : (
-                  <span> A 10% platform fee also applies to each sale.</span>
+                  <span> A 10% platform fee also applies to each swap.</span>
                 )}
               </p>
               {parseFloat(ownerFeePercent) !== line.ownerFeePercent && (
@@ -442,14 +442,14 @@ export function EditLineClient({ line }: { line: LineData }) {
               )}
             </div>
 
-            {/* Resale Controls (collapsible) */}
+            {/* Swap Settings (collapsible) */}
             <div className="border border-gray-200 rounded-lg overflow-hidden">
               <button
                 type="button"
                 onClick={() => setShowResaleControls(!showResaleControls)}
                 className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
               >
-                <span>Resale Controls (optional)</span>
+                <span>Swap Settings (optional)</span>
                 <svg
                   className={`h-4 w-4 text-gray-400 transition-transform ${showResaleControls ? "rotate-180" : ""}`}
                   fill="none"
@@ -477,12 +477,12 @@ export function EditLineClient({ line }: { line: LineData }) {
                     </button>
                     <div>
                       <label className="text-sm font-medium text-gray-700">
-                        Allow position trading
+                        Allow position swapping
                       </label>
                       <p className="text-xs text-gray-500">
                         {allowResale
-                          ? "People can sell their positions to others"
-                          : "Position trading is disabled — no one can sell or buy positions"}
+                          ? "People can swap their positions with the person next to them"
+                          : "Swapping is disabled — no one can swap positions"}
                       </p>
                     </div>
                   </div>
@@ -505,7 +505,7 @@ export function EditLineClient({ line }: { line: LineData }) {
                         />
                       </div>
                       <p className="text-xs text-gray-500 mt-1">
-                        Cap the maximum price anyone can ask for their position. Leave empty for no limit.
+                        Cap the maximum swap price anyone can set for their position. Leave empty for no limit.
                       </p>
                     </div>
                   )}

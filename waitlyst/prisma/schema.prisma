@@ -100,6 +100,8 @@ model LinePosition {
   askingPrice Float?    // null = not for sale
   lockedUntil DateTime? // Position is locked for swap until this time
   lockedBy    String?   // Transaction ID that locked this position
+  fulfilled   Boolean   @default(false) // Creator marks this when the person has purchased/received the item
+  fulfilledAt DateTime? // When they were fulfilled
   joinedAt    DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -132,4 +134,24 @@ enum TransactionStatus {
   COMPLETED
   FAILED
   REFUNDED
+}
+
+model SwapOffer {
+  id         String      @id @default(cuid())
+  lineId     String
+  fromUserId String      // person behind (offering to swap)
+  toUserId   String      // person in front (receiving offer)
+  amount     Float       // offered price
+  status     OfferStatus @default(PENDING)
+  createdAt  DateTime    @default(now())
+
+  @@unique([lineId, fromUserId, toUserId]) // 1 offer per pair
+  @@index([lineId])
+  @@index([toUserId])
+}
+
+enum OfferStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
 }

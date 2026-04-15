@@ -124,95 +124,6 @@ describe("GET /api/lines/[lineId]/fees", () => {
   })
 })
 
-// ─── Market Route ───────────────────────────────────────────────────────────
-
-describe("GET /api/lines/[lineId]/market", () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
-  it("should return market data for a line with transactions", async () => {
-    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1" })
-    mockPrisma.transaction.findMany.mockResolvedValue([
-      { amount: 10 },
-      { amount: 20 },
-      { amount: 30 },
-    ])
-    mockPrisma.linePosition.findMany.mockResolvedValue([
-      { askingPrice: 15 },
-      { askingPrice: 25 },
-    ])
-
-    const { GET } = await import("@/app/api/lines/[lineId]/market/route")
-    const req = new Request("http://localhost/api/lines/line-1/market")
-
-    const response = await GET(req, { params: Promise.resolve({ lineId: "line-1" }) })
-    expect(response.status).toBe(200)
-
-    const data = await response.json()
-    expect(data.avgPrice).toBe(20)
-    expect(data.minPrice).toBe(10)
-    expect(data.maxPrice).toBe(30)
-    expect(data.volume).toBe(60)
-    expect(data.count).toBe(3)
-    expect(data.currentListings).toBe(2)
-    expect(data.lowestAsk).toBe(15)
-  })
-
-  it("should return zeros when no transactions exist", async () => {
-    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1" })
-    mockPrisma.transaction.findMany.mockResolvedValue([])
-    mockPrisma.linePosition.findMany.mockResolvedValue([])
-
-    const { GET } = await import("@/app/api/lines/[lineId]/market/route")
-    const req = new Request("http://localhost/api/lines/line-1/market")
-
-    const response = await GET(req, { params: Promise.resolve({ lineId: "line-1" }) })
-    expect(response.status).toBe(200)
-
-    const data = await response.json()
-    expect(data.avgPrice).toBe(0)
-    expect(data.minPrice).toBe(0)
-    expect(data.maxPrice).toBe(0)
-    expect(data.volume).toBe(0)
-    expect(data.count).toBe(0)
-    expect(data.currentListings).toBe(0)
-    expect(data.lowestAsk).toBeNull()
-  })
-
-  it("should return 404 if line not found", async () => {
-    mockPrisma.line.findUnique.mockResolvedValue(null)
-
-    const { GET } = await import("@/app/api/lines/[lineId]/market/route")
-    const req = new Request("http://localhost/api/lines/nonexistent/market")
-
-    const response = await GET(req, { params: Promise.resolve({ lineId: "nonexistent" }) })
-    expect(response.status).toBe(404)
-
-    const data = await response.json()
-    expect(data.error).toContain("not found")
-  })
-
-  it("should return lowestAsk as null when no positions are for sale", async () => {
-    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1" })
-    mockPrisma.transaction.findMany.mockResolvedValue([
-      { amount: 50 },
-    ])
-    mockPrisma.linePosition.findMany.mockResolvedValue([])
-
-    const { GET } = await import("@/app/api/lines/[lineId]/market/route")
-    const req = new Request("http://localhost/api/lines/line-1/market")
-
-    const response = await GET(req, { params: Promise.resolve({ lineId: "line-1" }) })
-    expect(response.status).toBe(200)
-
-    const data = await response.json()
-    expect(data.count).toBe(1)
-    expect(data.currentListings).toBe(0)
-    expect(data.lowestAsk).toBeNull()
-  })
-})
-
 // ─── QR Route ───────────────────────────────────────────────────────────────
 
 describe("GET /api/lines/[lineId]/qr", () => {
@@ -541,7 +452,7 @@ describe("POST /api/lines/[lineId]/checkout", () => {
     expect(data.error).toContain("No one in front")
   })
 
-  it("should return 400 if target position is not for sale", async () => {
+  it("should return 400 if target position is not available for swap", async () => {
     mockAuth.mockResolvedValue({ user: { id: "buyer-1" } })
     mockPrisma.line.findUnique.mockResolvedValue({
       id: "line-1",
@@ -575,7 +486,7 @@ describe("POST /api/lines/[lineId]/checkout", () => {
     expect(response.status).toBe(400)
 
     const data = await response.json()
-    expect(data.error).toContain("not for sale")
+    expect(data.error).toContain("not available for swap")
   })
 
   it("should return 409 if buyer position is locked", async () => {

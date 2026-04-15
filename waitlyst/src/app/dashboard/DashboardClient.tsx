@@ -557,7 +557,7 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
                       <p className="text-lg font-bold text-blue-600">#{pos.position}</p>
                       {pos.askingPrice !== null && (
                         <p className="text-sm text-green-600">
-                          For sale: {formatCurrency(Number(pos.askingPrice))}
+                          Open to swap: {formatCurrency(Number(pos.askingPrice))}
                         </p>
                       )}
                     </div>
@@ -747,7 +747,7 @@ export function DashboardClient({ createdLines: initialLines, positions }: Dashb
             <div className="text-center py-6">
               <p className="text-gray-500">No recent activity.</p>
               <p className="text-sm text-gray-400 mt-1">
-                Join a line or trade a position to see activity here.
+                Join a line or swap a position to see activity here.
               </p>
             </div>
           ) : (

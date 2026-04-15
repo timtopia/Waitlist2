@@ -288,9 +288,9 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
             <span className="text-gray-300">·</span>
             <span>{stats.activePositions} active positions</span>
             <span className="text-gray-300">·</span>
-            <span>{stats.purchaseCount} bought</span>
+            <span>{stats.purchaseCount} swaps made</span>
             <span className="text-gray-300">·</span>
-            <span>{stats.saleCount} sold</span>
+            <span>{stats.saleCount} swaps received</span>
           </div>
 
           {/* Total Available — hero number */}
@@ -305,7 +305,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Seller Earnings */}
             <div className="bg-gray-50 rounded-lg p-4">
-              <p className="text-sm font-semibold text-gray-700 mb-3">Seller Earnings</p>
+              <p className="text-sm font-semibold text-gray-700 mb-3">Swap Earnings</p>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -420,7 +420,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
           ) : (
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-500">
-                Connect a payout account to receive earnings from selling positions and line owner fees.
+                Connect a payout account to receive earnings from swapping positions and line owner fees.
               </p>
               <Button
                 size="sm"
@@ -452,7 +452,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
             <div className="text-center py-8">
               <p className="text-gray-500 mb-2">No transactions yet.</p>
               <p className="text-sm text-gray-400">
-                Buy or sell a position in a line to see your transaction history here.
+                Swap a position in a line to see your transaction history here.
               </p>
             </div>
           ) : (
@@ -478,7 +478,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-900">
-                        {tx.role === "buyer" ? "Bought position" : "Sold position"}
+                        {tx.role === "buyer" ? "Swapped up" : "Swapped down"}
                       </p>
                       <p className="text-xs text-gray-500">{formatDateTime(tx.createdAt)}</p>
                     </div>

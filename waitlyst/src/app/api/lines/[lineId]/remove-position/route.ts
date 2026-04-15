@@ -34,8 +34,6 @@ export async function POST(
       }
 
       const userId = positionToRemove.userId
-      let refundedAmount = 0
-      let refundedCount = 0
 
       // If position is locked in a transaction, cancel that transaction
       if (positionToRemove.lockedBy) {
@@ -52,11 +50,17 @@ export async function POST(
         })
       }
 
-      // Handle refund of this user's unsettled purchases if action is "refund"
-      if (action === "refund") {
+      // Determine if we need to refund buyer transactions.
+      // If the position is NOT fulfilled and there are unsettled buyer transactions,
+      // those should be refunded (the swap payments go back since the buyer never received the item).
+      // If the position IS fulfilled, swap payments were already released via the fulfill endpoint.
+      const shouldRefundBuyer = action === "refund" || !positionToRemove.fulfilled
+      let purchasesToRefund: { id: string; stripePaymentId: string | null; amount: number }[] = []
+
+      if (shouldRefundBuyer) {
         // Get unsettled completed transactions where this user was the buyer.
         // Already-settled transactions represent finalized swaps and should not be refunded.
-        const purchasesToRefund = await tx.transaction.findMany({
+        purchasesToRefund = await tx.transaction.findMany({
           where: {
             lineId,
             buyerId: userId,
@@ -64,12 +68,15 @@ export async function POST(
             settledAt: null,
           },
         })
+      }
 
+      if (purchasesToRefund.length > 0) {
         // Return transactions that need Stripe refunds (done outside transaction)
         return {
           userId,
           positionToRemove,
           purchasesToRefund,
+          fulfilled: positionToRemove.fulfilled,
         }
       }
 
@@ -92,14 +99,14 @@ export async function POST(
       // Settle any transactions where both parties have now left
       await settleTransactionsForUser(tx, lineId, userId)
 
-      return { userId, positionToRemove, purchasesToRefund: [] }
+      return { userId, positionToRemove, purchasesToRefund: [], fulfilled: positionToRemove.fulfilled }
     })
 
     // Process refunds
     let refundedAmount = 0
     let refundedCount = 0
 
-    if (action === "refund" && result.purchasesToRefund.length > 0) {
+    if (result.purchasesToRefund.length > 0) {
       refundedCount = await refundTransactions(result.purchasesToRefund)
       refundedAmount = result.purchasesToRefund.reduce((sum, p) => sum + p.amount, 0)
 
@@ -127,6 +134,7 @@ export async function POST(
     return NextResponse.json({
       success: true,
       action,
+      fulfilled: result.fulfilled,
       refundedAmount,
       refundedCount,
     })

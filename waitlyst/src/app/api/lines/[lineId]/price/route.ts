@@ -25,7 +25,7 @@ export async function PATCH(
     })
     if (line && !line.allowResale) {
       return NextResponse.json(
-        { error: "Position trading is disabled for this line" },
+        { error: "Swapping is disabled for this line" },
         { status: 400 }
       )
     }

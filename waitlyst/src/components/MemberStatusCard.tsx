@@ -119,7 +119,7 @@ export function MemberStatusCard({
   // Asking price display
   const priceLabel = askingPrice !== null
     ? `Your position is listed for ${formatCurrency(askingPrice)}`
-    : "Your position is not for sale"
+    : "Your position is not available for swap"
 
   return (
     <Card className="mb-6 border-l-4 border-l-blue-500 overflow-hidden">
