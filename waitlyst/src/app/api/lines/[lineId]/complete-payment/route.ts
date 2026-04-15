@@ -52,10 +52,12 @@ export async function GET(
       return NextResponse.redirect(`${baseUrl}/lines/${lineId}?payment=error&reason=invalid_transaction`)
     }
 
-    // Perform the swap (idempotent — won't swap again if already completed by webhook)
+    // Perform the swap (idempotent — won't swap again if already completed by webhook).
+    // Note: With auth-then-capture, the payment is authorized but NOT captured yet.
+    // Capture happens later when the creator fulfills the position.
     const swapped = await performPositionSwap(transactionId)
 
-    // Whether we swapped or it was already done, the payment was successful
+    // Whether we swapped or it was already done, the payment authorization was successful
     return NextResponse.redirect(`${baseUrl}/lines/${lineId}?payment=success`)
   } catch (error) {
     console.error("Complete payment error:", error)

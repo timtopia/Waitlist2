@@ -162,7 +162,9 @@ export async function PATCH(
       const ownerConnected = lineOwner?.stripeConnectId && lineOwner?.stripeConnectOnboarded
       const ownerIsNotSeller = line.createdById !== offer.toUserId
 
-      const paymentIntentData: Record<string, unknown> = {}
+      const paymentIntentData: Record<string, unknown> = {
+        capture_method: "manual", // Authorize only — capture happens on fulfillment
+      }
       if (sellerConnected) {
         paymentIntentData.application_fee_amount = Math.round((fees.platformFee + fees.ownerFee) * 100)
         paymentIntentData.transfer_data = {
@@ -206,7 +208,7 @@ export async function PATCH(
           success_url: `${baseUrl}/api/lines/${lineId}/complete-payment?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${baseUrl}/api/lines/${lineId}/cancel-payment?transaction_id=${transaction.id}`,
           expires_at: Math.floor(lockUntil.getTime() / 1000),
-          ...(sellerConnected ? { payment_intent_data: paymentIntentData } : {}),
+          payment_intent_data: paymentIntentData,
         }
 
         const checkoutSession = await stripe.checkout.sessions.create(

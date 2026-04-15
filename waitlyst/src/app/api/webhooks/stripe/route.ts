@@ -58,45 +58,15 @@ export async function POST(req: Request) {
 
         console.log(`Webhook: checkout.session.completed for transaction ${transactionId}`)
 
-        // Perform the position swap (idempotent — won't swap if already done)
+        // Perform the position swap (idempotent — won't swap if already done).
+        // With auth-then-capture, this fires on authorization (not capture).
+        // The payment is held but not charged yet — capture happens on fulfillment.
         const swapped = await performPositionSwap(transactionId)
 
-        // Handle owner fee transfer to connected account
-        // If the checkout session has owner transfer metadata, create a separate transfer
-        const ownerConnectId = session.metadata?.ownerConnectId
-        const ownerFeeAmountCents = session.metadata?.ownerFeeAmountCents
-
-        if (ownerConnectId && ownerFeeAmountCents && parseInt(ownerFeeAmountCents) > 0) {
-          try {
-            // Get the payment intent from the session to use as source_transaction
-            const paymentIntentId = typeof session.payment_intent === "string"
-              ? session.payment_intent
-              : (session.payment_intent as { id: string } | null)?.id
-
-            if (paymentIntentId) {
-              // Get the charge from the payment intent for source_transaction
-              const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
-              const chargeId = typeof paymentIntent.latest_charge === "string"
-                ? paymentIntent.latest_charge
-                : (paymentIntent.latest_charge as { id: string } | null)?.id
-
-              await stripe.transfers.create({
-                amount: parseInt(ownerFeeAmountCents),
-                currency: "usd",
-                destination: ownerConnectId,
-                ...(chargeId ? { source_transaction: chargeId } : {}),
-                metadata: {
-                  transactionId: transactionId,
-                  type: "owner_fee",
-                },
-              })
-              console.log(`Webhook: Owner fee transfer of ${ownerFeeAmountCents} cents to ${ownerConnectId}`)
-            }
-          } catch (transferError) {
-            // Log but don't fail — the swap already happened
-            console.error(`Webhook: Owner fee transfer failed for transaction ${transactionId}:`, transferError)
-          }
-        }
+        // Note: Owner fee transfers are deferred until fulfillment (capture).
+        // With auth-then-capture, the payment is not yet captured at this point,
+        // so we cannot create transfers against an uncaptured charge.
+        // The fulfill route handles both capture and transfers.
 
         break
       }

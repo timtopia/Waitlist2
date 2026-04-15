@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
-import { refundTransactions } from "@/lib/stripe"
+import { refundTransactions, cancelAuthorization } from "@/lib/stripe"
 import { settleTransactionsForUser } from "@/lib/settle-transactions"
 
 export async function POST(
@@ -102,15 +102,40 @@ export async function POST(
       return { userId, positionToRemove, purchasesToRefund: [], fulfilled: positionToRemove.fulfilled }
     })
 
-    // Process refunds
+    // Cancel authorizations or refund.
+    // With auth-then-capture, uncaptured payments can be cancelled (no fees).
+    // Already-captured payments fall back to a standard refund.
     let refundedAmount = 0
     let refundedCount = 0
 
     if (result.purchasesToRefund.length > 0) {
-      refundedCount = await refundTransactions(result.purchasesToRefund)
-      refundedAmount = result.purchasesToRefund.reduce((sum, p) => sum + p.amount, 0)
+      const needsRefund: typeof result.purchasesToRefund = []
 
-      // Now delete the position after refunds are processed
+      for (const purchase of result.purchasesToRefund) {
+        if (purchase.stripePaymentId) {
+          const cancelled = await cancelAuthorization(purchase.stripePaymentId)
+          if (cancelled) {
+            // Authorization cancelled — mark as refunded in DB
+            await prisma.transaction.update({
+              where: { id: purchase.id },
+              data: { status: "REFUNDED" },
+            })
+            refundedCount++
+            refundedAmount += purchase.amount
+            continue
+          }
+        }
+        // Could not cancel (already captured or no Stripe ID) — needs a real refund
+        needsRefund.push(purchase)
+      }
+
+      if (needsRefund.length > 0) {
+        const refunded = await refundTransactions(needsRefund)
+        refundedCount += refunded
+        refundedAmount += needsRefund.reduce((sum, p) => sum + p.amount, 0)
+      }
+
+      // Now delete the position after cancellations/refunds are processed
       await prisma.$transaction(async (tx) => {
         await tx.linePosition.delete({
           where: { id: positionId },

@@ -77,6 +77,87 @@ export async function refundTransactions(transactions: Transaction[]): Promise<n
 }
 
 /**
+ * Cancel an authorized (uncaptured) payment intent.
+ * Used when removing a position that was never fulfilled — releases the hold
+ * on the buyer's card with no charge and no Stripe fees.
+ *
+ * @param sessionId - The Stripe checkout session ID stored on the transaction
+ * @returns true if cancellation succeeded, false if already cancelled/captured
+ */
+export async function cancelAuthorization(sessionId: string): Promise<boolean> {
+  const stripe = getStripe()
+  if (!stripe) return false
+
+  try {
+    const session = await stripe.checkout.sessions.retrieve(sessionId)
+    if (!session.payment_intent) return false
+
+    const paymentIntentId = typeof session.payment_intent === "string"
+      ? session.payment_intent
+      : session.payment_intent.id
+
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
+
+    // Only cancel if still in a cancellable state
+    if (paymentIntent.status === "requires_capture") {
+      await stripe.paymentIntents.cancel(paymentIntentId)
+      return true
+    }
+
+    // Already cancelled or captured — nothing to do
+    if (paymentIntent.status === "canceled") {
+      return true
+    }
+
+    console.warn(`cancelAuthorization: payment intent ${paymentIntentId} is in unexpected state "${paymentIntent.status}"`)
+    return false
+  } catch (error) {
+    console.error(`cancelAuthorization failed for session ${sessionId}:`, error)
+    return false
+  }
+}
+
+/**
+ * Capture an authorized (uncaptured) payment intent.
+ * Used when fulfilling a position — actually charges the buyer's card.
+ *
+ * @param sessionId - The Stripe checkout session ID stored on the transaction
+ * @returns The captured amount in cents, or null if capture failed/was already done
+ */
+export async function captureAuthorization(sessionId: string): Promise<number | null> {
+  const stripe = getStripe()
+  if (!stripe) return null
+
+  try {
+    const session = await stripe.checkout.sessions.retrieve(sessionId)
+    if (!session.payment_intent) return null
+
+    const paymentIntentId = typeof session.payment_intent === "string"
+      ? session.payment_intent
+      : session.payment_intent.id
+
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
+
+    // Only capture if awaiting capture
+    if (paymentIntent.status === "requires_capture") {
+      const captured = await stripe.paymentIntents.capture(paymentIntentId)
+      return captured.amount
+    }
+
+    // Already captured — idempotent success
+    if (paymentIntent.status === "succeeded") {
+      return paymentIntent.amount
+    }
+
+    console.warn(`captureAuthorization: payment intent ${paymentIntentId} is in unexpected state "${paymentIntent.status}"`)
+    return null
+  } catch (error) {
+    console.error(`captureAuthorization failed for session ${sessionId}:`, error)
+    return null
+  }
+}
+
+/**
  * Perform a position swap between buyer and seller.
  * Used by both the complete-payment callback and the webhook handler.
  * Returns true if swap was performed, false if already completed.

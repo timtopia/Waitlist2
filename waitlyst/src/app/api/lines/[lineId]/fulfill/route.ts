@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
-import { getStripe } from "@/lib/stripe"
+import { getStripe, captureAuthorization } from "@/lib/stripe"
 
 export async function POST(
   req: Request,
@@ -69,36 +69,74 @@ export async function POST(
       return { buyerTransactions, payoutsReleased }
     })
 
-    // Process Stripe Connect transfers outside the transaction
+    // Capture authorized payments and process Stripe Connect transfers
     const stripe = getStripe()
     if (stripe && result.buyerTransactions.length > 0) {
       for (const txn of result.buyerTransactions) {
         try {
-          // Look up seller's connected account
+          // First, capture the authorized payment (auth-then-capture flow)
+          if (txn.stripePaymentId) {
+            const capturedAmount = await captureAuthorization(txn.stripePaymentId)
+            if (capturedAmount !== null) {
+              console.log(`Captured payment of ${capturedAmount} cents for transaction ${txn.id}`)
+            } else {
+              console.warn(`Could not capture payment for transaction ${txn.id} — may already be captured`)
+            }
+          }
+
+          // Then, process Stripe Connect transfer to seller
           const seller = await prisma.user.findUnique({
             where: { id: txn.sellerId },
             select: { stripeConnectId: true, stripeConnectOnboarded: true },
           })
 
-          if (seller?.stripeConnectId && seller.stripeConnectOnboarded && txn.stripePaymentId) {
-            // Retrieve the checkout session to get the payment intent
+          if (txn.stripePaymentId) {
+            // Retrieve the checkout session to get the payment intent and metadata
             const session = await stripe.checkout.sessions.retrieve(txn.stripePaymentId)
             if (session.payment_intent) {
               const paymentIntentId = typeof session.payment_intent === "string"
                 ? session.payment_intent
                 : session.payment_intent.id
 
-              // Create a transfer to the seller's connected account
-              await stripe.transfers.create({
-                amount: Math.round(txn.amount * 100), // Convert to cents
-                currency: "usd",
-                destination: seller.stripeConnectId,
-                source_transaction: paymentIntentId,
-                description: `Swap payout for fulfilled position in line`,
-              }).catch((err) => {
-                // Log but don't fail — the transaction is already marked settled
-                console.error(`Stripe transfer failed for transaction ${txn.id}:`, err)
-              })
+              // Transfer seller payout via Connect
+              if (seller?.stripeConnectId && seller.stripeConnectOnboarded) {
+                await stripe.transfers.create({
+                  amount: Math.round(txn.amount * 100), // Convert to cents
+                  currency: "usd",
+                  destination: seller.stripeConnectId,
+                  source_transaction: paymentIntentId,
+                  description: `Swap payout for fulfilled position in line`,
+                }).catch((err) => {
+                  // Log but don't fail — the transaction is already marked settled
+                  console.error(`Stripe transfer failed for transaction ${txn.id}:`, err)
+                })
+              }
+
+              // Transfer owner fee if applicable (moved here from webhook for auth-then-capture)
+              const ownerConnectId = session.metadata?.ownerConnectId
+              const ownerFeeAmountCents = session.metadata?.ownerFeeAmountCents
+              if (ownerConnectId && ownerFeeAmountCents && parseInt(ownerFeeAmountCents) > 0) {
+                try {
+                  const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
+                  const chargeId = typeof paymentIntent.latest_charge === "string"
+                    ? paymentIntent.latest_charge
+                    : (paymentIntent.latest_charge as { id: string } | null)?.id
+
+                  await stripe.transfers.create({
+                    amount: parseInt(ownerFeeAmountCents),
+                    currency: "usd",
+                    destination: ownerConnectId,
+                    ...(chargeId ? { source_transaction: chargeId } : {}),
+                    metadata: {
+                      transactionId: txn.id,
+                      type: "owner_fee",
+                    },
+                  })
+                  console.log(`Owner fee transfer of ${ownerFeeAmountCents} cents to ${ownerConnectId} for transaction ${txn.id}`)
+                } catch (transferError) {
+                  console.error(`Owner fee transfer failed for transaction ${txn.id}:`, transferError)
+                }
+              }
             }
           }
         } catch (err) {

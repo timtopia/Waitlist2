@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
-import { refundTransactions } from "@/lib/stripe"
+import { refundTransactions, cancelAuthorization } from "@/lib/stripe"
 import { settleTransactionsForUser } from "@/lib/settle-transactions"
 
 export async function POST(
@@ -87,10 +87,35 @@ export async function POST(
       return { purchasesToRefund, fulfilled: frontPosition.fulfilled }
     })
 
-    // Process refunds outside the transaction (for unfulfilled positions)
+    // Cancel authorizations or refund for unfulfilled positions.
+    // With auth-then-capture, uncaptured payments can be cancelled (no fees).
+    // Already-captured payments fall back to a standard refund.
     if (txResult.purchasesToRefund.length > 0) {
-      refundedCount = await refundTransactions(txResult.purchasesToRefund)
-      refundedAmount = txResult.purchasesToRefund.reduce((sum, p) => sum + p.amount, 0)
+      const needsRefund: typeof txResult.purchasesToRefund = []
+
+      for (const purchase of txResult.purchasesToRefund) {
+        if (purchase.stripePaymentId) {
+          const cancelled = await cancelAuthorization(purchase.stripePaymentId)
+          if (cancelled) {
+            // Authorization cancelled — mark as refunded in DB
+            await prisma.transaction.update({
+              where: { id: purchase.id },
+              data: { status: "REFUNDED" },
+            })
+            refundedCount++
+            refundedAmount += purchase.amount
+            continue
+          }
+        }
+        // Could not cancel (already captured or no Stripe ID) — needs a real refund
+        needsRefund.push(purchase)
+      }
+
+      if (needsRefund.length > 0) {
+        const refunded = await refundTransactions(needsRefund)
+        refundedCount += refunded
+        refundedAmount += needsRefund.reduce((sum, p) => sum + p.amount, 0)
+      }
     }
 
     // Clear the now-serving display after removing the front person

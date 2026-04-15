@@ -150,7 +150,9 @@ export async function POST(
       // Owner fee transfer is only needed if the owner is different from the seller
       const ownerIsNotSeller = line.createdById !== targetPosition.userId
 
-      const paymentIntentData: Record<string, unknown> = {}
+      const paymentIntentData: Record<string, unknown> = {
+        capture_method: "manual", // Authorize only — capture happens on fulfillment
+      }
       if (sellerConnected) {
         // application_fee_amount = platformFee + ownerFee (in cents)
         // transfer_data.destination sends the rest (asking price) to seller
@@ -197,7 +199,7 @@ export async function POST(
           success_url: `${baseUrl}/api/lines/${lineId}/complete-payment?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${baseUrl}/api/lines/${lineId}/cancel-payment?transaction_id=${transaction.id}`,
           expires_at: Math.floor(lockUntil.getTime() / 1000),
-          ...(sellerConnected ? { payment_intent_data: paymentIntentData } : {}),
+          payment_intent_data: paymentIntentData,
         }
 
         checkoutSession = await stripe.checkout.sessions.create(
