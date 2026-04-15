@@ -25,6 +25,7 @@ interface LineData {
   productUrl: string | null
   allowResale: boolean
   maxAskingPrice: number | null
+  hideCapacity: boolean
 }
 
 function toLocalDatetime(iso: string | null): string {
@@ -51,6 +52,7 @@ export function EditLineClient({ line }: { line: LineData }) {
   const [showProductDetails, setShowProductDetails] = useState(
     !!(line.productName || line.productImage || line.productPrice || line.productUrl)
   )
+  const [hideCapacity, setHideCapacity] = useState(line.hideCapacity)
   const [showResaleControls, setShowResaleControls] = useState(
     !line.allowResale || line.maxAskingPrice != null
   )
@@ -101,6 +103,7 @@ export function EditLineClient({ line }: { line: LineData }) {
           productUrl: productUrl.trim() || null,
           allowResale,
           maxAskingPrice: maxAskingPrice ? parseFloat(maxAskingPrice) : null,
+          hideCapacity: maxCapacity ? hideCapacity : false,
         }),
       })
 
@@ -254,6 +257,22 @@ export function EditLineClient({ line }: { line: LineData }) {
                   ? `Must be at least ${line.currentCount} (current participants)`
                   : "Leave empty for unlimited spots"}
               </p>
+              {maxCapacity && (
+                <label className="flex items-center gap-2 mt-2">
+                  <input
+                    type="checkbox"
+                    checked={hideCapacity}
+                    onChange={(e) => setHideCapacity(e.target.checked)}
+                    className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">Hide capacity from members</span>
+                </label>
+              )}
+              {maxCapacity && hideCapacity && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Members will see &quot;Limited spots available&quot; instead of the exact number
+                </p>
+              )}
             </div>
 
             {/* Owner Fee */}

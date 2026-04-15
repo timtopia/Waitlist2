@@ -81,6 +81,9 @@ model Line {
   productUrl      String?        // Link to official product page
   allowResale     Boolean        @default(true)  // Whether position trading is enabled
   maxAskingPrice  Float?         // Maximum resale price cap (null = no limit)
+  nowServing      String?        // Name of the person currently being served
+  nowServingAt    DateTime?      // When the current person was called
+  hideCapacity    Boolean        @default(false) // When true, don't show exact capacity to non-owners
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 

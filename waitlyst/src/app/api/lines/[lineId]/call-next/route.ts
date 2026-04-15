@@ -27,12 +27,14 @@ export async function POST(
 
     const userName = frontPosition.user?.name || "Next person"
 
-    // Update the line's announcement to notify the front person
+    // Update the line's announcement and now-serving display
     await prisma.line.update({
       where: { id: lineId },
       data: {
         announcement: `\u{1F4E2} ${userName}, you're up! Please come forward.`,
         announcementAt: new Date(),
+        nowServing: userName,
+        nowServingAt: new Date(),
       },
     })
 

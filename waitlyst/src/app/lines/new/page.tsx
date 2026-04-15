@@ -23,6 +23,7 @@ export default function CreateLinePage() {
   const [productImage, setProductImage] = useState("")
   const [productPrice, setProductPrice] = useState("")
   const [productUrl, setProductUrl] = useState("")
+  const [hideCapacity, setHideCapacity] = useState(false)
   const [showResaleControls, setShowResaleControls] = useState(false)
   const [allowResale, setAllowResale] = useState(true)
   const [maxAskingPrice, setMaxAskingPrice] = useState("")
@@ -84,6 +85,7 @@ export default function CreateLinePage() {
           productUrl: productUrl.trim() || null,
           allowResale,
           maxAskingPrice: maxAskingPrice ? parseFloat(maxAskingPrice) : null,
+          hideCapacity: maxCapacity ? hideCapacity : false,
         }),
       })
 
@@ -173,6 +175,22 @@ export default function CreateLinePage() {
               <p className="text-xs text-gray-500 mt-1">
                 Leave empty for unlimited spots
               </p>
+              {maxCapacity && (
+                <label className="flex items-center gap-2 mt-2">
+                  <input
+                    type="checkbox"
+                    checked={hideCapacity}
+                    onChange={(e) => setHideCapacity(e.target.checked)}
+                    className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">Hide capacity from members</span>
+                </label>
+              )}
+              {maxCapacity && hideCapacity && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Members will see &quot;Limited spots available&quot; instead of the exact number
+                </p>
+              )}
             </div>
 
             {/* Owner Fee */}

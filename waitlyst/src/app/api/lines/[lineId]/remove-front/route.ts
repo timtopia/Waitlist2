@@ -62,6 +62,15 @@ export async function POST(
       await settleTransactionsForUser(tx, lineId, removedUserId)
     })
 
+    // Clear the now-serving display after removing the front person
+    await prisma.line.update({
+      where: { id: lineId },
+      data: {
+        nowServing: null,
+        nowServingAt: null,
+      },
+    })
+
     return NextResponse.json({ success: true })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to remove person"

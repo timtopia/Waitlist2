@@ -55,6 +55,7 @@ interface QueueDisplayProps {
   hasPayoutSetup?: boolean
   allowResale?: boolean
   maxAskingPrice?: number | null
+  hideCapacity?: boolean
 }
 
 /** Format estimated wait time into a human-readable string */
@@ -66,7 +67,7 @@ function formatWaitTime(minutes: number): string {
   return `~${Math.round(hours)} hrs`
 }
 
-export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, feeInfo, isPaused = false, hasPayoutSetup = false, allowResale = true, maxAskingPrice = null }: QueueDisplayProps) {
+export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, feeInfo, isPaused = false, hasPayoutSetup = false, allowResale = true, maxAskingPrice = null, hideCapacity = false }: QueueDisplayProps) {
   const { data: session } = useSession()
   const { addToast } = useToast()
   const [loadingAction, setLoadingAction] = useState<string | null>(null)

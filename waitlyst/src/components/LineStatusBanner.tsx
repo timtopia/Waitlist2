@@ -8,6 +8,7 @@ interface LineStatusBannerProps {
   closesAt: string | null
   maxCapacity: number | null
   currentCount: number
+  hideCapacity?: boolean
 }
 
 type LineStatus =
@@ -39,7 +40,7 @@ function getLineStatus(
   return { state: "open", closesAt: closesAt ? new Date(closesAt) : null }
 }
 
-export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount }: LineStatusBannerProps) {
+export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount, hideCapacity = false }: LineStatusBannerProps) {
   const [now, setNow] = useState(new Date())
 
   useEffect(() => {
@@ -144,13 +145,13 @@ export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount 
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <p className="font-semibold text-red-800">Line is Full</p>
           <p className="text-sm text-red-600">
-            All {maxCapacity} spots have been taken.
+            {hideCapacity ? "All spots have been taken." : `All ${maxCapacity} spots have been taken.`}
           </p>
         </div>
       )}
 
       {/* Capacity Bar */}
-      {maxCapacity && status.state !== "closed" && (
+      {maxCapacity && status.state !== "closed" && !hideCapacity && (
         <div className="bg-white border border-gray-200 rounded-lg p-4">
           <div className="flex items-center justify-between mb-2">
             <p className="text-sm font-medium text-gray-700">Spots Filled</p>
@@ -175,6 +176,13 @@ export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount 
               {maxCapacity - currentCount} spot{maxCapacity - currentCount !== 1 ? "s" : ""} remaining
             </p>
           )}
+        </div>
+      )}
+
+      {/* Hidden capacity indicator */}
+      {maxCapacity && status.state !== "closed" && status.state !== "full" && hideCapacity && (
+        <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <p className="text-sm font-medium text-gray-700">Limited capacity</p>
         </div>
       )}
     </div>

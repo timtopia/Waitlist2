@@ -43,6 +43,9 @@ interface Line {
   productUrl: string | null
   allowResale: boolean
   maxAskingPrice: number | null
+  nowServing: string | null
+  nowServingAt: string | null
+  hideCapacity: boolean
   createdAt: string
   createdBy: {
     id: string
@@ -657,6 +660,27 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         </div>
       )}
 
+      {/* Now Serving Banner */}
+      {line.nowServing && (
+        <div className="mb-6">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+            <div className="flex items-start space-x-3">
+              <span className="text-2xl flex-shrink-0" role="img" aria-label="bell">&#x1F514;</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-lg font-bold text-emerald-900">
+                  Now Serving: {line.nowServing}
+                </p>
+                {line.nowServingAt && (
+                  <p className="text-sm text-emerald-600 mt-0.5">
+                    Called {timeAgo(line.nowServingAt)}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Status Banner */}
       {(line.opensAt || line.closesAt || line.maxCapacity) && (
         <div className="mb-6">
@@ -665,6 +689,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             closesAt={line.closesAt}
             maxCapacity={line.maxCapacity}
             currentCount={line.positions.length}
+            hideCapacity={!isCreator && line.hideCapacity}
           />
         </div>
       )}
@@ -677,6 +702,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
           totalPositions={line.positions.length}
           askingPrice={userPosition.askingPrice}
           lineId={line.id}
+          hideCapacity={!isCreator && line.hideCapacity}
         />
       )}
 
@@ -688,9 +714,15 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             </h2>
             {line.maxCapacity != null && (
               <div className="flex items-center gap-3">
-                <span className="text-sm text-gray-500">
-                  {line.positions.length} of {line.maxCapacity} spots filled
-                </span>
+                {(!line.hideCapacity || isCreator) ? (
+                  <span className="text-sm text-gray-500">
+                    {line.positions.length} of {line.maxCapacity} spots filled
+                  </span>
+                ) : (
+                  <span className="text-sm text-gray-500">
+                    Limited spots available
+                  </span>
+                )}
                 {userPosition && (
                   userPosition.position <= line.maxCapacity ? (
                     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800">
@@ -723,6 +755,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             hasPayoutSetup={hasPayoutSetup}
             allowResale={line.allowResale}
             maxAskingPrice={line.maxAskingPrice}
+            hideCapacity={!isCreator && line.hideCapacity}
           />
         </CardContent>
       </Card>

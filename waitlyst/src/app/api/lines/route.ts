@@ -6,7 +6,7 @@ export async function POST(req: Request) {
   const result = await requireAuth()
   if (result instanceof NextResponse) return result
 
-  const { name, description, isPublic = true, opensAt, closesAt, maxCapacity, ownerFeePercent = 0, productName, productImage, productPrice, productUrl, allowResale = true, maxAskingPrice } = await req.json()
+  const { name, description, isPublic = true, opensAt, closesAt, maxCapacity, ownerFeePercent = 0, productName, productImage, productPrice, productUrl, allowResale = true, maxAskingPrice, hideCapacity = false } = await req.json()
 
   if (!name || typeof name !== "string" || name.trim().length === 0) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 })
@@ -62,6 +62,7 @@ export async function POST(req: Request) {
       productUrl: productUrl?.trim() || null,
       allowResale: typeof allowResale === "boolean" ? allowResale : true,
       maxAskingPrice: maxAskingPrice || null,
+      hideCapacity: typeof hideCapacity === "boolean" ? hideCapacity : false,
     },
   })
 

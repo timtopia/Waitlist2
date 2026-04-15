@@ -90,6 +90,11 @@ export async function PATCH(
       }
     }
 
+    // Hide capacity
+    if (typeof updates.hideCapacity === "boolean") {
+      allowedUpdates.hideCapacity = updates.hideCapacity
+    }
+
     // Resale controls
     if (typeof updates.allowResale === "boolean") {
       allowedUpdates.allowResale = updates.allowResale

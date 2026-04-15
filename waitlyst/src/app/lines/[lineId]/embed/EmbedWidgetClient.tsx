@@ -12,6 +12,8 @@ interface EmbedWidgetClientProps {
   maxCapacity: number | null
   opensAt: string | null
   closesAt: string | null
+  nowServing: string | null
+  hideCapacity: boolean
 }
 
 function formatTimeLeft(ms: number): string {
@@ -76,6 +78,8 @@ export function EmbedWidgetClient({
   maxCapacity,
   opensAt,
   closesAt,
+  nowServing,
+  hideCapacity,
 }: EmbedWidgetClientProps) {
   const [now, setNow] = useState(new Date())
 
@@ -118,6 +122,18 @@ export function EmbedWidgetClient({
             </p>
           )}
         </div>
+
+        {/* Now Serving */}
+        {nowServing && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-lg" role="img" aria-label="bell">&#x1F514;</span>
+              <p className="text-sm font-bold text-emerald-900">
+                Now Serving: {nowServing}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Status Section */}
         {status.state === "not_yet_open" && (() => {
@@ -178,13 +194,13 @@ export function EmbedWidgetClient({
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
             <p className="text-sm font-semibold text-red-800">Line Full</p>
             <p className="text-xs text-red-600">
-              All {maxCapacity} spots have been taken.
+              {hideCapacity ? "All spots have been taken." : `All ${maxCapacity} spots have been taken.`}
             </p>
           </div>
         )}
 
         {/* Capacity Bar */}
-        {maxCapacity && status.state !== "closed" ? (
+        {maxCapacity && status.state !== "closed" && !hideCapacity ? (
           <div className="mb-3">
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs font-medium text-gray-600">
@@ -217,6 +233,10 @@ export function EmbedWidgetClient({
                 {maxCapacity - positionCount !== 1 ? "s" : ""} remaining
               </p>
             )}
+          </div>
+        ) : maxCapacity && status.state !== "closed" && hideCapacity ? (
+          <div className="mb-3">
+            <p className="text-xs text-gray-500">Limited spots available</p>
           </div>
         ) : !maxCapacity ? (
           <div className="mb-3">
