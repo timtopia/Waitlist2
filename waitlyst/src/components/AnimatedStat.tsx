@@ -46,11 +46,11 @@ export function AnimatedStat({ value, label }: { value: number; label: string })
   }, [value])
 
   return (
-    <div ref={ref} className="text-center">
-      <div className="text-4xl sm:text-5xl font-bold text-gray-900">
+    <div ref={ref} className="py-8 sm:py-10 sm:px-8 first:sm:pl-0">
+      <div className="font-mono text-4xl sm:text-5xl tabular-nums tracking-tight">
         {display.toLocaleString()}
       </div>
-      <div className="text-sm sm:text-base text-gray-500 mt-1">{label}</div>
+      <div className="font-mono text-xs uppercase tracking-[0.2em] text-ink/50 mt-2">{label}</div>
     </div>
   )
 }

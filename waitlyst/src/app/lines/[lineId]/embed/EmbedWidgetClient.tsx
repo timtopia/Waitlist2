@@ -99,7 +99,7 @@ export function EmbedWidgetClient({
       <div className="flex-1 overflow-auto p-4">
         {/* Product Image */}
         {productImage && (
-          <div className="w-full aspect-[16/9] rounded-lg overflow-hidden mb-3 bg-gray-100">
+          <div className="w-full aspect-[16/9] overflow-hidden mb-3 bg-paper border border-rule">
             <img
               src={productImage}
               alt={productName || lineName}
@@ -110,14 +110,14 @@ export function EmbedWidgetClient({
 
         {/* Line Info */}
         <div className="mb-3">
-          <h1 className="text-lg font-bold text-gray-900 leading-tight">
+          <h1 className="text-lg font-semibold tracking-tight leading-tight">
             {lineName}
           </h1>
           {productName && (
-            <p className="text-sm text-gray-500 mt-0.5">{productName}</p>
+            <p className="text-sm text-ink/60 mt-0.5">{productName}</p>
           )}
           {productPrice != null && (
-            <p className="text-sm font-semibold text-gray-700 mt-0.5">
+            <p className="font-mono text-sm tabular-nums text-ink/70 mt-0.5">
               {formatPrice(productPrice)}
             </p>
           )}
@@ -125,13 +125,10 @@ export function EmbedWidgetClient({
 
         {/* Now Serving */}
         {nowServing && (
-          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-3">
-            <div className="flex items-center gap-2">
-              <span className="text-lg" role="img" aria-label="bell">&#x1F514;</span>
-              <p className="text-sm font-bold text-emerald-900">
-                Now Serving: {nowServing}
-              </p>
-            </div>
+          <div className="bg-white border border-green-700 p-3 mb-3">
+            <p className="text-sm font-semibold text-green-700">
+              Now Serving: {nowServing}
+            </p>
           </div>
         )}
 
@@ -139,13 +136,13 @@ export function EmbedWidgetClient({
         {status.state === "not_yet_open" && (() => {
           const msLeft = status.opensAt.getTime() - now.getTime()
           return (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
+            <div className="bg-white border border-amber-600 p-3 mb-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-amber-800">
+                  <p className="text-sm font-semibold text-amber-600">
                     Opens Soon
                   </p>
-                  <p className="text-xs text-amber-600">
+                  <p className="text-xs text-ink/50">
                     {status.opensAt.toLocaleDateString(undefined, {
                       month: "short",
                       day: "numeric",
@@ -155,10 +152,10 @@ export function EmbedWidgetClient({
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-lg font-bold text-amber-800 tabular-nums">
+                  <p className="font-mono text-lg text-amber-600 tabular-nums">
                     {formatTimeLeft(msLeft)}
                   </p>
-                  <p className="text-xs text-amber-600">until open</p>
+                  <p className="text-xs text-ink/50">until open</p>
                 </div>
               </div>
             </div>
@@ -166,34 +163,34 @@ export function EmbedWidgetClient({
         })()}
 
         {status.state === "open" && status.closesAt && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-3">
+          <div className="bg-white border border-green-700 p-3 mb-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-semibold text-green-800">Open Now</p>
+                <p className="text-sm font-semibold text-green-700">Open Now</p>
               </div>
               <div className="text-right">
-                <p className="text-lg font-bold text-green-800 tabular-nums">
+                <p className="font-mono text-lg text-green-700 tabular-nums">
                   {formatTimeLeft(status.closesAt.getTime() - now.getTime())}
                 </p>
-                <p className="text-xs text-green-600">remaining</p>
+                <p className="text-xs text-ink/50">remaining</p>
               </div>
             </div>
           </div>
         )}
 
         {status.state === "closed" && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
-            <p className="text-sm font-semibold text-red-800">Line Closed</p>
-            <p className="text-xs text-red-600">
+          <div className="bg-white border border-accent p-3 mb-3">
+            <p className="text-sm font-semibold text-accent">Line Closed</p>
+            <p className="text-xs text-ink/50">
               No longer accepting new joins.
             </p>
           </div>
         )}
 
         {status.state === "full" && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
-            <p className="text-sm font-semibold text-red-800">Line Full</p>
-            <p className="text-xs text-red-600">
+          <div className="bg-white border border-accent p-3 mb-3">
+            <p className="text-sm font-semibold text-accent">Line Full</p>
+            <p className="text-xs text-ink/50">
               {hideCapacity ? "All spots have been taken." : `All ${maxCapacity} spots have been taken.`}
             </p>
           </div>
@@ -203,21 +200,21 @@ export function EmbedWidgetClient({
         {maxCapacity && status.state !== "closed" && !hideCapacity ? (
           <div className="mb-3">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-medium text-gray-600">
+              <span className="font-mono text-xs uppercase tracking-widest text-ink/50">
                 Spots Filled
               </span>
-              <span className="text-xs font-bold text-gray-900">
+              <span className="font-mono text-xs tabular-nums text-ink">
                 {positionCount} / {maxCapacity}
               </span>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
+            <div className="w-full bg-ink/10 h-2">
               <div
-                className={`h-2 rounded-full transition-all duration-500 ${
+                className={`h-2 transition-all duration-500 ${
                   positionCount >= maxCapacity
-                    ? "bg-red-500"
+                    ? "bg-accent"
                     : positionCount >= maxCapacity * 0.8
-                    ? "bg-amber-500"
-                    : "bg-blue-500"
+                    ? "bg-amber-600"
+                    : "bg-ink"
                 }`}
                 style={{
                   width: `${Math.min(
@@ -228,7 +225,7 @@ export function EmbedWidgetClient({
               />
             </div>
             {positionCount < maxCapacity && (
-              <p className="text-xs text-gray-400 mt-1">
+              <p className="text-xs text-ink/40 mt-1">
                 {maxCapacity - positionCount} spot
                 {maxCapacity - positionCount !== 1 ? "s" : ""} remaining
               </p>
@@ -236,11 +233,11 @@ export function EmbedWidgetClient({
           </div>
         ) : maxCapacity && status.state !== "closed" && hideCapacity ? (
           <div className="mb-3">
-            <p className="text-xs text-gray-500">Limited spots available</p>
+            <p className="text-xs text-ink/50">Limited spots available</p>
           </div>
         ) : !maxCapacity ? (
           <div className="mb-3">
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-ink/50">
               {positionCount} {positionCount === 1 ? "person" : "people"} in
               line
             </p>
@@ -252,10 +249,10 @@ export function EmbedWidgetClient({
           href={lineUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className={`block w-full text-center py-2.5 rounded-lg font-semibold text-sm transition-colors ${
+          className={`block w-full text-center py-2.5 font-semibold text-sm transition-colors ${
             canJoin
-              ? "bg-blue-600 text-white hover:bg-blue-700"
-              : "bg-gray-200 text-gray-500 cursor-not-allowed pointer-events-none"
+              ? "bg-ink text-paper hover:bg-accent"
+              : "bg-ink/10 text-ink/40 cursor-not-allowed pointer-events-none"
           }`}
         >
           {status.state === "not_yet_open"
@@ -269,12 +266,12 @@ export function EmbedWidgetClient({
       </div>
 
       {/* Powered by footer */}
-      <div className="px-4 py-2 border-t border-gray-100">
+      <div className="px-4 py-2 border-t border-rule">
         <a
           href={typeof window !== "undefined" ? window.location.origin : "/"}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center justify-center gap-1 text-xs text-gray-400 hover:text-gray-500 transition-colors"
+          className="flex items-center justify-center gap-1 font-mono text-xs uppercase tracking-widest text-ink/40 hover:text-ink/60 transition-colors"
         >
           Powered by
           <span className="font-semibold">Waitlyst</span>

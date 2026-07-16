@@ -7,7 +7,7 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
     return (
       <div
         ref={ref}
-        className={`bg-white rounded-xl shadow-sm border border-gray-200 ${className}`}
+        className={`bg-white border border-rule ${className}`}
         {...props}
       >
         {children}
@@ -23,7 +23,7 @@ export const CardHeader = forwardRef<HTMLDivElement, CardProps>(
     return (
       <div
         ref={ref}
-        className={`px-6 py-4 border-b border-gray-200 ${className}`}
+        className={`px-6 py-4 border-b border-rule ${className}`}
         {...props}
       >
         {children}

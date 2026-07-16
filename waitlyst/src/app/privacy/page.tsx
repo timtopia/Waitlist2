@@ -8,17 +8,22 @@ export const metadata: Metadata = {
 
 export default function PrivacyPolicyPage() {
   return (
-    <div className="bg-white py-12 sm:py-16">
+    <div className="py-12 sm:py-16">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-        <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">
-          Privacy Policy
-        </h1>
-        <p className="text-sm text-gray-500 mb-10">
-          Last updated: April 15, 2026
-        </p>
+        <div className="border-b border-ink pb-6 mb-10">
+          <p className="font-mono text-xs uppercase tracking-[0.25em] text-ink/50 mb-3">
+            Legal
+          </p>
+          <h1 className="text-4xl font-semibold tracking-tight mb-3">
+            Privacy Policy
+          </h1>
+          <p className="font-mono text-xs uppercase tracking-widest text-ink/40">
+            Last updated: April 15, 2026
+          </p>
+        </div>
 
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-10">
-          <p className="text-sm text-amber-800">
+        <div className="bg-white border-l-2 border-amber-600 p-4 mb-10">
+          <p className="text-sm text-ink/70">
             <strong>Note:</strong> This is a template Privacy Policy document and
             does not constitute legal advice. You should consult a qualified
             attorney to ensure your privacy practices meet all applicable legal
@@ -28,13 +33,13 @@ export default function PrivacyPolicyPage() {
 
         {/* 1. Information We Collect */}
         <section className="mb-10">
-          <h2 className="text-xl font-semibold text-gray-900 mb-3">
+          <h2 className="text-xl font-semibold tracking-tight mb-3">
             1. Information We Collect
           </h2>
-          <p className="text-gray-700 leading-relaxed mb-3">
+          <p className="text-ink/70 leading-relaxed mb-3">
             We collect the following types of information when you use Waitlyst:
           </p>
-          <ul className="list-disc list-inside text-gray-700 space-y-2">
+          <ul className="list-disc list-inside text-ink/70 space-y-2">
             <li>
               <strong>Account information:</strong> When you sign in with Google
               OAuth, we receive your name, email address, and profile picture
@@ -55,13 +60,13 @@ export default function PrivacyPolicyPage() {
 
         {/* 2. How We Use Information */}
         <section className="mb-10">
-          <h2 className="text-xl font-semibold text-gray-900 mb-3">
+          <h2 className="text-xl font-semibold tracking-tight mb-3">
             2. How We Use Information
           </h2>
-          <p className="text-gray-700 leading-relaxed mb-3">
+          <p className="text-ink/70 leading-relaxed mb-3">
             We use the information we collect to:
           </p>
-          <ul className="list-disc list-inside text-gray-700 space-y-2">
+          <ul className="list-disc list-inside text-ink/70 space-y-2">
             <li>
               <strong>Manage your account:</strong> Identify you across sessions,
               display your name and profile picture in lines.
@@ -84,28 +89,28 @@ export default function PrivacyPolicyPage() {
 
         {/* 3. Stripe Connect */}
         <section className="mb-10">
-          <h2 className="text-xl font-semibold text-gray-900 mb-3">
+          <h2 className="text-xl font-semibold tracking-tight mb-3">
             3. Stripe Connect
           </h2>
-          <p className="text-gray-700 leading-relaxed mb-3">
+          <p className="text-ink/70 leading-relaxed mb-3">
             Waitlyst uses Stripe Connect to process payments and distribute
             payouts to line creators and users who earn from position swaps. If
             you choose to receive payouts, you will be asked to create a Stripe
             Connect account.
           </p>
-          <p className="text-gray-700 leading-relaxed mb-3">
+          <p className="text-ink/70 leading-relaxed mb-3">
             As part of Stripe&apos;s onboarding process, Stripe may collect additional
             information from you, including your legal name, date of birth,
             address, and banking details. This information is collected and
             managed by Stripe, not by Waitlyst.
           </p>
-          <p className="text-gray-700 leading-relaxed">
+          <p className="text-ink/70 leading-relaxed">
             Stripe&apos;s collection and use of your information is governed by{" "}
             <a
               href="https://stripe.com/privacy"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-blue-600 hover:text-blue-800 underline"
+              className="text-accent underline underline-offset-4 hover:text-ink"
             >
               Stripe&apos;s Privacy Policy
             </a>
@@ -116,16 +121,16 @@ export default function PrivacyPolicyPage() {
 
         {/* 4. Data Sharing */}
         <section className="mb-10">
-          <h2 className="text-xl font-semibold text-gray-900 mb-3">
+          <h2 className="text-xl font-semibold tracking-tight mb-3">
             4. Data Sharing
           </h2>
-          <p className="text-gray-700 leading-relaxed mb-3">
+          <p className="text-ink/70 leading-relaxed mb-3">
             We do not sell your personal information to third parties.
           </p>
-          <p className="text-gray-700 leading-relaxed mb-3">
+          <p className="text-ink/70 leading-relaxed mb-3">
             We share your information only in the following circumstances:
           </p>
-          <ul className="list-disc list-inside text-gray-700 space-y-2">
+          <ul className="list-disc list-inside text-ink/70 space-y-2">
             <li>
               <strong>With Stripe:</strong> We share transaction-related
               information with Stripe to process payments and payouts.
@@ -144,16 +149,16 @@ export default function PrivacyPolicyPage() {
 
         {/* 5. Cookies and Analytics */}
         <section className="mb-10">
-          <h2 className="text-xl font-semibold text-gray-900 mb-3">
+          <h2 className="text-xl font-semibold tracking-tight mb-3">
             5. Cookies and Analytics
           </h2>
-          <p className="text-gray-700 leading-relaxed mb-3">
+          <p className="text-ink/70 leading-relaxed mb-3">
             Waitlyst uses session cookies to keep you signed in after
             authenticating with Google. These cookies are essential for the
             Service to function and are not used for advertising or tracking
             purposes.
           </p>
-          <p className="text-gray-700 leading-relaxed">
+          <p className="text-ink/70 leading-relaxed">
             We may use basic analytics to understand usage patterns and improve
             the Service. We do not use third-party advertising trackers.
           </p>
@@ -161,15 +166,15 @@ export default function PrivacyPolicyPage() {
 
         {/* 6. Data Retention */}
         <section className="mb-10">
-          <h2 className="text-xl font-semibold text-gray-900 mb-3">
+          <h2 className="text-xl font-semibold tracking-tight mb-3">
             6. Data Retention
           </h2>
-          <p className="text-gray-700 leading-relaxed mb-3">
+          <p className="text-ink/70 leading-relaxed mb-3">
             We retain your account information for as long as your account is
             active. Transaction records are retained as required for financial
             reporting and dispute resolution purposes.
           </p>
-          <p className="text-gray-700 leading-relaxed">
+          <p className="text-ink/70 leading-relaxed">
             If you delete your account, we will remove your personal information
             from our active systems. Some information may be retained in backups
             for a limited period or as required by law.
@@ -178,13 +183,13 @@ export default function PrivacyPolicyPage() {
 
         {/* 7. Your Rights */}
         <section className="mb-10">
-          <h2 className="text-xl font-semibold text-gray-900 mb-3">
+          <h2 className="text-xl font-semibold tracking-tight mb-3">
             7. Your Rights
           </h2>
-          <p className="text-gray-700 leading-relaxed mb-3">
+          <p className="text-ink/70 leading-relaxed mb-3">
             You have the right to:
           </p>
-          <ul className="list-disc list-inside text-gray-700 space-y-2">
+          <ul className="list-disc list-inside text-ink/70 space-y-2">
             <li>
               <strong>Access your data:</strong> Request a copy of the personal
               information we hold about you.
@@ -198,7 +203,7 @@ export default function PrivacyPolicyPage() {
               updating your linked Google account profile.
             </li>
           </ul>
-          <p className="text-gray-700 leading-relaxed mt-3">
+          <p className="text-ink/70 leading-relaxed mt-3">
             To exercise these rights, contact us at the email address listed
             below.
           </p>
@@ -206,10 +211,10 @@ export default function PrivacyPolicyPage() {
 
         {/* 8. Children's Privacy */}
         <section className="mb-10">
-          <h2 className="text-xl font-semibold text-gray-900 mb-3">
+          <h2 className="text-xl font-semibold tracking-tight mb-3">
             8. Children&apos;s Privacy
           </h2>
-          <p className="text-gray-700 leading-relaxed">
+          <p className="text-ink/70 leading-relaxed">
             Waitlyst is not intended for use by anyone under the age of 18. We
             do not knowingly collect personal information from children under 18.
             If we learn that we have collected information from a child under 18,
@@ -219,10 +224,10 @@ export default function PrivacyPolicyPage() {
 
         {/* 9. Changes to This Policy */}
         <section className="mb-10">
-          <h2 className="text-xl font-semibold text-gray-900 mb-3">
+          <h2 className="text-xl font-semibold tracking-tight mb-3">
             9. Changes to This Policy
           </h2>
-          <p className="text-gray-700 leading-relaxed">
+          <p className="text-ink/70 leading-relaxed">
             We may update this Privacy Policy from time to time. When we make
             changes, we will update the &ldquo;Last updated&rdquo; date at the top of this
             page. Your continued use of Waitlyst after changes are posted
@@ -233,15 +238,15 @@ export default function PrivacyPolicyPage() {
 
         {/* 10. Contact Information */}
         <section className="mb-10">
-          <h2 className="text-xl font-semibold text-gray-900 mb-3">
+          <h2 className="text-xl font-semibold tracking-tight mb-3">
             10. Contact Information
           </h2>
-          <p className="text-gray-700 leading-relaxed">
+          <p className="text-ink/70 leading-relaxed">
             If you have questions about this Privacy Policy or your personal
             data, please contact us at{" "}
             <a
               href="mailto:support@waitlyst.app"
-              className="text-blue-600 hover:text-blue-800 underline"
+              className="text-accent underline underline-offset-4 hover:text-ink"
             >
               support@waitlyst.app
             </a>
@@ -250,10 +255,10 @@ export default function PrivacyPolicyPage() {
         </section>
 
         {/* Back to Home */}
-        <div className="pt-6 border-t border-gray-200">
+        <div className="pt-6 border-t border-rule">
           <Link
             href="/"
-            className="text-sm text-blue-600 hover:text-blue-800 transition-colors"
+            className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"
           >
             &larr; Back to Home
           </Link>

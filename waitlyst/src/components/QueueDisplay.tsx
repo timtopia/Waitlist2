@@ -350,48 +350,48 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
     <div className="space-y-4">
       {/* Removal Modal */}
       {removalModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white border border-ink p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold tracking-tight text-ink mb-4">
               Remove {removalModal.userName || "this person"}?
             </h3>
 
             {removalModal.loading ? (
               <div className="text-center py-4">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                <p className="text-sm text-gray-500 mt-2">Loading transaction history...</p>
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-ink mx-auto"></div>
+                <p className="text-sm text-ink/50 mt-2">Loading transaction history...</p>
               </div>
             ) : removalModal.transactionInfo ? (
               <div className="space-y-3 mb-4">
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-sm text-gray-600">
-                    <span className="font-medium">Paid:</span> {formatCurrency(removalModal.transactionInfo.totalPaid)}
-                    <span className="text-gray-400 ml-1">({removalModal.transactionInfo.asBuyer.length} purchases)</span>
+                <div className="bg-paper border border-rule p-3">
+                  <p className="text-sm text-ink/60">
+                    <span className="font-medium text-ink">Paid:</span> <span className="font-mono tabular-nums">{formatCurrency(removalModal.transactionInfo.totalPaid)}</span>
+                    <span className="text-ink/40 ml-1">({removalModal.transactionInfo.asBuyer.length} purchases)</span>
                   </p>
-                  <p className="text-sm text-gray-600">
-                    <span className="font-medium">Received:</span> {formatCurrency(removalModal.transactionInfo.totalReceived)}
-                    <span className="text-gray-400 ml-1">({removalModal.transactionInfo.asSeller.filter(t => t.status === "COMPLETED").length} sales)</span>
+                  <p className="text-sm text-ink/60">
+                    <span className="font-medium text-ink">Received:</span> <span className="font-mono tabular-nums">{formatCurrency(removalModal.transactionInfo.totalReceived)}</span>
+                    <span className="text-ink/40 ml-1">({removalModal.transactionInfo.asSeller.filter(t => t.status === "COMPLETED").length} sales)</span>
                   </p>
                   {(removalModal.transactionInfo.totalRefundedToBuyer > 0 || removalModal.transactionInfo.totalRefundedAsSeller > 0) && (
                     <p className="text-sm text-amber-600">
                       <span className="font-medium">Already Refunded:</span> {formatCurrency(removalModal.transactionInfo.totalRefundedToBuyer + removalModal.transactionInfo.totalRefundedAsSeller)}
                     </p>
                   )}
-                  <p className="text-sm font-medium text-gray-900 mt-1 pt-1 border-t">
+                  <p className="text-sm font-medium text-ink mt-1 pt-1 border-t border-rule">
                     Net: {formatCurrency(removalModal.transactionInfo.netAmount)}
                   </p>
                 </div>
 
                 {removalModal.transactionInfo.downstreamBuyers.length > 0 && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                    <p className="text-sm font-medium text-amber-800 mb-2">
+                  <div className="border border-rule border-l-2 border-l-amber-600 bg-white p-3">
+                    <p className="text-sm font-medium text-ink mb-2">
                       Buyers who purchased from this person:
                     </p>
                     <ul className="space-y-1">
                       {removalModal.transactionInfo.downstreamBuyers.map((buyer) => (
                         <li key={buyer.transactionId} className="flex items-center justify-between text-sm">
-                          <span className="text-amber-700">{buyer.name || "Anonymous"}</span>
-                          <span className="text-amber-600 font-medium">{formatCurrency(buyer.amount)}</span>
+                          <span className="text-ink/70">{buyer.name || "Anonymous"}</span>
+                          <span className="text-ink font-mono tabular-nums">{formatCurrency(buyer.amount)}</span>
                         </li>
                       ))}
                     </ul>
@@ -401,12 +401,12 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                   </div>
                 )}
 
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-ink/60">
                   Choose how to handle their transactions:
                 </p>
               </div>
             ) : (
-              <p className="text-sm text-gray-600 mb-4">No transaction history found.</p>
+              <p className="text-sm text-ink/60 mb-4">No transaction history found.</p>
             )}
 
             <div className="flex flex-col space-y-2">
@@ -453,12 +453,12 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
 
       {/* Batch Remove Confirm Modal */}
       {showBatchConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-sm w-full mx-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white border border-ink p-6 max-w-sm w-full mx-4">
+            <h3 className="text-lg font-semibold tracking-tight text-ink mb-2">
               Remove {selectedIds.size} {selectedIds.size === 1 ? "person" : "people"}?
             </h3>
-            <p className="text-sm text-gray-600 mb-4">
+            <p className="text-sm text-ink/60 mb-4">
               Choose how to handle their transactions:
             </p>
             <div className="flex flex-col space-y-2">
@@ -491,13 +491,13 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
 
       {/* Resale disabled note */}
       {!allowResale && positions.length > 0 && (
-        <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5">
-          <p className="text-sm text-gray-500">Swapping is disabled for this line</p>
+        <div className="bg-white border border-rule px-4 py-2.5">
+          <p className="text-sm text-ink/50">Swapping is disabled for this line</p>
         </div>
       )}
 
       {positions.length === 0 ? (
-        <p className="text-center text-gray-500 py-8">No one in line yet.</p>
+        <p className="text-center text-ink/40 py-8">No one in line yet.</p>
       ) : (
         <div className="space-y-2">
           {/* Select mode toggle for creators */}
@@ -516,13 +516,13 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                         setSelectedIds(new Set(allIds))
                       }
                     }}
-                    className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
+                    className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"
                   >
                     {selectedIds.size === positions.filter((p) => p.user.id !== session?.user?.id).length
                       ? "Deselect All"
                       : "Select All"}
                   </button>
-                  <span className="text-sm text-gray-500">
+                  <span className="font-mono text-xs uppercase tracking-widest text-ink/40 tabular-nums">
                     {selectedIds.size} selected
                   </span>
                 </div>
@@ -537,10 +537,10 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                     setSelectMode(true)
                   }
                 }}
-                className={`text-sm px-3 py-1.5 rounded-lg transition-colors ${
+                className={`font-mono text-xs uppercase tracking-widest px-3 py-1.5 border transition-colors ${
                   selectMode
-                    ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
-                    : "text-gray-600 hover:bg-gray-100"
+                    ? "border-ink bg-ink text-paper"
+                    : "border-transparent text-ink/60 hover:text-ink hover:bg-ink/5"
                 }`}
               >
                 {selectMode ? "Done" : "Select"}
@@ -548,6 +548,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
             </div>
           )}
 
+          <div className="border border-rule divide-y divide-rule">
           {positions.map((pos) => {
             const isCurrentUser = pos.user.id === session?.user?.id
             const isLocked = pos.lockedUntil && new Date(pos.lockedUntil) > new Date()
@@ -558,27 +559,19 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
             const hasIncomingOffer = isCurrentUser && receivedOffers.some((o) => o.status === "PENDING")
 
             const leftBorder = hasIncomingOffer
-              ? "border-l-4 border-l-amber-400"
+              ? "border-l-2 border-l-amber-600"
               : isLocked
-              ? "border-l-4 border-l-amber-400"
-              : "border-l-4 border-l-transparent"
+              ? "border-l-2 border-l-amber-600"
+              : isCurrentUser
+              ? "border-l-2 border-l-accent"
+              : "border-l-2 border-l-transparent"
 
             return (
               <div
                 key={pos.id}
                 onClick={canSelect ? () => toggleSelection(pos.id) : undefined}
-                className={`flex flex-col p-4 rounded-lg border ${leftBorder} ${
-                  isSelected
-                    ? "bg-blue-50 border-blue-300 ring-1 ring-blue-300"
-                    : hasIncomingOffer
-                    ? "bg-amber-50 border-amber-200"
-                    : isCurrentUser
-                    ? "bg-blue-50 border-blue-200"
-                    : isFront
-                    ? "bg-green-50 border-green-200"
-                    : isLocked
-                    ? "bg-amber-50/50 border-amber-200"
-                    : "bg-white border-gray-200"
+                className={`flex flex-col px-4 py-3 ${leftBorder} ${
+                  isSelected ? "bg-ink/5" : isCurrentUser ? "bg-paper" : "bg-white"
                 } ${canSelect ? "cursor-pointer" : ""}`}
               >
                 <div className="flex items-center justify-between">
@@ -589,11 +582,11 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                         checked={isSelected}
                         onChange={() => toggleSelection(pos.id)}
                         onClick={(e) => e.stopPropagation()}
-                        className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 flex-shrink-0"
+                        className="w-4 h-4 accent-ink border-rule flex-shrink-0"
                       />
                     )}
-                    <div className={`w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center font-bold ${
-                      isFront ? "bg-green-200 text-green-700" : "bg-gray-200 text-gray-600"
+                    <div className={`w-8 flex-shrink-0 font-mono tabular-nums text-lg text-right ${
+                      isFront ? "text-accent" : "text-ink/40"
                     }`}>
                       {pos.position}
                     </div>
@@ -603,39 +596,37 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                         alt={pos.user.name || "User"}
                         width={40}
                         height={40}
-                        className="rounded-full flex-shrink-0"
+                        className="w-10 h-10 object-cover border border-rule flex-shrink-0"
                       />
                     ) : (
-                      <div className="w-10 h-10 flex-shrink-0 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 font-medium">
+                      <div className="w-10 h-10 flex-shrink-0 bg-ink/10 border border-rule flex items-center justify-center text-ink/60 font-medium">
                         {pos.user.name?.[0] || "?"}
                       </div>
                     )}
                     <div className="min-w-0">
-                      <p className="font-medium text-gray-900 truncate">
+                      <p className="font-medium text-ink truncate">
                         {pos.user.name || "Anonymous"}
                         {isCurrentUser && (
-                          <span className="ml-2 text-sm text-blue-600">(You)</span>
+                          <span className="ml-2 text-sm text-accent">(You)</span>
                         )}
                         {isFront && !pos.fulfilled && (
-                          <span className="ml-2 text-sm text-green-600">(Next up)</span>
+                          <span className="ml-2 text-sm text-green-700">(Next up)</span>
                         )}
                         {pos.fulfilled && (
-                          <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
+                          <span className="ml-2 inline-flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-green-700">
+                            <span className="w-1.5 h-1.5 bg-green-600" aria-hidden />
                             Fulfilled
                           </span>
                         )}
                       </p>
                       {isLocked && (
-                        <p className="text-sm text-amber-600 flex items-center gap-1.5">
-                          <span className="inline-block w-2 h-2 rounded-full flex-shrink-0 bg-amber-500" />
+                        <p className="font-mono text-xs uppercase tracking-widest text-amber-600 flex items-center gap-1.5 mt-0.5">
+                          <span className="inline-block w-1.5 h-1.5 flex-shrink-0 bg-amber-600" />
                           Swap pending
                         </p>
                       )}
                       {!isFront && waitTimeData?.estimatedMinutesPerPerson != null && (
-                        <p className="text-xs text-gray-400">
+                        <p className="text-xs text-ink/40">
                           Est. wait: {formatWaitTime(waitTimeData.estimatedMinutesPerPerson * (pos.position - 1))}
                         </p>
                       )}
@@ -658,15 +649,11 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                         <button
                           onClick={() => handleFulfill(pos.id)}
                           disabled={loadingAction === `fulfill-${pos.id}`}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors disabled:opacity-50"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 font-mono text-xs uppercase tracking-widest text-green-700 border border-rule hover:border-green-700 transition-colors disabled:opacity-50"
                           title="Mark as fulfilled"
                         >
-                          {loadingAction === `fulfill-${pos.id}` ? (
-                            <div className="w-3.5 h-3.5 border-2 border-green-400 border-t-transparent rounded-full animate-spin" />
-                          ) : (
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
+                          {loadingAction === `fulfill-${pos.id}` && (
+                            <div className="w-3 h-3 border-2 border-green-700 border-t-transparent rounded-full animate-spin" />
                           )}
                           Fulfill
                         </button>
@@ -689,8 +676,8 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                 {isCurrentUser && receivedOffers.filter((o) => o.status === "PENDING").map((offer) => {
                   const offerer = positions.find((p) => p.user.id === offer.fromUserId)
                   return (
-                    <div key={offer.id} className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                      <p className="text-sm font-medium text-amber-800">
+                    <div key={offer.id} className="mt-3 bg-paper border border-rule border-l-2 border-l-amber-600 p-3">
+                      <p className="text-sm font-medium text-ink">
                         Swap offer: {formatCurrency(offer.amount)} from {offerer?.user.name || "someone behind you"}
                       </p>
                       <div className="flex items-center gap-2 mt-2">
@@ -718,17 +705,17 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                 {isDirectlyInFront && !isCurrentUser && allowResale && !isPaused && !isLocked && !selectMode && (
                   <div className="mt-3">
                     {sentOfferToFront?.status === "PENDING" ? (
-                      <p className="text-sm text-gray-500">
+                      <p className="text-sm text-ink/50">
                         Offer sent: {formatCurrency(sentOfferToFront.amount)} -- Waiting for response
                       </p>
                     ) : sentOfferToFront?.status === "DECLINED" ? (
-                      <p className="text-sm text-gray-400">
+                      <p className="text-sm text-ink/40">
                         Offer declined
                       </p>
                     ) : offerFormOpen === pos.user.id ? (
                       <div className="flex items-center gap-2 flex-wrap">
                         <div className="relative flex-1 sm:flex-none">
-                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-gray-500">$</span>
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-ink/40">$</span>
                           <input
                             type="number"
                             min="0.01"
@@ -737,10 +724,10 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                             placeholder="0.00"
                             value={offerAmount}
                             onChange={(e) => setOfferAmount(e.target.value)}
-                            className={`w-full sm:w-28 pl-6 pr-2 py-1 border rounded text-sm ${
+                            className={`w-full sm:w-28 pl-6 pr-2 py-1 border bg-white font-mono tabular-nums text-sm focus:outline-none focus:border-ink ${
                               maxAskingPrice != null && offerAmount && parseFloat(offerAmount) > maxAskingPrice
-                                ? "border-red-300 focus:ring-red-500"
-                                : ""
+                                ? "border-accent"
+                                : "border-rule"
                             }`}
                           />
                         </div>
@@ -754,15 +741,15 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                         </Button>
                         <button
                           onClick={() => { setOfferFormOpen(null); setOfferAmount("") }}
-                          className="text-sm text-gray-500 hover:text-gray-700"
+                          className="text-sm text-ink/50 hover:text-ink"
                         >
                           Cancel
                         </button>
                         {maxAskingPrice != null && (
-                          <span className={`text-xs ${
+                          <span className={`text-xs font-mono tabular-nums ${
                             offerAmount && parseFloat(offerAmount) > maxAskingPrice
-                              ? "text-red-500"
-                              : "text-gray-400"
+                              ? "text-accent"
+                              : "text-ink/40"
                           }`}>
                             Max: {formatCurrency(maxAskingPrice)}
                           </span>
@@ -771,7 +758,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                     ) : (
                       <button
                         onClick={() => setOfferFormOpen(pos.user.id)}
-                        className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
+                        className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"
                       >
                         Offer to Swap
                       </button>
@@ -781,14 +768,15 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
               </div>
             )
           })}
+          </div>
         </div>
       )}
 
       {/* Floating action bar for batch select mode */}
       {selectMode && selectedIds.size > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-40 px-4 py-3">
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-ink z-40 px-4 py-3">
           <div className="max-w-4xl mx-auto flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-700">
+            <span className="font-mono text-xs uppercase tracking-widest text-ink tabular-nums">
               {selectedIds.size} selected
             </span>
             <div className="flex items-center gap-2">

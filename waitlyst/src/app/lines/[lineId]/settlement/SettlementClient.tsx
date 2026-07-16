@@ -207,21 +207,21 @@ export function SettlementClient({ lineId, lineName }: SettlementClientProps) {
   function getStatusBadge(txn: Transaction) {
     if (txn.status === "REFUNDED") {
       return (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+        <span className="inline-flex items-center font-mono text-xs uppercase tracking-widest text-accent">
           Cancelled
         </span>
       )
     }
     if (txn.status === "FAILED") {
       return (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+        <span className="inline-flex items-center font-mono text-xs uppercase tracking-widest text-ink/50">
           Failed
         </span>
       )
     }
     if (txn.status === "PENDING") {
       return (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+        <span className="inline-flex items-center font-mono text-xs uppercase tracking-widest text-ink/50">
           Pending
         </span>
       )
@@ -229,20 +229,20 @@ export function SettlementClient({ lineId, lineName }: SettlementClientProps) {
     // COMPLETED
     if (txn.settledAt) {
       return (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+        <span className="inline-flex items-center font-mono text-xs uppercase tracking-widest text-green-700">
           Captured
         </span>
       )
     }
     if (txn.buyerFulfilled) {
       return (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+        <span className="inline-flex items-center font-mono text-xs uppercase tracking-widest text-green-700">
           Fulfilled
         </span>
       )
     }
     return (
-      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+      <span className="inline-flex items-center font-mono text-xs uppercase tracking-widest text-amber-600">
         Not fulfilled
       </span>
     )
@@ -293,9 +293,9 @@ export function SettlementClient({ lineId, lineName }: SettlementClientProps) {
     return (
       <div className="max-w-5xl mx-auto px-4 py-8">
         <div className="animate-pulse space-y-4">
-          <div className="h-8 w-64 bg-gray-200 rounded" />
-          <div className="h-24 bg-gray-200 rounded-xl" />
-          <div className="h-64 bg-gray-200 rounded-xl" />
+          <div className="h-8 w-64 bg-ink/10" />
+          <div className="h-24 bg-ink/10" />
+          <div className="h-64 bg-ink/10" />
         </div>
       </div>
     )
@@ -304,7 +304,7 @@ export function SettlementClient({ lineId, lineName }: SettlementClientProps) {
   if (!data) {
     return (
       <div className="max-w-5xl mx-auto px-4 py-8 text-center">
-        <p className="text-gray-500">Failed to load settlement data.</p>
+        <p className="text-ink/60">Failed to load settlement data.</p>
         <Link href="/dashboard">
           <Button variant="secondary" className="mt-4">
             Back to Dashboard
@@ -350,11 +350,11 @@ export function SettlementClient({ lineId, lineName }: SettlementClientProps) {
         <div>
           <Link
             href="/dashboard"
-            className="text-sm text-blue-600 hover:underline mb-1 inline-block"
+            className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4 mb-2 inline-block"
           >
             &larr; Dashboard
           </Link>
-          <h1 className="text-2xl font-bold text-gray-900">
+          <h1 className="text-2xl font-semibold tracking-tight">
             Settlement &mdash; {lineName}
           </h1>
         </div>
@@ -365,36 +365,36 @@ export function SettlementClient({ lineId, lineName }: SettlementClientProps) {
         <CardContent className="py-5">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div className="text-center">
-              <p className="text-2xl font-bold text-gray-900">{summary.total}</p>
-              <p className="text-sm text-gray-500">Transactions</p>
+              <p className="font-mono text-2xl tabular-nums">{summary.total}</p>
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/50">Transactions</p>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-bold text-gray-900">
+              <p className="font-mono text-2xl tabular-nums">
                 {formatCurrency(summary.totalAmount)}
               </p>
-              <p className="text-sm text-gray-500">Total Amount</p>
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/50">Total Amount</p>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-bold text-green-600">{summary.fulfilled}</p>
-              <p className="text-sm text-gray-500">Fulfilled</p>
+              <p className="font-mono text-2xl tabular-nums text-green-700">{summary.fulfilled}</p>
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/50">Fulfilled</p>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-bold text-amber-600">{summary.unfulfilled}</p>
-              <p className="text-sm text-gray-500">Unfulfilled</p>
+              <p className="font-mono text-2xl tabular-nums text-amber-600">{summary.unfulfilled}</p>
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/50">Unfulfilled</p>
             </div>
           </div>
-          <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-2 gap-4">
+          <div className="mt-4 pt-4 border-t border-rule grid grid-cols-2 gap-4">
             <div className="text-center">
-              <p className="text-lg font-semibold text-green-600">
+              <p className="font-mono text-lg tabular-nums text-green-700">
                 {formatCurrency(summary.capturedAmount)}
               </p>
-              <p className="text-xs text-gray-500">Captured</p>
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/50">Captured</p>
             </div>
             <div className="text-center">
-              <p className="text-lg font-semibold text-amber-600">
+              <p className="font-mono text-lg tabular-nums text-amber-600">
                 {formatCurrency(summary.pendingAmount)}
               </p>
-              <p className="text-xs text-gray-500">Pending Decision</p>
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/50">Pending Decision</p>
             </div>
           </div>
         </CardContent>
@@ -425,14 +425,14 @@ export function SettlementClient({ lineId, lineName }: SettlementClientProps) {
       {/* Transactions List */}
       <Card>
         <CardHeader>
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className="text-lg font-semibold tracking-tight">
             All Swap Transactions
           </h2>
         </CardHeader>
         <CardContent className="p-0">
           {transactions.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-gray-500">No swap transactions for this line.</p>
+              <p className="text-ink/60">No swap transactions for this line.</p>
             </div>
           ) : (
             <>
@@ -440,45 +440,45 @@ export function SettlementClient({ lineId, lineName }: SettlementClientProps) {
               <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-gray-200 text-left text-gray-500">
-                      <th className="px-6 py-3 font-medium">Buyer</th>
-                      <th className="px-6 py-3 font-medium">Seller</th>
-                      <th className="px-6 py-3 font-medium text-right">Amount</th>
-                      <th className="px-6 py-3 font-medium text-center">Position</th>
-                      <th className="px-6 py-3 font-medium text-center">Status</th>
-                      <th className="px-6 py-3 font-medium text-right">Actions</th>
+                    <tr className="border-b border-ink text-left">
+                      <th className="px-6 py-3 font-mono text-xs uppercase tracking-widest font-normal text-ink/50">Buyer</th>
+                      <th className="px-6 py-3 font-mono text-xs uppercase tracking-widest font-normal text-ink/50">Seller</th>
+                      <th className="px-6 py-3 font-mono text-xs uppercase tracking-widest font-normal text-ink/50 text-right">Amount</th>
+                      <th className="px-6 py-3 font-mono text-xs uppercase tracking-widest font-normal text-ink/50 text-center">Position</th>
+                      <th className="px-6 py-3 font-mono text-xs uppercase tracking-widest font-normal text-ink/50 text-center">Status</th>
+                      <th className="px-6 py-3 font-mono text-xs uppercase tracking-widest font-normal text-ink/50 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-rule">
                     {transactions.map((txn) => (
                       <tr
                         key={txn.id}
-                        className={`hover:bg-gray-50 transition-colors ${
+                        className={`hover:bg-paper transition-colors ${
                           txn.status === "REFUNDED"
-                            ? "bg-red-50/30"
+                            ? "bg-accent/5"
                             : txn.settledAt
-                            ? "bg-green-50/30"
+                            ? "bg-green-700/5"
                             : ""
                         }`}
                       >
                         <td className="px-6 py-4">
-                          <span className="font-medium text-gray-900">
+                          <span className="font-medium text-ink">
                             {txn.buyerName}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-gray-600">
+                        <td className="px-6 py-4 text-ink/60">
                           {txn.sellerName}
                         </td>
-                        <td className="px-6 py-4 text-right font-medium text-gray-900">
+                        <td className="px-6 py-4 text-right font-mono tabular-nums text-ink">
                           {formatCurrency(txn.amount)}
                         </td>
                         <td className="px-6 py-4 text-center">
                           {txn.buyerPosition !== null ? (
-                            <span className="text-blue-600 font-medium">
+                            <span className="font-mono tabular-nums text-accent">
                               #{txn.buyerPosition}
                             </span>
                           ) : (
-                            <span className="text-gray-400">Left</span>
+                            <span className="text-ink/40">Left</span>
                           )}
                         </td>
                         <td className="px-6 py-4 text-center">
@@ -494,33 +494,33 @@ export function SettlementClient({ lineId, lineName }: SettlementClientProps) {
               </div>
 
               {/* Mobile Cards */}
-              <div className="md:hidden divide-y divide-gray-100">
+              <div className="md:hidden divide-y divide-rule">
                 {transactions.map((txn) => (
                   <div
                     key={txn.id}
                     className={`p-4 ${
                       txn.status === "REFUNDED"
-                        ? "bg-red-50/30"
+                        ? "bg-accent/5"
                         : txn.settledAt
-                        ? "bg-green-50/30"
+                        ? "bg-green-700/5"
                         : ""
                     }`}
                   >
                     <div className="flex items-start justify-between mb-2">
                       <div>
-                        <p className="font-medium text-gray-900">
+                        <p className="font-medium text-ink">
                           {txn.buyerName}
-                          <span className="text-gray-400 mx-1">&larr;</span>
-                          <span className="text-gray-600">{txn.sellerName}</span>
+                          <span className="text-ink/40 mx-1">&larr;</span>
+                          <span className="text-ink/60">{txn.sellerName}</span>
                         </p>
-                        <p className="text-xs text-gray-500 mt-0.5">
+                        <p className="font-mono text-xs tabular-nums text-ink/50 mt-0.5">
                           {txn.buyerPosition !== null
                             ? `Position #${txn.buyerPosition}`
                             : "Left line"}
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="font-semibold text-gray-900">
+                        <p className="font-mono tabular-nums font-medium text-ink">
                           {formatCurrency(txn.amount)}
                         </p>
                       </div>

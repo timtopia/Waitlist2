@@ -374,19 +374,24 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold text-gray-900 mb-6">Dashboard</h1>
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
+      <div className="border-b border-ink pb-6 mb-10">
+        <p className="font-mono text-xs uppercase tracking-[0.25em] text-ink/50 mb-3">
+          Your desk
+        </p>
+        <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight">Dashboard</h1>
+      </div>
 
       {/* Onboarding Card */}
       {isNewUser && !onboardingDismissed && (
-        <Card className="mb-6 border-blue-200 bg-blue-50">
+        <Card className="mb-6 border-ink">
           <CardContent className="py-6">
             <div className="flex items-start justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900 mb-1">
+                <h2 className="text-lg font-semibold tracking-tight mb-1">
                   Welcome to Waitlyst!
                 </h2>
-                <p className="text-gray-600 mb-4">
+                <p className="text-ink/60 mb-4">
                   Get started by creating your first line or browsing existing ones.
                 </p>
                 <div className="flex gap-3">
@@ -400,7 +405,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
               </div>
               <button
                 onClick={dismissOnboarding}
-                className="text-gray-400 hover:text-gray-600 ml-4 flex-shrink-0"
+                className="text-ink/40 hover:text-ink ml-4 flex-shrink-0"
                 aria-label="Dismiss"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -415,7 +420,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
       {/* Search Bar */}
       <div className="relative mb-6">
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-          <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="h-4 w-4 text-ink/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
         </div>
@@ -433,7 +438,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
               setSearchText("")
               searchInputRef.current?.focus()
             }}
-            className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+            className="absolute inset-y-0 right-0 pr-3 flex items-center text-ink/40 hover:text-ink"
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -444,65 +449,65 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
 
       {/* Stats Modal */}
       {statsModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white border border-ink p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold tracking-tight mb-4">
               {statsModal.lineName} - Transaction Stats
             </h3>
 
             {statsModal.loading ? (
               <div className="text-center py-4">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                <p className="text-sm text-gray-500 mt-2">Loading stats...</p>
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent mx-auto"></div>
+                <p className="text-sm text-ink/50 mt-2">Loading stats...</p>
               </div>
             ) : statsModal.stats ? (
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-green-50 rounded-lg p-4 text-center">
-                    <p className="text-2xl font-bold text-green-700">
+                <div className="grid grid-cols-2 divide-x divide-rule border border-rule">
+                  <div className="p-4 text-center">
+                    <p className="font-mono text-2xl tabular-nums text-green-700">
                       {formatCurrency(statsModal.stats.totalCompleted)}
                     </p>
-                    <p className="text-sm text-green-600">
+                    <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mt-1">
                       Settled ({statsModal.stats.completedCount})
                     </p>
                   </div>
-                  <div className="bg-red-50 rounded-lg p-4 text-center">
-                    <p className="text-2xl font-bold text-red-700">
+                  <div className="p-4 text-center">
+                    <p className="font-mono text-2xl tabular-nums text-accent">
                       {formatCurrency(statsModal.stats.totalRefunded)}
                     </p>
-                    <p className="text-sm text-red-600">
+                    <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mt-1">
                       Refunded ({statsModal.stats.refundedCount})
                     </p>
                   </div>
                 </div>
 
                 {statsModal.stats.pendingSettlement > 0 && (
-                  <div className="bg-yellow-50 rounded-lg p-4 text-center">
-                    <p className="text-2xl font-bold text-yellow-700">
+                  <div className="border border-rule p-4 text-center">
+                    <p className="font-mono text-2xl tabular-nums text-amber-600">
                       {formatCurrency(statsModal.stats.pendingSettlement)}
                     </p>
-                    <p className="text-sm text-yellow-600">
+                    <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mt-1">
                       Pending Settlement ({statsModal.stats.pendingSettlementCount})
                     </p>
-                    <p className="text-xs text-yellow-500 mt-1">
+                    <p className="text-xs text-ink/40 mt-1">
                       Settles automatically when both buyer and seller leave the line
                     </p>
                   </div>
                 )}
 
-                <div className="bg-blue-50 rounded-lg p-4 text-center">
-                  <p className="text-3xl font-bold text-blue-700">
+                <div className="border border-ink p-4 text-center">
+                  <p className="font-mono text-3xl tabular-nums">
                     {formatCurrency(statsModal.stats.netRevenue)}
                   </p>
-                  <p className="text-sm text-blue-600">Net Revenue (Settled)</p>
+                  <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mt-1">Net Revenue (Settled)</p>
                 </div>
 
-                <p className="text-sm text-gray-500 text-center">
+                <p className="text-sm text-ink/50 text-center">
                   Total transactions: {statsModal.stats.totalTransactions}
                 </p>
               </div>
             ) : (
-              <p className="text-sm text-gray-600">No transaction data available.</p>
+              <p className="text-sm text-ink/60">No transaction data available.</p>
             )}
 
             <div className="mt-4 flex gap-2">
@@ -562,12 +567,12 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
       {/* Lines I'm In */}
       <Card className="mb-8">
         <CardHeader className="flex flex-row items-center justify-between">
-          <h2 className="text-xl font-semibold text-gray-900">My Positions</h2>
+          <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-ink/60">My Positions</h2>
           {positions.length > 0 && (
             <select
               value={positionsSort}
               onChange={(e) => setPositionsSort(e.target.value as SortOption)}
-              className="text-sm border border-gray-300 rounded-lg px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="text-sm border border-rule px-2 py-1 bg-white text-ink/70 focus:outline-none focus:border-ink"
             >
               <option value="newest">Newest first</option>
               <option value="oldest">Oldest first</option>
@@ -578,14 +583,14 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
         <CardContent>
           {positions.length === 0 ? (
             <div className="text-center py-6">
-              <p className="text-gray-500 mb-4">You haven&apos;t joined any lines yet.</p>
+              <p className="text-ink/60 mb-4">You haven&apos;t joined any lines yet.</p>
               <Link href="/">
                 <Button variant="secondary">Browse Lines</Button>
               </Link>
             </div>
           ) : filteredPositions.length === 0 ? (
             <div className="text-center py-6">
-              <p className="text-gray-500">No positions match your search.</p>
+              <p className="text-ink/60">No positions match your search.</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -595,17 +600,17 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                   href={`/lines/${pos.lineId}`}
                   className="block"
                 >
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                  <div className="flex items-center justify-between p-4 bg-paper hover:bg-ink/5 transition-colors">
                     <div>
-                      <h3 className="font-medium text-gray-900">{pos.line.name}</h3>
-                      <p className="text-sm text-gray-500">
+                      <h3 className="font-semibold tracking-tight">{pos.line.name}</h3>
+                      <p className="text-sm text-ink/60">
                         {pos.line._count.positions} people in line
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-lg font-bold text-blue-600">#{pos.position}</p>
+                      <p className="font-mono text-lg tabular-nums">#{pos.position}</p>
                       {pos.askingPrice !== null && (
-                        <p className="text-sm text-green-600">
+                        <p className="text-sm text-green-700">
                           Open to swap: {formatCurrency(Number(pos.askingPrice))}
                         </p>
                       )}
@@ -621,13 +626,13 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
       {/* Lines I've Created */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <h2 className="text-xl font-semibold text-gray-900">Lines I Created</h2>
+          <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-ink/60">Lines I Created</h2>
           <div className="flex items-center gap-2">
             {lines.length > 0 && (
               <select
                 value={createdSort}
                 onChange={(e) => setCreatedSort(e.target.value as SortOption)}
-                className="text-sm border border-gray-300 rounded-lg px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="text-sm border border-rule px-2 py-1 bg-white text-ink/70 focus:outline-none focus:border-ink"
               >
                 <option value="newest">Newest first</option>
                 <option value="oldest">Oldest first</option>
@@ -641,7 +646,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
         </CardHeader>
         <CardContent>
           {lines.length > 0 && (
-            <div className="flex items-center gap-1 mb-4">
+            <div className="flex items-center gap-5 mb-4">
               {(["all", "active", "paused"] as const).map((filter) => {
                 const count = statusCounts[filter]
                 const isSelected = statusFilter === filter
@@ -650,17 +655,17 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                   <button
                     key={filter}
                     onClick={() => setStatusFilter(filter)}
-                    className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                    className={`font-mono text-xs uppercase tracking-widest pb-1 border-b-2 transition-colors ${
                       isSelected
-                        ? "bg-blue-100 text-blue-700"
-                        : "text-gray-600 hover:bg-gray-100"
+                        ? "border-accent text-ink"
+                        : "border-transparent text-ink/40 hover:text-ink"
                     }`}
                   >
                     {label}
-                    <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${
+                    <span className={`ml-1.5 tabular-nums ${
                       isSelected
-                        ? "bg-blue-200 text-blue-800"
-                        : "bg-gray-200 text-gray-500"
+                        ? "text-ink/60"
+                        : "text-ink/30"
                     }`}>
                       {count}
                     </span>
@@ -671,41 +676,43 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
           )}
           {lines.length === 0 ? (
             <div className="text-center py-6">
-              <p className="text-gray-500 mb-4">You haven&apos;t created any lines yet.</p>
+              <p className="text-ink/60 mb-4">You haven&apos;t created any lines yet.</p>
               <Link href="/lines/new">
                 <Button variant="secondary">Create Your First Line</Button>
               </Link>
             </div>
           ) : filteredLines.length === 0 ? (
             <div className="text-center py-6">
-              <p className="text-gray-500">No lines match your search or filters.</p>
+              <p className="text-ink/60">No lines match your search or filters.</p>
             </div>
           ) : (
             <div className="space-y-3">
               {filteredLines.map((line) => (
                 <div
                   key={line.id}
-                  className="p-4 bg-gray-50 rounded-lg"
+                  className="p-4 bg-paper"
                 >
                   <div className="flex items-center justify-between">
                     <Link href={`/lines/${line.id}`} className="flex-1 min-w-0">
                       <div>
                         <div className="flex items-center space-x-2">
-                          <h3 className="font-medium text-gray-900 truncate">{line.name}</h3>
-                          <span className={`text-xs px-2 py-0.5 rounded flex-shrink-0 ${
+                          <h3 className="font-semibold tracking-tight truncate">{line.name}</h3>
+                          <span className={`inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest flex-shrink-0 ${
                             line.isPublic
-                              ? "bg-green-100 text-green-700"
-                              : "bg-gray-200 text-gray-600"
+                              ? "text-green-700"
+                              : "text-ink/50"
                           }`}>
+                            <span className={`w-1.5 h-1.5 ${line.isPublic ? "bg-green-600" : "bg-ink/30"}`} aria-hidden />
                             {line.isPublic ? "Public" : "Private"}
                           </span>
                           {!line.isActive && (
-                            <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700 flex-shrink-0">
+                            <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-amber-600 flex-shrink-0">
+                              <span className="w-1.5 h-1.5 bg-amber-500" aria-hidden />
                               Paused
                             </span>
                           )}
                         </div>
-                        <p className="text-sm text-gray-500 mt-1">
+                        <p className="text-sm text-ink/60 mt-1">
                           {line._count.positions} in line
                           {line.frontPerson && (
                             <span>
@@ -735,7 +742,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                               setRemoveConfirm({ lineId: line.id })
                             }}
                             disabled={loadingAction === `remove-${line.id}`}
-                            className="text-xs text-red-600 hover:text-red-800 hover:underline px-1 py-0.5 disabled:opacity-50"
+                            className="text-xs text-accent hover:underline underline-offset-4 px-1 py-0.5 disabled:opacity-50"
                           >
                             Remove
                           </button>
@@ -784,71 +791,51 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
       {/* Activity Feed */}
       <Card className="mt-8">
         <CardHeader>
-          <h2 className="text-xl font-semibold text-gray-900">Recent Activity</h2>
+          <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-ink/60">Recent Activity</h2>
         </CardHeader>
         <CardContent>
           {activitiesLoading ? (
             <div className="space-y-3">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="h-12 bg-gray-100 rounded-lg animate-pulse" />
+                <div key={i} className="h-12 bg-ink/5 animate-pulse" />
               ))}
             </div>
           ) : activities.length === 0 ? (
             <div className="text-center py-6">
-              <p className="text-gray-500">No recent activity.</p>
-              <p className="text-sm text-gray-400 mt-1">
+              <p className="text-ink/60">No recent activity.</p>
+              <p className="text-sm text-ink/40 mt-1">
                 Join a line or swap a position to see activity here.
               </p>
             </div>
           ) : (
             <div className="space-y-2">
               {activities.map((activity) => {
-                const iconStyles: Record<string, { bg: string; icon: string; path: string }> = {
-                  joined: {
-                    bg: "bg-blue-100",
-                    icon: "text-blue-600",
-                    path: "M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z",
-                  },
-                  purchase: {
-                    bg: "bg-red-100",
-                    icon: "text-red-600",
-                    path: "M5 10l7-7m0 0l7 7m-7-7v18",
-                  },
-                  sale: {
-                    bg: "bg-green-100",
-                    icon: "text-green-600",
-                    path: "M19 14l-7 7m0 0l-7-7m7 7V3",
-                  },
-                  refund: {
-                    bg: "bg-amber-100",
-                    icon: "text-amber-600",
-                    path: "M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6",
-                  },
+                const dotColors: Record<string, string> = {
+                  joined: "bg-ink/30",
+                  purchase: "bg-accent",
+                  sale: "bg-green-600",
+                  refund: "bg-amber-500",
                 }
-                const style = iconStyles[activity.type] || iconStyles.joined
+                const dotColor = dotColors[activity.type] || dotColors.joined
 
                 return (
                   <div
                     key={activity.id}
-                    className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                    className="flex items-center gap-3 p-3 bg-paper hover:bg-ink/5 transition-colors"
                   >
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${style.bg}`}>
-                      <svg className={`w-4 h-4 ${style.icon}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={style.path} />
-                      </svg>
-                    </div>
+                    <span className={`w-1.5 h-1.5 flex-shrink-0 ${dotColor}`} aria-hidden />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-900 truncate">{activity.description}</p>
+                      <p className="text-sm truncate">{activity.description}</p>
                       {activity.lineName && activity.lineId && (
                         <Link
                           href={`/lines/${activity.lineId}`}
-                          className="text-xs text-blue-600 hover:underline"
+                          className="text-xs text-accent hover:underline underline-offset-4"
                         >
                           {activity.lineName}
                         </Link>
                       )}
                     </div>
-                    <span className="text-xs text-gray-400 flex-shrink-0">{timeAgo(activity.createdAt)}</span>
+                    <span className="font-mono text-xs text-ink/40 flex-shrink-0">{timeAgo(activity.createdAt)}</span>
                   </div>
                 )
               })}

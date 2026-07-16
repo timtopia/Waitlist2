@@ -8,17 +8,22 @@ export const metadata: Metadata = {
 
 export default function TermsOfServicePage() {
   return (
-    <div className="bg-white py-12 sm:py-16">
+    <div className="py-12 sm:py-16">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-        <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">
-          Terms of Service
-        </h1>
-        <p className="text-sm text-gray-500 mb-10">
-          Last updated: April 15, 2026
-        </p>
+        <div className="border-b border-ink pb-6 mb-10">
+          <p className="font-mono text-xs uppercase tracking-[0.25em] text-ink/50 mb-3">
+            Legal
+          </p>
+          <h1 className="text-4xl font-semibold tracking-tight mb-3">
+            Terms of Service
+          </h1>
+          <p className="font-mono text-xs uppercase tracking-widest text-ink/40">
+            Last updated: April 15, 2026
+          </p>
+        </div>
 
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-10">
-          <p className="text-sm text-amber-800">
+        <div className="bg-white border-l-2 border-amber-600 p-4 mb-10">
+          <p className="text-sm text-ink/70">
             <strong>Note:</strong> This is a template Terms of Service document
             and does not constitute legal advice. You should consult a qualified
             attorney to ensure your terms meet all applicable legal requirements.
@@ -27,15 +32,15 @@ export default function TermsOfServicePage() {
 
         {/* 1. Acceptance of Terms */}
         <section className="mb-10">
-          <h2 className="text-xl font-semibold text-gray-900 mb-3">
+          <h2 className="text-xl font-semibold tracking-tight mb-3">
             1. Acceptance of Terms
           </h2>
-          <p className="text-gray-700 leading-relaxed mb-3">
+          <p className="text-ink/70 leading-relaxed mb-3">
             By accessing or using Waitlyst (&ldquo;the Service&rdquo;), you agree to be
             bound by these Terms of Service. If you do not agree to these terms,
             do not use the Service.
           </p>
-          <p className="text-gray-700 leading-relaxed">
+          <p className="text-ink/70 leading-relaxed">
             You must be at least 18 years old to use Waitlyst. By using the
             Service, you represent that you are at least 18 years of age.
           </p>
@@ -43,15 +48,15 @@ export default function TermsOfServicePage() {
 
         {/* 2. Description of Service */}
         <section className="mb-10">
-          <h2 className="text-xl font-semibold text-gray-900 mb-3">
+          <h2 className="text-xl font-semibold tracking-tight mb-3">
             2. Description of Service
           </h2>
-          <p className="text-gray-700 leading-relaxed mb-3">
+          <p className="text-ink/70 leading-relaxed mb-3">
             Waitlyst is a digital queue management platform. Creators can set up
             virtual lines for product drops, events, and other purposes. Users
             can join these lines to reserve a position.
           </p>
-          <p className="text-gray-700 leading-relaxed">
+          <p className="text-ink/70 leading-relaxed">
             Waitlyst also offers position swapping, which allows users to pay a
             fee to swap positions with the person directly ahead of them in line.
             Position swapping is optional and configured by the line creator.
@@ -60,20 +65,20 @@ export default function TermsOfServicePage() {
 
         {/* 3. User Accounts */}
         <section className="mb-10">
-          <h2 className="text-xl font-semibold text-gray-900 mb-3">
+          <h2 className="text-xl font-semibold tracking-tight mb-3">
             3. User Accounts
           </h2>
-          <p className="text-gray-700 leading-relaxed mb-3">
+          <p className="text-ink/70 leading-relaxed mb-3">
             Waitlyst uses Google OAuth for authentication. When you sign in, we
             receive your name, email address, and profile picture from Google.
             You do not create a separate username or password with us.
           </p>
-          <p className="text-gray-700 leading-relaxed mb-3">
+          <p className="text-ink/70 leading-relaxed mb-3">
             You are responsible for maintaining the security of your Google
             account that is linked to Waitlyst. Any activity that occurs through
             your account is your responsibility.
           </p>
-          <p className="text-gray-700 leading-relaxed">
+          <p className="text-ink/70 leading-relaxed">
             We reserve the right to suspend or terminate accounts that violate
             these terms or engage in prohibited conduct.
           </p>
@@ -81,21 +86,21 @@ export default function TermsOfServicePage() {
 
         {/* 4. Position Swapping */}
         <section className="mb-10">
-          <h2 className="text-xl font-semibold text-gray-900 mb-3">
+          <h2 className="text-xl font-semibold tracking-tight mb-3">
             4. Position Swapping
           </h2>
-          <p className="text-gray-700 leading-relaxed mb-3">
+          <p className="text-ink/70 leading-relaxed mb-3">
             When you initiate a position swap, you agree to pay the listed swap
             price. <strong>All swaps are final.</strong> Once a swap is
             completed, it cannot be reversed or refunded.
           </p>
-          <p className="text-gray-700 leading-relaxed mb-3">
+          <p className="text-ink/70 leading-relaxed mb-3">
             Waitlyst uses an authorize-then-capture payment model. When you
             request a swap, your payment method is authorized for the swap
             amount. The charge is only captured once the swap is confirmed and
             completed.
           </p>
-          <p className="text-gray-700 leading-relaxed">
+          <p className="text-ink/70 leading-relaxed">
             Payouts to the person who gave up their position are conditional on
             fulfillment. This means the line creator must confirm that service
             has been delivered before payouts are released.
@@ -104,13 +109,13 @@ export default function TermsOfServicePage() {
 
         {/* 5. Fees */}
         <section className="mb-10">
-          <h2 className="text-xl font-semibold text-gray-900 mb-3">
+          <h2 className="text-xl font-semibold tracking-tight mb-3">
             5. Fees
           </h2>
-          <p className="text-gray-700 leading-relaxed mb-3">
+          <p className="text-ink/70 leading-relaxed mb-3">
             Each position swap may involve the following fees:
           </p>
-          <ul className="list-disc list-inside text-gray-700 space-y-2 mb-3">
+          <ul className="list-disc list-inside text-ink/70 space-y-2 mb-3">
             <li>
               <strong>Platform fee:</strong> Waitlyst charges a percentage-based
               service fee on each swap transaction.
@@ -124,7 +129,7 @@ export default function TermsOfServicePage() {
               fees are applied by Stripe to each transaction.
             </li>
           </ul>
-          <p className="text-gray-700 leading-relaxed">
+          <p className="text-ink/70 leading-relaxed">
             The total cost of a swap, including all applicable fees, is displayed
             before you confirm the transaction. Joining a line is free.
           </p>
@@ -132,13 +137,13 @@ export default function TermsOfServicePage() {
 
         {/* 6. Creator Responsibilities */}
         <section className="mb-10">
-          <h2 className="text-xl font-semibold text-gray-900 mb-3">
+          <h2 className="text-xl font-semibold tracking-tight mb-3">
             6. Creator Responsibilities
           </h2>
-          <p className="text-gray-700 leading-relaxed mb-3">
+          <p className="text-ink/70 leading-relaxed mb-3">
             If you create a line on Waitlyst, you are responsible for:
           </p>
-          <ul className="list-disc list-inside text-gray-700 space-y-2 mb-3">
+          <ul className="list-disc list-inside text-ink/70 space-y-2 mb-3">
             <li>
               Accurately describing the purpose of your line (e.g., the product,
               event, or service being offered).
@@ -152,7 +157,7 @@ export default function TermsOfServicePage() {
               event or offering.
             </li>
           </ul>
-          <p className="text-gray-700 leading-relaxed">
+          <p className="text-ink/70 leading-relaxed">
             Creators who receive payouts through Stripe Connect must provide
             accurate identity and banking information to Stripe. Waitlyst is not
             responsible for delays in payouts caused by incomplete Stripe
@@ -162,13 +167,13 @@ export default function TermsOfServicePage() {
 
         {/* 7. Prohibited Conduct */}
         <section className="mb-10">
-          <h2 className="text-xl font-semibold text-gray-900 mb-3">
+          <h2 className="text-xl font-semibold tracking-tight mb-3">
             7. Prohibited Conduct
           </h2>
-          <p className="text-gray-700 leading-relaxed mb-3">
+          <p className="text-ink/70 leading-relaxed mb-3">
             You agree not to:
           </p>
-          <ul className="list-disc list-inside text-gray-700 space-y-2">
+          <ul className="list-disc list-inside text-ink/70 space-y-2">
             <li>
               Use bots, scripts, or automated tools to join lines, initiate
               swaps, or manipulate positions.
@@ -195,20 +200,20 @@ export default function TermsOfServicePage() {
 
         {/* 8. Limitation of Liability */}
         <section className="mb-10">
-          <h2 className="text-xl font-semibold text-gray-900 mb-3">
+          <h2 className="text-xl font-semibold tracking-tight mb-3">
             8. Limitation of Liability
           </h2>
-          <p className="text-gray-700 leading-relaxed mb-3">
+          <p className="text-ink/70 leading-relaxed mb-3">
             Waitlyst is provided &ldquo;as is&rdquo; and &ldquo;as available&rdquo; without warranties of
             any kind, whether express or implied. We do not guarantee that the
             Service will be uninterrupted, error-free, or secure.
           </p>
-          <p className="text-gray-700 leading-relaxed mb-3">
+          <p className="text-ink/70 leading-relaxed mb-3">
             Waitlyst is a platform that connects line creators with users. We are
             not responsible for the actions of line creators, including their
             failure to deliver promised goods or services.
           </p>
-          <p className="text-gray-700 leading-relaxed">
+          <p className="text-ink/70 leading-relaxed">
             To the maximum extent permitted by law, Waitlyst and its operators
             shall not be liable for any indirect, incidental, special,
             consequential, or punitive damages arising from your use of the
@@ -218,10 +223,10 @@ export default function TermsOfServicePage() {
 
         {/* 9. Modifications to Terms */}
         <section className="mb-10">
-          <h2 className="text-xl font-semibold text-gray-900 mb-3">
+          <h2 className="text-xl font-semibold tracking-tight mb-3">
             9. Modifications to Terms
           </h2>
-          <p className="text-gray-700 leading-relaxed">
+          <p className="text-ink/70 leading-relaxed">
             We may update these Terms of Service from time to time. When we make
             changes, we will update the &ldquo;Last updated&rdquo; date at the top of this
             page. Your continued use of Waitlyst after changes are posted
@@ -232,15 +237,15 @@ export default function TermsOfServicePage() {
 
         {/* 10. Contact Information */}
         <section className="mb-10">
-          <h2 className="text-xl font-semibold text-gray-900 mb-3">
+          <h2 className="text-xl font-semibold tracking-tight mb-3">
             10. Contact Information
           </h2>
-          <p className="text-gray-700 leading-relaxed">
+          <p className="text-ink/70 leading-relaxed">
             If you have questions about these Terms of Service, please contact us
             at{" "}
             <a
               href="mailto:support@waitlyst.app"
-              className="text-blue-600 hover:text-blue-800 underline"
+              className="text-accent underline underline-offset-4 hover:text-ink"
             >
               support@waitlyst.app
             </a>
@@ -249,10 +254,10 @@ export default function TermsOfServicePage() {
         </section>
 
         {/* Back to Home */}
-        <div className="pt-6 border-t border-gray-200">
+        <div className="pt-6 border-t border-rule">
           <Link
             href="/"
-            className="text-sm text-blue-600 hover:text-blue-800 transition-colors"
+            className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"
           >
             &larr; Back to Home
           </Link>

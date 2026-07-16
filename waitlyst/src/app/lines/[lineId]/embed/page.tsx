@@ -24,7 +24,7 @@ export default async function EmbedPage({ params }: Props) {
   if (!line) {
     return (
       <div className="flex items-center justify-center h-screen p-4">
-        <p className="text-gray-500 text-sm">Line not found</p>
+        <p className="text-ink/60 text-sm">Line not found</p>
       </div>
     )
   }

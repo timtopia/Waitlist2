@@ -69,7 +69,7 @@ const mockPositions = [
 function openMenuForLine1() {
   // The "..." buttons are the vertical dots icons — get all of them and click the first
   const menuButtons = screen.getAllByRole("button").filter(
-    (btn) => btn.querySelector("svg") && btn.className.includes("text-gray-400")
+    (btn) => btn.querySelector("svg") && btn.className.includes("text-ink/40")
   )
   // First "..." button belongs to line-1 (which has frontPerson so it also has "Serve Next")
   fireEvent.click(menuButtons[0])
@@ -499,7 +499,7 @@ describe("DashboardClient", () => {
 
       // Click "Remove" confirm button in the modal (the styled button, not the link)
       const allRemoveButtons = screen.getAllByRole("button", { name: "Remove" })
-      const confirmButton = allRemoveButtons.find(el => el.className.includes("bg-red-600"))!
+      const confirmButton = allRemoveButtons.find(el => el.className.includes("bg-accent"))!
       fireEvent.click(confirmButton)
 
       await waitFor(() => {

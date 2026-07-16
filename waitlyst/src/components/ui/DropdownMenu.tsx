@@ -25,7 +25,7 @@ export function DropdownMenu({ items, separatorBefore = [] }: DropdownMenuProps)
           e.preventDefault()
           setOpen(!open)
         }}
-        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-lg transition-colors"
+        className="p-2 text-ink/40 hover:text-ink hover:bg-ink/5 transition-colors"
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
@@ -37,11 +37,11 @@ export function DropdownMenu({ items, separatorBefore = [] }: DropdownMenuProps)
             className="fixed inset-0 z-10"
             onClick={() => setOpen(false)}
           />
-          <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+          <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-ink py-1 z-20">
             {items.map((item, index) => (
               <div key={index}>
                 {separatorBefore.includes(index) && (
-                  <div className="border-t border-gray-100 my-1" />
+                  <div className="border-t border-rule my-1" />
                 )}
                 <button
                   onClick={() => {
@@ -51,8 +51,8 @@ export function DropdownMenu({ items, separatorBefore = [] }: DropdownMenuProps)
                   disabled={item.disabled}
                   className={`w-full text-left px-4 py-2 text-sm disabled:opacity-50 ${
                     item.variant === "danger"
-                      ? "text-red-600 hover:bg-red-50"
-                      : "text-gray-700 hover:bg-gray-50"
+                      ? "text-accent hover:bg-accent/5"
+                      : "text-ink/80 hover:bg-ink/5"
                   }`}
                 >
                   {item.label}

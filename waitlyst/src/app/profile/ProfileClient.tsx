@@ -48,10 +48,10 @@ interface ProfileClientProps {
 }
 
 const statusColors: Record<string, string> = {
-  COMPLETED: "bg-green-100 text-green-700",
-  PENDING: "bg-yellow-100 text-yellow-700",
-  FAILED: "bg-red-100 text-red-700",
-  REFUNDED: "bg-gray-100 text-gray-700",
+  COMPLETED: "text-green-700",
+  PENDING: "text-amber-600",
+  FAILED: "text-accent",
+  REFUNDED: "text-ink/40",
 }
 
 export function ProfileClient({ user, stats, recentTransactions, stripeConnectOnboarded, emailNotifications }: ProfileClientProps) {
@@ -184,15 +184,15 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
       {/* Connect Status Banner */}
       {connectMessage && (
-        <div className={`mb-6 rounded-lg p-4 ${
+        <div className={`mb-6 bg-white border p-4 ${
           connectMessage.type === "success"
-            ? "bg-green-50 border border-green-200 text-green-800"
+            ? "border-green-700 text-green-800"
             : connectMessage.type === "info"
-            ? "bg-amber-50 border border-amber-200 text-amber-800"
-            : "bg-red-50 border border-red-200 text-red-800"
+            ? "border-amber-500 text-amber-700"
+            : "border-accent text-accent"
         }`}>
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium">{connectMessage.text}</p>
@@ -218,10 +218,10 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                 alt={displayName}
                 width={64}
                 height={64}
-                className="rounded-full"
+                className="border border-rule"
               />
             ) : (
-              <div className="w-16 h-16 rounded-full bg-blue-600 flex items-center justify-center text-white text-2xl font-bold">
+              <div className="w-16 h-16 bg-ink flex items-center justify-center text-paper text-2xl font-semibold">
                 {displayName[0] || "U"}
               </div>
             )}
@@ -239,12 +239,12 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                       }}
                       maxLength={50}
                       autoFocus
-                      className="text-2xl font-bold text-gray-900 border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full max-w-xs"
+                      className="text-2xl font-semibold tracking-tight bg-white border border-rule px-2 py-1 focus:outline-none focus:border-ink w-full max-w-xs"
                     />
                     <button
                       onClick={handleSave}
                       disabled={isSaving}
-                      className="p-1.5 text-green-600 hover:bg-green-50 rounded-md disabled:opacity-50"
+                      className="p-1.5 text-green-700 hover:bg-ink/5 disabled:opacity-50"
                       title="Save"
                     >
                       {isSaving ? (
@@ -261,7 +261,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                     <button
                       onClick={handleCancel}
                       disabled={isSaving}
-                      className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-md disabled:opacity-50"
+                      className="p-1.5 text-ink/40 hover:bg-ink/5 disabled:opacity-50"
                       title="Cancel"
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -270,15 +270,15 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                     </button>
                   </div>
                   {error && (
-                    <p className="text-xs text-red-500 mt-1">{error}</p>
+                    <p className="text-xs text-accent mt-1">{error}</p>
                   )}
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <h1 className="text-2xl font-bold text-gray-900">{displayName}</h1>
+                  <h1 className="text-2xl font-semibold tracking-tight">{displayName}</h1>
                   <button
                     onClick={handleStartEdit}
-                    className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md"
+                    className="p-1 text-ink/40 hover:text-ink hover:bg-ink/5"
                     title="Edit name"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -288,9 +288,9 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                 </div>
               )}
               {user.email && (
-                <p className="text-sm text-gray-500">{user.email}</p>
+                <p className="text-sm text-ink/60">{user.email}</p>
               )}
-              <p className="text-xs text-gray-400 mt-1">
+              <p className="font-mono text-xs text-ink/40 mt-1">
                 Member since {formatDate(user.createdAt)}
               </p>
             </div>
@@ -304,46 +304,46 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
       {/* Stats & Balances */}
       <Card className="mb-6">
         <CardContent className="py-5">
-          <div className="flex items-center justify-between text-sm text-gray-500 mb-4">
+          <div className="flex items-center justify-between font-mono text-xs uppercase tracking-wider text-ink/50 mb-4">
             <span>{stats.linesCreated} lines created</span>
-            <span className="text-gray-300">·</span>
+            <span className="text-ink/20">·</span>
             <span>{stats.activePositions} active positions</span>
-            <span className="text-gray-300">·</span>
+            <span className="text-ink/20">·</span>
             <span>{stats.purchaseCount} swaps made</span>
-            <span className="text-gray-300">·</span>
+            <span className="text-ink/20">·</span>
             <span>{stats.saleCount} swaps received</span>
           </div>
 
           {/* Total Available — hero number */}
-          <div className="bg-green-50 border border-green-200 rounded-lg p-5 text-center mb-4">
-            <p className="text-sm font-medium text-green-600 mb-1">Total Available</p>
-            <p className="text-3xl font-bold text-green-700">
+          <div className="border border-ink p-5 text-center mb-4">
+            <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mb-1">Total Available</p>
+            <p className="font-mono text-3xl tabular-nums text-green-700">
               {formatCurrency(stats.sellerAvailable + stats.ownerAvailable)}
             </p>
-            <p className="text-xs text-green-500 mt-1">Ready to withdraw</p>
+            <p className="text-xs text-ink/40 mt-1">Ready to withdraw</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Seller Earnings */}
-            <div className="bg-gray-50 rounded-lg p-4">
-              <p className="text-sm font-semibold text-gray-700 mb-3">Swap Earnings</p>
+            <div className="border border-rule p-4">
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/60 mb-3">Swap Earnings</p>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
-                    <span className="text-sm text-gray-600">Available</span>
+                    <span className="w-1.5 h-1.5 bg-green-600 flex-shrink-0" aria-hidden />
+                    <span className="text-sm text-ink/60">Available</span>
                   </div>
-                  <span className="text-sm font-semibold text-green-700">
+                  <span className="font-mono text-sm tabular-nums text-green-700">
                     {formatCurrency(stats.sellerAvailable)}
                   </span>
                 </div>
                 {stats.sellerPendingSettlement > 0 && (
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
-                      <span className="text-sm text-gray-600">Pending settlement</span>
+                      <span className="w-1.5 h-1.5 bg-amber-500 flex-shrink-0" aria-hidden />
+                      <span className="text-sm text-ink/60">Pending settlement</span>
                     </div>
-                    <span className="text-sm font-semibold text-amber-600">
+                    <span className="font-mono text-sm tabular-nums text-amber-600">
                       {formatCurrency(stats.sellerPendingSettlement)}
                     </span>
                   </div>
@@ -351,17 +351,17 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                 {stats.sellerPendingPayment > 0 && (
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-gray-300 flex-shrink-0" />
-                      <span className="text-sm text-gray-600">Pending payment</span>
+                      <span className="w-1.5 h-1.5 bg-ink/20 flex-shrink-0" aria-hidden />
+                      <span className="text-sm text-ink/60">Pending payment</span>
                     </div>
-                    <span className="text-sm font-semibold text-gray-500">
+                    <span className="font-mono text-sm tabular-nums text-ink/40">
                       {formatCurrency(stats.sellerPendingPayment)}
                     </span>
                   </div>
                 )}
               </div>
               {(stats.sellerPendingSettlement > 0 || stats.sellerPendingPayment > 0) && (
-                <p className="text-xs text-gray-400 mt-3 pt-2 border-t border-gray-200">
+                <p className="text-xs text-ink/40 mt-3 pt-2 border-t border-rule">
                   {stats.sellerPendingSettlement > 0 && "Settlement completes when both parties leave the line. "}
                   {stats.sellerPendingPayment > 0 && "Pending payments are transactions in progress."}
                 </p>
@@ -369,25 +369,25 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
             </div>
 
             {/* Owner Fee Earnings */}
-            <div className="bg-gray-50 rounded-lg p-4">
-              <p className="text-sm font-semibold text-gray-700 mb-3">Owner Fee Earnings</p>
+            <div className="border border-rule p-4">
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/60 mb-3">Owner Fee Earnings</p>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
-                    <span className="text-sm text-gray-600">Available</span>
+                    <span className="w-1.5 h-1.5 bg-green-600 flex-shrink-0" aria-hidden />
+                    <span className="text-sm text-ink/60">Available</span>
                   </div>
-                  <span className="text-sm font-semibold text-green-700">
+                  <span className="font-mono text-sm tabular-nums text-green-700">
                     {formatCurrency(stats.ownerAvailable)}
                   </span>
                 </div>
                 {stats.ownerPendingSettlement > 0 && (
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
-                      <span className="text-sm text-gray-600">Pending settlement</span>
+                      <span className="w-1.5 h-1.5 bg-amber-500 flex-shrink-0" aria-hidden />
+                      <span className="text-sm text-ink/60">Pending settlement</span>
                     </div>
-                    <span className="text-sm font-semibold text-amber-600">
+                    <span className="font-mono text-sm tabular-nums text-amber-600">
                       {formatCurrency(stats.ownerPendingSettlement)}
                     </span>
                   </div>
@@ -395,17 +395,17 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                 {stats.ownerPendingPayment > 0 && (
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-gray-300 flex-shrink-0" />
-                      <span className="text-sm text-gray-600">Pending payment</span>
+                      <span className="w-1.5 h-1.5 bg-ink/20 flex-shrink-0" aria-hidden />
+                      <span className="text-sm text-ink/60">Pending payment</span>
                     </div>
-                    <span className="text-sm font-semibold text-gray-500">
+                    <span className="font-mono text-sm tabular-nums text-ink/40">
                       {formatCurrency(stats.ownerPendingPayment)}
                     </span>
                   </div>
                 )}
               </div>
               {(stats.ownerPendingSettlement > 0 || stats.ownerPendingPayment > 0) && (
-                <p className="text-xs text-gray-400 mt-3 pt-2 border-t border-gray-200">
+                <p className="text-xs text-ink/40 mt-3 pt-2 border-t border-rule">
                   {stats.ownerPendingSettlement > 0 && "Settlement completes when both parties leave the line. "}
                   {stats.ownerPendingPayment > 0 && "Pending payments are transactions in progress."}
                 </p>
@@ -418,14 +418,12 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
       {/* Payout Settings */}
       <Card className="mb-6">
         <CardContent className="py-5">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">Payout Settings</h2>
+          <h2 className="font-mono text-xs uppercase tracking-widest text-ink/60 mb-3">Payout Settings</h2>
           {connectOnboarded ? (
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800">
-                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
+                <span className="inline-flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-green-700">
+                  <span className="w-1.5 h-1.5 bg-green-600" aria-hidden />
                   Payouts Active
                 </span>
               </div>
@@ -440,7 +438,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
             </div>
           ) : (
             <div className="flex items-center justify-between">
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-ink/60">
                 Connect a payout account to receive earnings from swapping positions and line owner fees.
               </p>
               <Button
@@ -456,7 +454,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
             </div>
           )}
           {connectError && (
-            <p className="text-xs text-red-500 mt-2">{connectError}</p>
+            <p className="text-xs text-accent mt-2">{connectError}</p>
           )}
         </CardContent>
       </Card>
@@ -464,25 +462,25 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
       {/* Notification Settings */}
       <Card className="mb-6">
         <CardContent className="py-5">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">Notification Settings</h2>
+          <h2 className="font-mono text-xs uppercase tracking-widest text-ink/60 mb-3">Notification Settings</h2>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-900">Email Notifications</p>
-              <p className="text-xs text-gray-500 mt-0.5">
+              <p className="text-sm font-medium">Email Notifications</p>
+              <p className="text-xs text-ink/50 mt-0.5">
                 Receive emails when you&apos;re called, get swap offers, or are fulfilled
               </p>
             </div>
             <button
               onClick={handleToggleEmailNotifs}
               disabled={emailNotifsLoading}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 ${
-                emailNotifs ? "bg-blue-600" : "bg-gray-200"
+              className={`relative inline-flex h-6 w-11 items-center transition-colors focus:outline-none focus:ring-2 focus:ring-ink focus:ring-offset-2 disabled:opacity-50 ${
+                emailNotifs ? "bg-ink" : "bg-ink/20"
               }`}
               role="switch"
               aria-checked={emailNotifs}
             >
               <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                className={`inline-block h-4 w-4 transform bg-white transition-transform ${
                   emailNotifs ? "translate-x-6" : "translate-x-1"
                 }`}
               />
@@ -494,15 +492,15 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
       {/* Transaction History */}
       <Card>
         <CardHeader>
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-ink/60">
             Recent Transactions ({stats.totalTransactions} total)
           </h2>
         </CardHeader>
         <CardContent>
           {recentTransactions.length === 0 ? (
             <div className="text-center py-8">
-              <p className="text-gray-500 mb-2">No transactions yet.</p>
-              <p className="text-sm text-gray-400">
+              <p className="text-ink/60 mb-2">No transactions yet.</p>
+              <p className="text-sm text-ink/40">
                 Swap a position in a line to see your transaction history here.
               </p>
             </div>
@@ -511,35 +509,28 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
               {recentTransactions.slice(0, visibleCount).map((tx) => (
                 <div
                   key={tx.id}
-                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                  className="flex items-center justify-between p-3 bg-paper"
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                      tx.role === "buyer" ? "bg-red-100" : "bg-green-100"
-                    }`}>
-                      {tx.role === "buyer" ? (
-                        <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
-                        </svg>
-                      ) : (
-                        <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                        </svg>
-                      )}
-                    </div>
+                    <span
+                      className={`w-1.5 h-1.5 flex-shrink-0 ${
+                        tx.role === "buyer" ? "bg-accent" : "bg-green-600"
+                      }`}
+                      aria-hidden
+                    />
                     <div>
-                      <p className="text-sm font-medium text-gray-900">
+                      <p className="text-sm font-medium">
                         {tx.role === "buyer" ? "Swapped up" : "Swapped down"}
                       </p>
-                      <p className="text-xs text-gray-500">{formatDateTime(tx.createdAt)}</p>
+                      <p className="font-mono text-xs text-ink/40">{formatDateTime(tx.createdAt)}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusColors[tx.status] || "bg-gray-100 text-gray-600"}`}>
+                    <span className={`font-mono text-xs uppercase tracking-widest ${statusColors[tx.status] || "text-ink/50"}`}>
                       {tx.status}
                     </span>
-                    <p className={`text-sm font-bold ${
-                      tx.role === "buyer" ? "text-red-600" : "text-green-600"
+                    <p className={`font-mono text-sm tabular-nums ${
+                      tx.role === "buyer" ? "text-accent" : "text-green-700"
                     }`}>
                       {tx.role === "buyer" ? "-" : "+"}{formatCurrency(tx.amount)}
                     </p>
@@ -550,14 +541,14 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                 <div className="pt-2 flex justify-center gap-3">
                   <button
                     onClick={() => setVisibleCount((c) => c + 5)}
-                    className="text-sm text-gray-500 hover:text-gray-700"
+                    className="font-mono text-xs uppercase tracking-widest text-ink/50 hover:text-ink"
                   >
                     Show more
                   </button>
-                  <span className="text-gray-300">·</span>
+                  <span className="text-ink/20">·</span>
                   <button
                     onClick={() => setVisibleCount(recentTransactions.length)}
-                    className="text-sm text-gray-500 hover:text-gray-700"
+                    className="font-mono text-xs uppercase tracking-widest text-ink/50 hover:text-ink"
                   >
                     View all {recentTransactions.length} transactions
                   </button>

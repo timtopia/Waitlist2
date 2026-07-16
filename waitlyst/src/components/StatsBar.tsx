@@ -13,12 +13,12 @@ export function StatsBar({ activeLines, peopleInQueues, swapsCompleted }: StatsB
   }
 
   return (
-    <section className="bg-gray-50 border-b border-gray-200 py-12 sm:py-16">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-12">
-          <AnimatedStat value={activeLines} label="Active Lines" />
-          <AnimatedStat value={peopleInQueues} label="People in Queues" />
-          <AnimatedStat value={swapsCompleted} label="Swaps Completed" />
+    <section className="border-b border-rule">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-rule">
+          <AnimatedStat value={activeLines} label="Active lines" />
+          <AnimatedStat value={peopleInQueues} label="People in queues" />
+          <AnimatedStat value={swapsCompleted} label="Trades completed" />
         </div>
       </div>
     </section>

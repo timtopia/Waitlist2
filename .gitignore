@@ -42,4 +42,5 @@ next-env.d.ts
 dev-log/
 .claude/
 LineUp-Development-Plan.md
+TRADING-LINES-PLAN.md
 package-lock.json

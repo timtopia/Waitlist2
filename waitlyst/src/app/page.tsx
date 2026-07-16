@@ -5,6 +5,40 @@ import { StatsBar } from "@/components/StatsBar"
 
 export const revalidate = 60 // Cache landing page for 60 seconds
 
+const steps = [
+  {
+    n: "01",
+    title: "Create a line",
+    body: "Set up a virtual queue for your drop, event, or service. Cap the spots, schedule when it opens, and share one link.",
+  },
+  {
+    n: "02",
+    title: "People take a number",
+    body: "Everyone who joins gets a numbered position. The line moves in real time — no refreshing, no guessing.",
+  },
+  {
+    n: "03",
+    title: "Positions trade hands",
+    body: "In a hurry? Buy the spot directly ahead of you. Not in one? Name a price and let the person behind you pay to move up.",
+  },
+]
+
+const useCases = [
+  ["Sneaker drops", "Queue up before the release goes live, then trade up if you need the W."],
+  ["Limited releases", "Merch, collectibles, exclusive collabs — cap the line and let it fill."],
+  ["Product launches", "Build the waitlist before launch day and watch positions gain value."],
+  ["Pop-up events", "Tastings, openings, experiences. First come, first served — negotiable."],
+]
+
+const features = [
+  ["Scheduled lines", "Open and close times with live countdowns"],
+  ["Real-time movement", "Joins, leaves, and trades appear instantly"],
+  ["Secure payments", "Trades settle through Stripe, not handshakes"],
+  ["Capacity limits", "Cap the line and show how full it is"],
+  ["Owner earnings", "Take a cut of every trade in your line"],
+  ["Owner controls", "Call next, remove no-shows, pause the line"],
+]
+
 export default async function HomePage() {
   const [session, activeLines, peopleInQueues, swapsCompleted] = await Promise.all([
     auth(),
@@ -15,248 +49,147 @@ export default async function HomePage() {
 
   return (
     <div>
-      {/* Hero Section */}
-      <section className="bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 sm:py-28">
-          <div className="max-w-3xl">
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight mb-6">
-              Skip the wait.
-              <br />
-              <span className="text-blue-200">Swap your place in line.</span>
-            </h1>
-            <p className="text-lg sm:text-xl text-blue-100 mb-8 max-w-2xl">
-              Waitlyst lets you create virtual queues for drops, launches, and events.
-              People join your line and can swap spots with the person next to you.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4">
-              {session ? (
-                <>
-                  <Link href="/lines/new">
-                    <button className="w-full sm:w-auto px-8 py-3 text-base font-semibold rounded-lg bg-white text-blue-700 hover:bg-blue-50 transition-colors">
-                      Create a Line
-                    </button>
-                  </Link>
-                  <Link href="/dashboard">
-                    <button className="w-full sm:w-auto px-8 py-3 text-base font-semibold rounded-lg border border-blue-300 text-white hover:bg-blue-600 transition-colors">
-                      My Dashboard
-                    </button>
-                  </Link>
-                </>
-              ) : (
-                <>
-                  <Link href="/browse">
-                    <button className="w-full sm:w-auto px-8 py-3 text-base font-semibold rounded-lg bg-white text-blue-700 hover:bg-blue-50 transition-colors">
-                      Browse Lines
-                    </button>
-                  </Link>
-                  <Link href="#how-it-works">
-                    <button className="w-full sm:w-auto px-8 py-3 text-base font-semibold rounded-lg border border-blue-300 text-white hover:bg-blue-600 transition-colors">
-                      How It Works
-                    </button>
-                  </Link>
-                </>
-              )}
-            </div>
+      {/* Hero */}
+      <section className="border-b border-rule">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-20 sm:py-28">
+          <p className="font-mono text-xs uppercase tracking-[0.25em] text-accent mb-6">
+            Now serving — anyone with a link
+          </p>
+          <h1 className="text-5xl sm:text-6xl lg:text-7xl font-semibold tracking-tight leading-[0.95] max-w-4xl">
+            Every place in line
+            <br />
+            has a price.
+          </h1>
+          <p className="mt-8 text-lg sm:text-xl text-ink/70 max-w-2xl leading-relaxed">
+            Waitlyst is a queue where your spot is yours to keep — or to sell.
+            Create a line, hand out numbers, and let people trade positions with
+            the person directly ahead or behind them.
+          </p>
+          <div className="mt-10 flex flex-col sm:flex-row gap-3">
+            {session ? (
+              <>
+                <Link
+                  href="/lines/new"
+                  className="inline-flex items-center justify-center px-8 py-3.5 bg-ink text-paper font-medium hover:bg-accent transition-colors"
+                >
+                  Start a line
+                </Link>
+                <Link
+                  href="/dashboard"
+                  className="inline-flex items-center justify-center px-8 py-3.5 border border-ink font-medium hover:bg-ink hover:text-paper transition-colors"
+                >
+                  My dashboard
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/browse"
+                  className="inline-flex items-center justify-center px-8 py-3.5 bg-ink text-paper font-medium hover:bg-accent transition-colors"
+                >
+                  Browse open lines
+                </Link>
+                <Link
+                  href="#how-it-works"
+                  className="inline-flex items-center justify-center px-8 py-3.5 border border-ink font-medium hover:bg-ink hover:text-paper transition-colors"
+                >
+                  How it works
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </section>
 
-      {/* Live Platform Stats */}
+      {/* Live counters */}
       <StatsBar
         activeLines={activeLines}
         peopleInQueues={peopleInQueues}
         swapsCompleted={swapsCompleted}
       />
 
-      {/* How It Works */}
-      <section id="how-it-works" className="bg-white py-16 sm:py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">How It Works</h2>
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              Whether you're organizing an event or waiting in line, Waitlyst makes queuing fair, transparent, and flexible.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 lg:gap-12">
-            {/* Step 1 */}
-            <div className="text-center">
-              <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-5">
-                <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                </svg>
+      {/* How it works — numbered ledger */}
+      <section id="how-it-works" className="border-b border-rule">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24">
+          <h2 className="font-mono text-xs uppercase tracking-[0.25em] text-ink/50 mb-10">
+            How it works
+          </h2>
+          <div className="divide-y divide-rule border-t border-b border-rule">
+            {steps.map((step) => (
+              <div
+                key={step.n}
+                className="grid grid-cols-1 sm:grid-cols-12 gap-4 sm:gap-8 py-8 sm:py-10"
+              >
+                <div className="sm:col-span-2">
+                  <span className="font-mono text-4xl sm:text-5xl text-accent tabular-nums">
+                    {step.n}
+                  </span>
+                </div>
+                <div className="sm:col-span-4">
+                  <h3 className="text-xl sm:text-2xl font-semibold tracking-tight">
+                    {step.title}
+                  </h3>
+                </div>
+                <div className="sm:col-span-6">
+                  <p className="text-ink/70 leading-relaxed">{step.body}</p>
+                </div>
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">Create a Line</h3>
-              <p className="text-gray-600">
-                Set up a virtual queue for your event, product drop, or service.
-                Set a capacity limit and schedule when it opens.
-              </p>
-            </div>
-
-            {/* Step 2 */}
-            <div className="text-center">
-              <div className="w-16 h-16 bg-green-100 rounded-2xl flex items-center justify-center mx-auto mb-5">
-                <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">People Join</h3>
-              <p className="text-gray-600">
-                Share your line link. People join and get a position.
-                Real-time updates keep everyone informed as the line moves.
-              </p>
-            </div>
-
-            {/* Step 3 */}
-            <div className="text-center">
-              <div className="w-16 h-16 bg-purple-100 rounded-2xl flex items-center justify-center mx-auto mb-5">
-                <svg className="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">Swap Spots</h3>
-              <p className="text-gray-600">
-                Don't want to wait? Swap with the person ahead of you for a small fee.
-                Want to leave? Set a swap price and let someone take your spot.
-              </p>
-            </div>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* Use Cases */}
-      <section className="bg-gray-50 py-16 sm:py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">Built For</h2>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="bg-white rounded-xl p-6 border border-gray-200">
-              <div className="text-3xl mb-3">👟</div>
-              <h3 className="font-semibold text-gray-900 mb-2">Sneaker Drops</h3>
-              <p className="text-sm text-gray-600">
-                Queue up before the drop goes live. Swap spots with the person next to you to move up.
-              </p>
-            </div>
-            <div className="bg-white rounded-xl p-6 border border-gray-200">
-              <div className="text-3xl mb-3">🔥</div>
-              <h3 className="font-semibold text-gray-900 mb-2">Limited Releases</h3>
-              <p className="text-sm text-gray-600">
-                Merch, collectibles, or exclusive collabs. Set a capacity and let the line fill up.
-              </p>
-            </div>
-            <div className="bg-white rounded-xl p-6 border border-gray-200">
-              <div className="text-3xl mb-3">🚀</div>
-              <h3 className="font-semibold text-gray-900 mb-2">Product Launches</h3>
-              <p className="text-sm text-gray-600">
-                Build hype before launch day. Fans join the waitlist and swap positions as demand grows.
-              </p>
-            </div>
-            <div className="bg-white rounded-xl p-6 border border-gray-200">
-              <div className="text-3xl mb-3">🎪</div>
-              <h3 className="font-semibold text-gray-900 mb-2">Pop-Up Events</h3>
-              <p className="text-sm text-gray-600">
-                Limited-capacity pop-ups, tastings, or experiences. First come, first served — with position swapping.
-              </p>
-            </div>
+      {/* Use cases */}
+      <section className="border-b border-rule">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24">
+          <h2 className="font-mono text-xs uppercase tracking-[0.25em] text-ink/50 mb-10">
+            Built for
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 border-t border-l border-rule">
+            {useCases.map(([title, body]) => (
+              <div key={title} className="border-b border-r border-rule p-8 sm:p-10">
+                <h3 className="text-lg font-semibold tracking-tight mb-2">{title}</h3>
+                <p className="text-sm text-ink/60 leading-relaxed">{body}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
       {/* Features */}
-      <section className="bg-white py-16 sm:py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">Features</h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8 max-w-4xl mx-auto">
-            <div className="flex items-start space-x-4">
-              <div className="flex-shrink-0 w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
+      <section className="border-b border-rule">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24">
+          <h2 className="font-mono text-xs uppercase tracking-[0.25em] text-ink/50 mb-10">
+            What&apos;s in the box
+          </h2>
+          <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-8">
+            {features.map(([title, body]) => (
+              <div key={title} className="border-t border-ink pt-4">
+                <dt className="font-semibold">{title}</dt>
+                <dd className="text-sm text-ink/60 mt-1">{body}</dd>
               </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">Scheduled Lines</h3>
-                <p className="text-sm text-gray-600">Set open/close times with live countdown timers</p>
-              </div>
-            </div>
-            <div className="flex items-start space-x-4">
-              <div className="flex-shrink-0 w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">Real-Time Updates</h3>
-                <p className="text-sm text-gray-600">See joins, leaves, and swaps as they happen</p>
-              </div>
-            </div>
-            <div className="flex items-start space-x-4">
-              <div className="flex-shrink-0 w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">Browser Notifications</h3>
-                <p className="text-sm text-gray-600">Get notified when your position changes</p>
-              </div>
-            </div>
-            <div className="flex items-start space-x-4">
-              <div className="flex-shrink-0 w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
-                <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">Capacity Limits</h3>
-                <p className="text-sm text-gray-600">Set max spots with a visual fill-up bar</p>
-              </div>
-            </div>
-            <div className="flex items-start space-x-4">
-              <div className="flex-shrink-0 w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-                <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">Shareable Links</h3>
-                <p className="text-sm text-gray-600">Rich previews when shared on social media</p>
-              </div>
-            </div>
-            <div className="flex items-start space-x-4">
-              <div className="flex-shrink-0 w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
-                <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">Owner Controls</h3>
-                <p className="text-sm text-gray-600">Remove people, view stats, manage your queue</p>
-              </div>
-            </div>
-          </div>
+            ))}
+          </dl>
         </div>
       </section>
 
       {/* CTA */}
       {!session && (
-        <section className="bg-blue-600 py-16">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <h2 className="text-3xl font-bold text-white mb-4">
-              Ready to get started?
-            </h2>
-            <p className="text-blue-100 mb-8 text-lg">
-              Sign in with Google to create your first line or join an existing one.
-            </p>
+        <section className="bg-ink text-paper">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-20 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-8">
+            <div>
+              <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight">
+                Take a number.
+              </h2>
+              <p className="mt-2 text-paper/60">
+                Sign in with Google to start your first line or claim a spot in one.
+              </p>
+            </div>
             <Link
               href="/api/auth/signin"
-              className="inline-block px-8 py-3 text-base font-semibold rounded-lg bg-white text-blue-700 hover:bg-blue-50 transition-colors"
+              className="inline-flex items-center justify-center px-8 py-3.5 bg-paper text-ink font-medium hover:bg-accent hover:text-white transition-colors shrink-0"
             >
-              Get Started
+              Get started
             </Link>
           </div>
         </section>

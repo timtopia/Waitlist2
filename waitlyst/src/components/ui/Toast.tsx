@@ -45,10 +45,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }
 
   const styles: Record<ToastType, string> = {
-    success: "bg-green-600",
-    error: "bg-red-600",
-    warning: "bg-amber-500",
-    info: "bg-blue-600",
+    success: "bg-green-700",
+    error: "bg-accent",
+    warning: "bg-amber-600",
+    info: "bg-ink",
   }
 
   return (
@@ -59,7 +59,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg text-white text-sm font-medium animate-slide-in-right ${styles[toast.type]}`}
+            className={`pointer-events-auto flex items-center gap-3 px-4 py-3 text-white text-sm font-medium animate-slide-in-right ${styles[toast.type]}`}
             role="alert"
           >
             <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

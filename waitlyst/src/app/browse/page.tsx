@@ -102,53 +102,58 @@ export default function BrowsePage() {
   }, [lines, search, filter, sortBy])
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Browse Lines</h1>
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10 border-b border-ink pb-6">
+        <div>
+          <p className="font-mono text-xs uppercase tracking-[0.25em] text-ink/50 mb-3">
+            The board
+          </p>
+          <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight">Open lines</h1>
+        </div>
         <Link href="/lines/new">
-          <Button>Create a Line</Button>
+          <Button>Start a line</Button>
         </Link>
       </div>
 
       {/* Search & Filters */}
-      <div className="flex flex-col sm:flex-row gap-4 mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-4">
         <div className="flex-1">
           <input
             type="text"
-            placeholder="Search lines..."
+            placeholder="Search lines…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-0 py-2 bg-transparent border-0 border-b border-rule text-base focus:outline-none focus:border-ink placeholder:text-ink/30"
           />
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-5">
           {(["all", "open", "upcoming", "closed"] as FilterStatus[]).map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`font-mono text-xs uppercase tracking-widest pb-1 border-b-2 transition-colors ${
                 filter === f
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  ? "border-accent text-ink"
+                  : "border-transparent text-ink/40 hover:text-ink"
               }`}
             >
-              {f.charAt(0).toUpperCase() + f.slice(1)}
+              {f}
             </button>
           ))}
         </div>
       </div>
 
       {/* Sort */}
-      <div className="flex items-center gap-2 mb-8">
-        <span className="text-sm text-gray-500">Sort by:</span>
+      <div className="flex items-center gap-5 mb-8">
+        <span className="font-mono text-xs uppercase tracking-widest text-ink/40">Sort</span>
         {(Object.keys(sortLabels) as SortOption[]).map((s) => (
           <button
             key={s}
             onClick={() => setSortBy(s)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            className={`font-mono text-xs uppercase tracking-widest pb-1 border-b-2 transition-colors ${
               sortBy === s
-                ? "bg-blue-600 text-white"
-                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                ? "border-accent text-ink"
+                : "border-transparent text-ink/40 hover:text-ink"
             }`}
           >
             {sortLabels[s]}
@@ -158,27 +163,27 @@ export default function BrowsePage() {
 
       {/* Results */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div key={i} className="h-48 bg-gray-200 rounded-lg animate-pulse" />
+        <div className="border border-rule divide-y divide-rule">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="h-20 bg-white animate-pulse" />
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-16 bg-white rounded-lg border border-gray-200">
+        <div className="text-center py-20 border border-rule bg-white">
           {lines.length === 0 ? (
             <>
-              <p className="text-gray-500 mb-2">No active lines yet.</p>
-              <p className="text-sm text-gray-400 mb-4">Be the first to create one!</p>
+              <p className="text-ink/60 mb-2">No lines on the board yet.</p>
+              <p className="text-sm text-ink/40 mb-6">Be the first to start one.</p>
               <Link href="/lines/new">
-                <Button>Create a Line</Button>
+                <Button>Start a line</Button>
               </Link>
             </>
           ) : (
             <>
-              <p className="text-gray-500 mb-2">No lines match your search.</p>
+              <p className="text-ink/60 mb-2">Nothing matches your search.</p>
               <button
                 onClick={() => { setSearch(""); setFilter("all"); setSortBy("newest") }}
-                className="text-sm text-blue-600 hover:underline"
+                className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"
               >
                 Clear filters
               </button>
@@ -187,10 +192,10 @@ export default function BrowsePage() {
         </div>
       ) : (
         <>
-          <p className="text-sm text-gray-500 mb-4">
-            {filtered.length} {filtered.length === 1 ? "line" : "lines"} found
+          <p className="font-mono text-xs uppercase tracking-widest text-ink/40 mb-3">
+            {filtered.length} {filtered.length === 1 ? "line" : "lines"}
           </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="border border-rule divide-y divide-rule">
             {filtered.map((line) => (
               <LineCard key={line.id} line={line} />
             ))}

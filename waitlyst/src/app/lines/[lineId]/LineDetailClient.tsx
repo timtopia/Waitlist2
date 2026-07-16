@@ -313,11 +313,11 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/3 mb-4"></div>
-          <div className="h-4 bg-gray-200 rounded w-2/3 mb-8"></div>
+          <div className="h-8 bg-ink/10 w-1/3 mb-4"></div>
+          <div className="h-4 bg-ink/10 w-2/3 mb-8"></div>
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-16 bg-gray-200 rounded"></div>
+              <div key={i} className="h-16 bg-ink/10"></div>
             ))}
           </div>
         </div>
@@ -330,7 +330,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       <div className="max-w-4xl mx-auto px-4 py-8">
         <Card>
           <CardContent className="py-12 text-center">
-            <p className="text-gray-500">{error || "Line not found"}</p>
+            <p className="text-ink/50">{error || "Line not found"}</p>
           </CardContent>
         </Card>
       </div>
@@ -355,7 +355,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         <Card className="mb-6 overflow-hidden">
           <div className="flex flex-col sm:flex-row">
             {line.productImage && (
-              <div className="relative w-full sm:w-48 h-48 sm:h-auto flex-shrink-0 bg-gray-100">
+              <div className="relative w-full sm:w-48 h-48 sm:h-auto flex-shrink-0 bg-paper border-b sm:border-b-0 sm:border-r border-rule">
                 <Image
                   src={line.productImage}
                   alt={line.productName || "Product"}
@@ -367,13 +367,13 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             )}
             <div className="flex-1 p-5 flex flex-col justify-center">
               {line.productName && (
-                <h2 className="text-xl font-bold text-gray-900 mb-1">
+                <h2 className="text-xl font-semibold tracking-tight text-ink mb-1">
                   {line.productName}
                 </h2>
               )}
               {line.productPrice != null && (
-                <p className="text-base text-gray-600 mb-2">
-                  Retail: <span className="font-semibold">${line.productPrice.toFixed(2)}</span>
+                <p className="text-base text-ink/60 mb-2">
+                  Retail: <span className="font-mono tabular-nums text-ink">${line.productPrice.toFixed(2)}</span>
                 </p>
               )}
               {line.productUrl && (
@@ -381,7 +381,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                   href={line.productUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors"
+                  className="inline-flex items-center font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4 transition-colors"
                 >
                   View Product
                   <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -398,9 +398,9 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         <CardHeader>
           <div className="flex items-start justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 mb-2">{line.name}</h1>
+              <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-ink mb-2">{line.name}</h1>
               {line.description && (
-                <p className="text-gray-600">{line.description}</p>
+                <p className="text-ink/60">{line.description}</p>
               )}
             </div>
             <div className="flex items-center gap-2">
@@ -448,7 +448,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2 text-sm text-gray-500">
+          <div className="flex items-center space-x-2 text-sm text-ink/50">
             <span>Created by</span>
             {line.createdBy.image ? (
               <Image
@@ -456,14 +456,14 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                 alt={line.createdBy.name || "Creator"}
                 width={20}
                 height={20}
-                className="rounded-full"
+                className="w-5 h-5 object-cover border border-rule"
               />
             ) : (
-              <div className="w-5 h-5 rounded-full bg-gray-300 flex items-center justify-center text-xs">
+              <div className="w-5 h-5 bg-ink/10 border border-rule flex items-center justify-center text-xs text-ink/60">
                 {line.createdBy.name?.[0] || "?"}
               </div>
             )}
-            <span className="font-medium text-gray-700">
+            <span className="font-medium text-ink">
               {line.createdBy.name || "Anonymous"}
             </span>
           </div>
@@ -473,15 +473,13 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                 const result = await requestPermission()
                 setNotificationsEnabled(result === "granted")
               }}
-              className={`flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              className={`flex items-center gap-2 px-3 py-1.5 font-mono text-xs uppercase tracking-widest border transition-colors ${
                 notificationsEnabled
-                  ? "bg-green-50 text-green-700 border border-green-200"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-200"
+                  ? "border-rule text-green-700"
+                  : "border-rule text-ink/60 hover:text-ink hover:border-ink"
               }`}
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-              </svg>
+              <span className={`w-1.5 h-1.5 flex-shrink-0 ${notificationsEnabled ? "bg-green-600" : "bg-ink/30"}`} aria-hidden />
               <span>{notificationsEnabled ? "Notifications On" : "Enable Notifications"}</span>
             </button>
           )}
@@ -492,19 +490,14 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       {/* Paused Banner */}
       {linePaused && (
         <div className="mb-6">
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-            <div className="flex items-center space-x-2">
-              <svg className="w-5 h-5 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <div>
-                <p className="font-semibold text-amber-800">This line is currently paused</p>
-                <p className="text-sm text-amber-600">
-                  {isCreator
-                    ? "You have paused this line. No one can join or swap positions until you resume it."
-                    : "New joins and position swaps are temporarily disabled."}
-                </p>
-              </div>
+          <div className="border border-rule border-l-2 border-l-amber-600 bg-white px-4 py-3">
+            <div>
+              <p className="font-semibold text-ink">This line is currently paused</p>
+              <p className="text-sm text-ink/60 mt-0.5">
+                {isCreator
+                  ? "You have paused this line. No one can join or swap positions until you resume it."
+                  : "New joins and position swaps are temporarily disabled."}
+              </p>
             </div>
           </div>
         </div>
@@ -513,15 +506,12 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       {/* Announcement Banner */}
       {line.announcement && !showAnnouncementEditor && (
         <div className="mb-6">
-          <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+          <div className="border border-rule border-l-2 border-l-ink bg-white px-4 py-3">
             <div className="flex items-start space-x-3">
-              <svg className="w-5 h-5 text-indigo-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
-              </svg>
               <div className="flex-1 min-w-0">
-                <p className="text-indigo-900 whitespace-pre-wrap break-words">{line.announcement}</p>
+                <p className="text-ink whitespace-pre-wrap break-words">{line.announcement}</p>
                 {line.announcementAt && (
-                  <p className="text-xs text-indigo-500 mt-1">{timeAgo(line.announcementAt)}</p>
+                  <p className="font-mono text-xs text-ink/40 mt-1">{timeAgo(line.announcementAt)}</p>
                 )}
               </div>
               {isCreator && (
@@ -530,7 +520,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                     setAnnouncementDraft(line.announcement || "")
                     setShowAnnouncementEditor(true)
                   }}
-                  className="text-indigo-400 hover:text-indigo-600 flex-shrink-0"
+                  className="text-ink/40 hover:text-ink flex-shrink-0"
                   title="Edit announcement"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -546,8 +536,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       {/* Announcement Editor (owner only) */}
       {isCreator && showAnnouncementEditor && (
         <div className="mb-6">
-          <div className="bg-white border border-indigo-200 rounded-lg p-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+          <div className="bg-white border border-ink p-4">
+            <label className="block font-mono text-xs uppercase tracking-widest text-ink/50 mb-2">
               {line.announcement ? "Edit Announcement" : "New Announcement"}
             </label>
             <textarea
@@ -556,10 +546,10 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
               maxLength={280}
               rows={3}
               placeholder="Share an update with everyone in line..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
+              className="w-full px-3 py-2 border border-rule text-sm focus:outline-none focus:border-ink placeholder:text-ink/30 resize-none"
             />
             <div className="flex items-center justify-between mt-2">
-              <span className={`text-xs ${announcementDraft.length > 260 ? "text-amber-600" : "text-gray-400"}`}>
+              <span className={`font-mono text-xs tabular-nums ${announcementDraft.length > 260 ? "text-amber-600" : "text-ink/40"}`}>
                 {announcementDraft.length}/280
               </span>
               <div className="flex items-center gap-2">
@@ -567,7 +557,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                   <button
                     onClick={handleClearAnnouncement}
                     disabled={savingAnnouncement}
-                    className="px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                    className="px-3 py-1.5 text-xs text-accent hover:bg-accent/5 transition-colors disabled:opacity-50"
                   >
                     Clear
                   </button>
@@ -578,14 +568,14 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                     setAnnouncementDraft("")
                   }}
                   disabled={savingAnnouncement}
-                  className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+                  className="px-3 py-1.5 text-xs text-ink/60 hover:bg-ink/5 transition-colors disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSaveAnnouncement}
                   disabled={savingAnnouncement || announcementDraft.trim().length === 0}
-                  className="px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-50"
+                  className="px-3 py-1.5 text-xs font-medium text-paper bg-ink hover:bg-accent transition-colors disabled:opacity-50"
                 >
                   {savingAnnouncement ? "Saving..." : "Save"}
                 </button>
@@ -598,19 +588,16 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       {/* Now Serving Banner */}
       {line.nowServing && (
         <div className="mb-6">
-          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
-            <div className="flex items-start space-x-3">
-              <span className="text-2xl flex-shrink-0" role="img" aria-label="bell">&#x1F514;</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-lg font-bold text-emerald-900">
-                  Now Serving: {line.nowServing}
+          <div className="border border-rule border-l-2 border-l-green-700 bg-white px-4 py-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-lg font-semibold tracking-tight text-ink">
+                Now Serving: {line.nowServing}
+              </p>
+              {line.nowServingAt && (
+                <p className="text-sm text-ink/50 mt-0.5">
+                  Called {timeAgo(line.nowServingAt)}
                 </p>
-                {line.nowServingAt && (
-                  <p className="text-sm text-emerald-600 mt-0.5">
-                    Called {timeAgo(line.nowServingAt)}
-                  </p>
-                )}
-              </div>
+              )}
             </div>
           </div>
         </div>
@@ -644,33 +631,29 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <h2 className="text-lg font-semibold text-gray-900">
+            <h2 className="text-lg font-semibold tracking-tight text-ink">
               Queue ({line.positions.length} {line.positions.length === 1 ? "person" : "people"})
             </h2>
             {line.maxCapacity != null && (
               <div className="flex items-center gap-3">
                 {(!line.hideCapacity || isCreator) ? (
-                  <span className="text-sm text-gray-500">
+                  <span className="font-mono text-xs uppercase tracking-widest text-ink/40 tabular-nums">
                     {line.positions.length} of {line.maxCapacity} spots filled
                   </span>
                 ) : (
-                  <span className="text-sm text-gray-500">
+                  <span className="font-mono text-xs uppercase tracking-widest text-ink/40">
                     Limited spots available
                   </span>
                 )}
                 {userPosition && (
                   userPosition.position <= line.maxCapacity ? (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800">
-                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
+                    <span className="inline-flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-green-700">
+                      <span className="w-1.5 h-1.5 bg-green-600" aria-hidden />
                       Your spot is secured
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800">
-                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                      </svg>
+                    <span className="inline-flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-amber-600">
+                      <span className="w-1.5 h-1.5 bg-amber-600" aria-hidden />
                       You&apos;re on the waitlist (#{userPosition.position - line.maxCapacity} past capacity)
                     </span>
                   )
@@ -698,59 +681,39 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       {/* Activity Feed */}
       <Card className="mt-6">
         <CardHeader>
-          <h2 className="text-lg font-semibold text-gray-900">Activity</h2>
+          <h2 className="text-lg font-semibold tracking-tight text-ink">Activity</h2>
         </CardHeader>
         <CardContent>
           {activitiesLoading ? (
             <div className="space-y-2">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="h-10 bg-gray-100 rounded-lg animate-pulse" />
+                <div key={i} className="h-10 bg-ink/5 animate-pulse" />
               ))}
             </div>
           ) : activities.length === 0 ? (
-            <p className="text-sm text-gray-500 text-center py-4">No activity yet</p>
+            <p className="text-sm text-ink/40 text-center py-4">No activity yet</p>
           ) : (
             <>
-              <div className="space-y-1.5">
+              <div className="divide-y divide-rule">
                 {(showAllActivity ? activities : activities.slice(0, 5)).map((activity) => {
-                  const iconStyles: Record<string, { bg: string; icon: string; path: string }> = {
-                    join: {
-                      bg: "bg-blue-100",
-                      icon: "text-blue-600",
-                      path: "M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z",
-                    },
-                    purchase: {
-                      bg: "bg-red-100",
-                      icon: "text-red-600",
-                      path: "M5 10l7-7m0 0l7 7m-7-7v18",
-                    },
-                    sale: {
-                      bg: "bg-green-100",
-                      icon: "text-green-600",
-                      path: "M19 14l-7 7m0 0l-7-7m7 7V3",
-                    },
-                    refund: {
-                      bg: "bg-amber-100",
-                      icon: "text-amber-600",
-                      path: "M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6",
-                    },
+                  const dotStyles: Record<string, string> = {
+                    join: "bg-ink/30",
+                    purchase: "bg-accent",
+                    sale: "bg-green-600",
+                    refund: "bg-amber-600",
                   }
-                  const style = iconStyles[activity.type] || iconStyles.join
+                  const dot = dotStyles[activity.type] || dotStyles.join
 
                   return (
                     <div
                       key={activity.id}
-                      className="flex items-center gap-2.5 py-1.5"
+                      className="flex items-center gap-2.5 py-2"
                     >
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${style.bg}`}>
-                        <svg className={`w-3 h-3 ${style.icon}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={style.path} />
-                        </svg>
-                      </div>
-                      <p className="text-xs text-gray-700 flex-1 min-w-0 truncate">
+                      <span className={`w-1.5 h-1.5 flex-shrink-0 ${dot}`} aria-hidden />
+                      <p className="text-xs text-ink/70 flex-1 min-w-0 truncate">
                         {activity.description}
                       </p>
-                      <span className="text-xs text-gray-400 flex-shrink-0">
+                      <span className="font-mono text-xs text-ink/40 flex-shrink-0">
                         {timeAgo(activity.timestamp)}
                       </span>
                     </div>
@@ -760,7 +723,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
               {activities.length > 5 && (
                 <button
                   onClick={() => setShowAllActivity(!showAllActivity)}
-                  className="mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium"
+                  className="mt-2 font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"
                 >
                   {showAllActivity ? "Show less" : `Show more (${activities.length - 5} more)`}
                 </button>

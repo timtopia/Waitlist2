@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { Button } from "@/components/ui/Button"
 import { Input, Textarea } from "@/components/ui/Input"
-import { Card, CardContent, CardHeader } from "@/components/ui/Card"
+import { Card, CardContent } from "@/components/ui/Card"
 
 export default function CreateLinePage() {
   const router = useRouter()
@@ -95,10 +95,10 @@ export default function CreateLinePage() {
     return (
       <div className="max-w-2xl mx-auto px-4 py-8">
         <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/3 mb-8"></div>
+          <div className="h-8 bg-ink/10 w-1/3 mb-8"></div>
           <div className="space-y-4">
-            <div className="h-10 bg-gray-200 rounded"></div>
-            <div className="h-24 bg-gray-200 rounded"></div>
+            <div className="h-10 bg-ink/10"></div>
+            <div className="h-24 bg-ink/10"></div>
           </div>
         </div>
       </div>
@@ -110,7 +110,7 @@ export default function CreateLinePage() {
       <div className="max-w-2xl mx-auto px-4 py-8">
         <Card>
           <CardContent className="py-12 text-center">
-            <p className="text-gray-500 mb-4">You must be signed in to create a line.</p>
+            <p className="text-ink/60 mb-4">You must be signed in to create a line.</p>
             <Button onClick={() => router.push("/")}>Go Home</Button>
           </CardContent>
         </Card>
@@ -165,19 +165,22 @@ export default function CreateLinePage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-8">
+    <div className="max-w-2xl mx-auto px-4 sm:px-6 py-10 sm:py-14">
+      <div className="border-b border-ink pb-6 mb-10">
+        <p className="font-mono text-xs uppercase tracking-[0.25em] text-ink/50 mb-3">
+          Open for business
+        </p>
+        <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight">Create a New Line</h1>
+        <p className="text-ink/60 mt-3">
+          Create a virtual queue for others to join
+        </p>
+      </div>
       <Card>
-        <CardHeader>
-          <h1 className="text-2xl font-bold text-gray-900">Create a New Line</h1>
-          <p className="text-gray-600 mt-1">
-            Create a virtual queue for others to join
-          </p>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="py-6">
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Quick-start templates */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
                 Quick Start
               </label>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -186,15 +189,14 @@ export default function CreateLinePage() {
                     key={tpl.id}
                     type="button"
                     onClick={() => applyTemplate(tpl.id)}
-                    className={`flex flex-col items-center text-center rounded-lg border-2 p-3 transition-all hover:shadow-sm ${
+                    className={`flex flex-col items-start text-left border-2 p-3 transition-colors ${
                       selectedTemplate === tpl.id
-                        ? "border-blue-500 bg-blue-50"
-                        : "border-gray-200 bg-white hover:border-gray-300"
+                        ? "border-accent bg-white"
+                        : "border-rule bg-white hover:border-ink"
                     }`}
                   >
-                    <span className="text-2xl leading-none mb-1">{tpl.icon}</span>
-                    <span className="text-sm font-medium text-gray-900">{tpl.name}</span>
-                    <span className="text-xs text-gray-500 mt-0.5 leading-tight">{tpl.desc}</span>
+                    <span className="text-sm font-semibold tracking-tight">{tpl.name}</span>
+                    <span className="text-xs text-ink/50 mt-0.5 leading-tight">{tpl.desc}</span>
                   </button>
                 ))}
               </div>
@@ -222,21 +224,21 @@ export default function CreateLinePage() {
               <button
                 type="button"
                 onClick={() => setIsPublic(!isPublic)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  isPublic ? "bg-blue-600" : "bg-gray-300"
+                className={`relative inline-flex h-6 w-11 items-center transition-colors ${
+                  isPublic ? "bg-ink" : "bg-ink/20"
                 }`}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  className={`inline-block h-4 w-4 transform bg-white transition-transform ${
                     isPublic ? "translate-x-6" : "translate-x-1"
                   }`}
                 />
               </button>
               <div>
-                <label className="text-sm font-medium text-gray-700">
+                <label className="font-mono text-xs uppercase tracking-widest text-ink/60">
                   Public Line
                 </label>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-ink/50">
                   {isPublic
                     ? "Anyone can find this line in Browse"
                     : "Only people with the link can join"}
@@ -246,7 +248,7 @@ export default function CreateLinePage() {
 
             {/* Capacity */}
             <div>
-              <label htmlFor="maxCapacity" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="maxCapacity" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
                 Max Capacity (optional)
               </label>
               <input
@@ -256,9 +258,9 @@ export default function CreateLinePage() {
                 placeholder="Unlimited"
                 value={maxCapacity}
                 onChange={(e) => setMaxCapacity(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-ink/50 mt-1">
                 Leave empty for unlimited spots
               </p>
               {maxCapacity && (
@@ -267,13 +269,13 @@ export default function CreateLinePage() {
                     type="checkbox"
                     checked={hideCapacity}
                     onChange={(e) => setHideCapacity(e.target.checked)}
-                    className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                    className="w-4 h-4 accent-ink"
                   />
-                  <span className="text-sm text-gray-700">Hide capacity from members</span>
+                  <span className="text-sm text-ink/70">Hide capacity from members</span>
                 </label>
               )}
               {maxCapacity && hideCapacity && (
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-ink/50 mt-1">
                   Members will see &quot;Limited spots available&quot; instead of the exact number
                 </p>
               )}
@@ -281,7 +283,7 @@ export default function CreateLinePage() {
 
             {/* Owner Fee */}
             <div>
-              <label htmlFor="ownerFee" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="ownerFee" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
                 Your Fee on Position Swaps (%)
               </label>
               <div className="relative">
@@ -294,13 +296,13 @@ export default function CreateLinePage() {
                   placeholder="0"
                   value={ownerFeePercent}
                   onChange={(e) => setOwnerFeePercent(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                 />
               </div>
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-ink/50 mt-1">
                 Percentage you earn when someone swaps a position in your line.
                 {ownerFeePercent && parseFloat(ownerFeePercent) > 0 ? (
-                  <span className="text-blue-600 ml-1">
+                  <span className="text-accent ml-1">
                     e.g. on a $10 swap, you earn ${(10 * parseFloat(ownerFeePercent) / 100).toFixed(2)}
                   </span>
                 ) : (
@@ -314,21 +316,21 @@ export default function CreateLinePage() {
               <button
                 type="button"
                 onClick={() => setEnableSchedule(!enableSchedule)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  enableSchedule ? "bg-blue-600" : "bg-gray-300"
+                className={`relative inline-flex h-6 w-11 items-center transition-colors ${
+                  enableSchedule ? "bg-ink" : "bg-ink/20"
                 }`}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  className={`inline-block h-4 w-4 transform bg-white transition-transform ${
                     enableSchedule ? "translate-x-6" : "translate-x-1"
                   }`}
                 />
               </button>
               <div>
-                <label className="text-sm font-medium text-gray-700">
+                <label className="font-mono text-xs uppercase tracking-widest text-ink/60">
                   Schedule Open/Close Times
                 </label>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-ink/50">
                   {enableSchedule
                     ? "Line will only accept joins during the scheduled window"
                     : "Line is open immediately with no end time"}
@@ -337,9 +339,9 @@ export default function CreateLinePage() {
             </div>
 
             {enableSchedule && (
-              <div className="space-y-4 pl-4 border-l-2 border-blue-200">
+              <div className="space-y-4 pl-4 border-l-2 border-rule">
                 <div>
-                  <label htmlFor="opensAt" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="opensAt" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
                     Opens At
                   </label>
                   <input
@@ -347,14 +349,14 @@ export default function CreateLinePage() {
                     type="datetime-local"
                     value={opensAt}
                     onChange={(e) => setOpensAt(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                   />
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-ink/50 mt-1">
                     Leave empty to open immediately
                   </p>
                 </div>
                 <div>
-                  <label htmlFor="closesAt" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="closesAt" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
                     Closes At
                   </label>
                   <input
@@ -363,9 +365,9 @@ export default function CreateLinePage() {
                     value={closesAt}
                     onChange={(e) => setClosesAt(e.target.value)}
                     min={opensAt || undefined}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                   />
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-ink/50 mt-1">
                     Leave empty for no end time
                   </p>
                 </div>
@@ -373,15 +375,15 @@ export default function CreateLinePage() {
             )}
 
             {/* Product Details (collapsible) */}
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div className="border border-rule">
               <button
                 type="button"
                 onClick={() => setShowProductDetails(!showProductDetails)}
-                className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                className="w-full flex items-center justify-between px-4 py-3 font-mono text-xs uppercase tracking-widest text-ink/70 hover:bg-paper transition-colors"
               >
                 <span>Product Details (optional)</span>
                 <svg
-                  className={`h-4 w-4 text-gray-400 transition-transform ${showProductDetails ? "rotate-180" : ""}`}
+                  className={`h-4 w-4 text-ink/40 transition-transform ${showProductDetails ? "rotate-180" : ""}`}
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -390,9 +392,9 @@ export default function CreateLinePage() {
                 </svg>
               </button>
               {showProductDetails && (
-                <div className="px-4 pb-4 space-y-4 border-t border-gray-200 pt-4">
+                <div className="px-4 pb-4 space-y-4 border-t border-rule pt-4">
                   <div>
-                    <label htmlFor="productName" className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="productName" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
                       Product Name
                     </label>
                     <input
@@ -401,11 +403,11 @@ export default function CreateLinePage() {
                       placeholder='e.g., Nike Dunk Low Travis Scott'
                       value={productName}
                       onChange={(e) => setProductName(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                     />
                   </div>
                   <div>
-                    <label htmlFor="productImage" className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="productImage" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
                       Product Image URL
                     </label>
                     <input
@@ -414,11 +416,11 @@ export default function CreateLinePage() {
                       placeholder="https://example.com/image.jpg"
                       value={productImage}
                       onChange={(e) => setProductImage(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                     />
                   </div>
                   <div>
-                    <label htmlFor="productPrice" className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="productPrice" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
                       Retail Price ($)
                     </label>
                     <input
@@ -429,11 +431,11 @@ export default function CreateLinePage() {
                       placeholder="0.00"
                       value={productPrice}
                       onChange={(e) => setProductPrice(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                     />
                   </div>
                   <div>
-                    <label htmlFor="productUrl" className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="productUrl" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
                       Product Link
                     </label>
                     <input
@@ -442,7 +444,7 @@ export default function CreateLinePage() {
                       placeholder="https://example.com/product"
                       value={productUrl}
                       onChange={(e) => setProductUrl(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                     />
                   </div>
                 </div>
@@ -450,15 +452,15 @@ export default function CreateLinePage() {
             </div>
 
             {/* Swap Settings (collapsible) */}
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div className="border border-rule">
               <button
                 type="button"
                 onClick={() => setShowResaleControls(!showResaleControls)}
-                className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                className="w-full flex items-center justify-between px-4 py-3 font-mono text-xs uppercase tracking-widest text-ink/70 hover:bg-paper transition-colors"
               >
                 <span>Swap Settings (optional)</span>
                 <svg
-                  className={`h-4 w-4 text-gray-400 transition-transform ${showResaleControls ? "rotate-180" : ""}`}
+                  className={`h-4 w-4 text-ink/40 transition-transform ${showResaleControls ? "rotate-180" : ""}`}
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -467,26 +469,26 @@ export default function CreateLinePage() {
                 </svg>
               </button>
               {showResaleControls && (
-                <div className="px-4 pb-4 space-y-4 border-t border-gray-200 pt-4">
+                <div className="px-4 pb-4 space-y-4 border-t border-rule pt-4">
                   <div className="flex items-center space-x-3">
                     <button
                       type="button"
                       onClick={() => setAllowResale(!allowResale)}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        allowResale ? "bg-blue-600" : "bg-gray-300"
+                      className={`relative inline-flex h-6 w-11 items-center transition-colors ${
+                        allowResale ? "bg-ink" : "bg-ink/20"
                       }`}
                     >
                       <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        className={`inline-block h-4 w-4 transform bg-white transition-transform ${
                           allowResale ? "translate-x-6" : "translate-x-1"
                         }`}
                       />
                     </button>
                     <div>
-                      <label className="text-sm font-medium text-gray-700">
+                      <label className="font-mono text-xs uppercase tracking-widest text-ink/60">
                         Allow position swapping
                       </label>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-ink/50">
                         {allowResale
                           ? "People can swap their positions with the person next to them"
                           : "Swapping is disabled — no one can swap positions"}
@@ -495,11 +497,11 @@ export default function CreateLinePage() {
                   </div>
                   {allowResale && (
                     <div>
-                      <label htmlFor="maxAskingPrice" className="block text-sm font-medium text-gray-700 mb-1">
+                      <label htmlFor="maxAskingPrice" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
                         Max Asking Price (optional)
                       </label>
                       <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">$</span>
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink/40">$</span>
                         <input
                           id="maxAskingPrice"
                           type="number"
@@ -508,10 +510,10 @@ export default function CreateLinePage() {
                           placeholder="No limit"
                           value={maxAskingPrice}
                           onChange={(e) => setMaxAskingPrice(e.target.value)}
-                          className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="w-full pl-7 pr-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                         />
                       </div>
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="text-xs text-ink/50 mt-1">
                         Cap the maximum swap price anyone can set for their position. Leave empty for no limit.
                       </p>
                     </div>
@@ -521,7 +523,7 @@ export default function CreateLinePage() {
             </div>
 
             {error && name.trim() && (
-              <p className="text-sm text-red-600">{error}</p>
+              <p className="text-sm text-accent">{error}</p>
             )}
 
             <div className="flex justify-end space-x-3">

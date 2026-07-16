@@ -158,8 +158,8 @@ export function EditLineClient({ line }: { line: LineData }) {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Edit Line</h1>
-              <p className="text-sm text-gray-500 mt-1">
+              <h1 className="text-2xl font-semibold tracking-tight">Edit Line</h1>
+              <p className="text-sm text-ink/60 mt-1">
                 {line.currentCount} {line.currentCount === 1 ? "person" : "people"} currently in line
               </p>
             </div>
@@ -197,19 +197,19 @@ export function EditLineClient({ line }: { line: LineData }) {
               <button
                 type="button"
                 onClick={() => setIsPublic(!isPublic)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  isPublic ? "bg-blue-600" : "bg-gray-300"
+                className={`relative inline-flex h-6 w-11 items-center transition-colors ${
+                  isPublic ? "bg-ink" : "bg-rule"
                 }`}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  className={`inline-block h-4 w-4 transform bg-white transition-transform ${
                     isPublic ? "translate-x-6" : "translate-x-1"
                   }`}
                 />
               </button>
               <div>
-                <label className="text-sm font-medium text-gray-700">Public Line</label>
-                <p className="text-xs text-gray-500">
+                <label className="text-sm font-medium text-ink">Public Line</label>
+                <p className="text-xs text-ink/50">
                   {isPublic ? "Anyone can find this line in Browse" : "Only people with the link can join"}
                 </p>
               </div>
@@ -220,19 +220,19 @@ export function EditLineClient({ line }: { line: LineData }) {
               <button
                 type="button"
                 onClick={() => setIsActive(!isActive)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  isActive ? "bg-green-600" : "bg-gray-300"
+                className={`relative inline-flex h-6 w-11 items-center transition-colors ${
+                  isActive ? "bg-green-700" : "bg-rule"
                 }`}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  className={`inline-block h-4 w-4 transform bg-white transition-transform ${
                     isActive ? "translate-x-6" : "translate-x-1"
                   }`}
                 />
               </button>
               <div>
-                <label className="text-sm font-medium text-gray-700">Active</label>
-                <p className="text-xs text-gray-500">
+                <label className="text-sm font-medium text-ink">Active</label>
+                <p className="text-xs text-ink/50">
                   {isActive ? "Line is accepting joins" : "Line is paused - no new joins allowed"}
                 </p>
               </div>
@@ -240,7 +240,7 @@ export function EditLineClient({ line }: { line: LineData }) {
 
             {/* Capacity */}
             <div>
-              <label htmlFor="maxCapacity" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="maxCapacity" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
                 Max Capacity (optional)
               </label>
               <input
@@ -250,9 +250,9 @@ export function EditLineClient({ line }: { line: LineData }) {
                 placeholder="Unlimited"
                 value={maxCapacity}
                 onChange={(e) => setMaxCapacity(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-ink/50 mt-1">
                 {line.currentCount > 0
                   ? `Must be at least ${line.currentCount} (current participants)`
                   : "Leave empty for unlimited spots"}
@@ -263,13 +263,13 @@ export function EditLineClient({ line }: { line: LineData }) {
                     type="checkbox"
                     checked={hideCapacity}
                     onChange={(e) => setHideCapacity(e.target.checked)}
-                    className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                    className="w-4 h-4 accent-ink border-rule"
                   />
-                  <span className="text-sm text-gray-700">Hide capacity from members</span>
+                  <span className="text-sm text-ink/70">Hide capacity from members</span>
                 </label>
               )}
               {maxCapacity && hideCapacity && (
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-ink/50 mt-1">
                   Members will see &quot;Limited spots available&quot; instead of the exact number
                 </p>
               )}
@@ -277,7 +277,7 @@ export function EditLineClient({ line }: { line: LineData }) {
 
             {/* Owner Fee */}
             <div>
-              <label htmlFor="ownerFee" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="ownerFee" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
                 Your Fee on Position Swaps (%)
               </label>
               <input
@@ -289,12 +289,12 @@ export function EditLineClient({ line }: { line: LineData }) {
                 placeholder="0"
                 value={ownerFeePercent}
                 onChange={(e) => setOwnerFeePercent(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-ink/50 mt-1">
                 Percentage you earn when someone swaps a position.
                 {ownerFeePercent && parseFloat(ownerFeePercent) > 0 ? (
-                  <span className="text-blue-600 ml-1">
+                  <span className="text-accent ml-1">
                     e.g. on a $10 swap, you earn ${(10 * parseFloat(ownerFeePercent) / 100).toFixed(2)}
                   </span>
                 ) : (
@@ -313,19 +313,19 @@ export function EditLineClient({ line }: { line: LineData }) {
               <button
                 type="button"
                 onClick={() => setEnableSchedule(!enableSchedule)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  enableSchedule ? "bg-blue-600" : "bg-gray-300"
+                className={`relative inline-flex h-6 w-11 items-center transition-colors ${
+                  enableSchedule ? "bg-ink" : "bg-rule"
                 }`}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  className={`inline-block h-4 w-4 transform bg-white transition-transform ${
                     enableSchedule ? "translate-x-6" : "translate-x-1"
                   }`}
                 />
               </button>
               <div>
-                <label className="text-sm font-medium text-gray-700">Schedule Open/Close Times</label>
-                <p className="text-xs text-gray-500">
+                <label className="text-sm font-medium text-ink">Schedule Open/Close Times</label>
+                <p className="text-xs text-ink/50">
                   {enableSchedule
                     ? "Line will only accept joins during the scheduled window"
                     : "No scheduled open/close times"}
@@ -334,9 +334,9 @@ export function EditLineClient({ line }: { line: LineData }) {
             </div>
 
             {enableSchedule && (
-              <div className="space-y-4 pl-4 border-l-2 border-blue-200">
+              <div className="space-y-4 pl-4 border-l-2 border-rule">
                 <div>
-                  <label htmlFor="opensAt" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="opensAt" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
                     Opens At
                   </label>
                   <input
@@ -344,12 +344,12 @@ export function EditLineClient({ line }: { line: LineData }) {
                     type="datetime-local"
                     value={opensAt}
                     onChange={(e) => setOpensAt(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Leave empty to open immediately</p>
+                  <p className="text-xs text-ink/50 mt-1">Leave empty to open immediately</p>
                 </div>
                 <div>
-                  <label htmlFor="closesAt" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="closesAt" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
                     Closes At
                   </label>
                   <input
@@ -358,23 +358,23 @@ export function EditLineClient({ line }: { line: LineData }) {
                     value={closesAt}
                     onChange={(e) => setClosesAt(e.target.value)}
                     min={opensAt || undefined}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Leave empty for no end time</p>
+                  <p className="text-xs text-ink/50 mt-1">Leave empty for no end time</p>
                 </div>
               </div>
             )}
 
             {/* Product Details (collapsible) */}
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div className="border border-rule">
               <button
                 type="button"
                 onClick={() => setShowProductDetails(!showProductDetails)}
-                className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                className="w-full flex items-center justify-between px-4 py-3 font-mono text-xs uppercase tracking-widest text-ink/60 hover:bg-paper transition-colors"
               >
                 <span>Product Details (optional)</span>
                 <svg
-                  className={`h-4 w-4 text-gray-400 transition-transform ${showProductDetails ? "rotate-180" : ""}`}
+                  className={`h-4 w-4 text-ink/40 transition-transform ${showProductDetails ? "rotate-180" : ""}`}
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -383,9 +383,9 @@ export function EditLineClient({ line }: { line: LineData }) {
                 </svg>
               </button>
               {showProductDetails && (
-                <div className="px-4 pb-4 space-y-4 border-t border-gray-200 pt-4">
+                <div className="px-4 pb-4 space-y-4 border-t border-rule pt-4">
                   <div>
-                    <label htmlFor="productName" className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="productName" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
                       Product Name
                     </label>
                     <input
@@ -394,11 +394,11 @@ export function EditLineClient({ line }: { line: LineData }) {
                       placeholder='e.g., Nike Dunk Low Travis Scott'
                       value={productName}
                       onChange={(e) => setProductName(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                     />
                   </div>
                   <div>
-                    <label htmlFor="productImage" className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="productImage" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
                       Product Image URL
                     </label>
                     <input
@@ -407,11 +407,11 @@ export function EditLineClient({ line }: { line: LineData }) {
                       placeholder="https://example.com/image.jpg"
                       value={productImage}
                       onChange={(e) => setProductImage(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                     />
                   </div>
                   <div>
-                    <label htmlFor="productPrice" className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="productPrice" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
                       Retail Price ($)
                     </label>
                     <input
@@ -422,11 +422,11 @@ export function EditLineClient({ line }: { line: LineData }) {
                       placeholder="0.00"
                       value={productPrice}
                       onChange={(e) => setProductPrice(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                     />
                   </div>
                   <div>
-                    <label htmlFor="productUrl" className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="productUrl" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
                       Product Link
                     </label>
                     <input
@@ -435,7 +435,7 @@ export function EditLineClient({ line }: { line: LineData }) {
                       placeholder="https://example.com/product"
                       value={productUrl}
                       onChange={(e) => setProductUrl(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                     />
                   </div>
                 </div>
@@ -443,15 +443,15 @@ export function EditLineClient({ line }: { line: LineData }) {
             </div>
 
             {/* Swap Settings (collapsible) */}
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div className="border border-rule">
               <button
                 type="button"
                 onClick={() => setShowResaleControls(!showResaleControls)}
-                className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                className="w-full flex items-center justify-between px-4 py-3 font-mono text-xs uppercase tracking-widest text-ink/60 hover:bg-paper transition-colors"
               >
                 <span>Swap Settings (optional)</span>
                 <svg
-                  className={`h-4 w-4 text-gray-400 transition-transform ${showResaleControls ? "rotate-180" : ""}`}
+                  className={`h-4 w-4 text-ink/40 transition-transform ${showResaleControls ? "rotate-180" : ""}`}
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -460,26 +460,26 @@ export function EditLineClient({ line }: { line: LineData }) {
                 </svg>
               </button>
               {showResaleControls && (
-                <div className="px-4 pb-4 space-y-4 border-t border-gray-200 pt-4">
+                <div className="px-4 pb-4 space-y-4 border-t border-rule pt-4">
                   <div className="flex items-center space-x-3">
                     <button
                       type="button"
                       onClick={() => setAllowResale(!allowResale)}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        allowResale ? "bg-blue-600" : "bg-gray-300"
+                      className={`relative inline-flex h-6 w-11 items-center transition-colors ${
+                        allowResale ? "bg-ink" : "bg-rule"
                       }`}
                     >
                       <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        className={`inline-block h-4 w-4 transform bg-white transition-transform ${
                           allowResale ? "translate-x-6" : "translate-x-1"
                         }`}
                       />
                     </button>
                     <div>
-                      <label className="text-sm font-medium text-gray-700">
+                      <label className="text-sm font-medium text-ink">
                         Allow position swapping
                       </label>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-ink/50">
                         {allowResale
                           ? "People can swap their positions with the person next to them"
                           : "Swapping is disabled — no one can swap positions"}
@@ -488,11 +488,11 @@ export function EditLineClient({ line }: { line: LineData }) {
                   </div>
                   {allowResale && (
                     <div>
-                      <label htmlFor="maxAskingPrice" className="block text-sm font-medium text-gray-700 mb-1">
+                      <label htmlFor="maxAskingPrice" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
                         Max Asking Price (optional)
                       </label>
                       <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">$</span>
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink/50">$</span>
                         <input
                           id="maxAskingPrice"
                           type="number"
@@ -501,10 +501,10 @@ export function EditLineClient({ line }: { line: LineData }) {
                           placeholder="No limit"
                           value={maxAskingPrice}
                           onChange={(e) => setMaxAskingPrice(e.target.value)}
-                          className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="w-full pl-7 pr-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                         />
                       </div>
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="text-xs text-ink/50 mt-1">
                         Cap the maximum swap price anyone can set for their position. Leave empty for no limit.
                       </p>
                     </div>
@@ -514,8 +514,8 @@ export function EditLineClient({ line }: { line: LineData }) {
             </div>
 
             {error && name.trim() && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                <p className="text-sm text-red-600">{error}</p>
+              <div className="bg-white border border-accent p-3">
+                <p className="text-sm text-accent">{error}</p>
               </div>
             )}
 
