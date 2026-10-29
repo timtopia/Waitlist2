@@ -65,7 +65,7 @@ vi.mock("@/lib/stripe", () => ({
   getBaseUrl: vi.fn(() => "http://localhost:3000"),
   performPositionSwap: vi.fn().mockResolvedValue(true),
   captureAuthorization: vi.fn().mockResolvedValue(100),
-  releaseFunds: vi.fn().mockResolvedValue(true),
+  releaseAndSettle: vi.fn().mockResolvedValue(true),
   lockPositionsForTransaction: vi.fn().mockResolvedValue(true),
   abandonPendingTransaction: vi.fn().mockResolvedValue(true),
 }))
@@ -196,7 +196,7 @@ describe("PATCH /api/lines/[lineId]/offer/[offerId] (accept) -- conflicting offe
     // retried, and no transaction/position-swap should ever have been created.
     expect(mockPrisma.swapOffer.update).toHaveBeenCalledWith({
       where: { id: "offer-carol-to-bob" },
-      data: { status: "DECLINED" },
+      data: { status: "EXPIRED" },
     })
     expect(mockPrisma.transaction.create).not.toHaveBeenCalled()
   })
@@ -256,6 +256,7 @@ describe("GET /api/lines/[lineId]/offer/[offerId]/checkout", () => {
       fromUserId: "buyer-1",
       toUserId: "seller-1",
       status: "ACCEPTED",
+      transactionId: "txn-1",
     })
     mockPrisma.transaction.findFirst.mockResolvedValue({
       id: "txn-1",
@@ -324,9 +325,9 @@ describe("POST /api/lines/[lineId]/fulfill", () => {
     expect(data.error).toMatch(/pending swap/i)
   })
 
-  it("only marks purchases settled once their money was actually collected", async () => {
-    // Regression: settledAt was stamped before capture, so a lapsed hold
-    // still showed as "paid out" and vanished from the owner's queue.
+  it("collects each purchase, reports the ones that couldn't be, and takes the served spot off the market", async () => {
+    // Whether a purchase is marked settled is releaseAndSettle's call (it
+    // only does so once money was collected) -- see swap-races tests.
     mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
     mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdById: "owner-1", name: "L" })
     mockPrisma.linePosition.findUnique.mockResolvedValue({
@@ -338,8 +339,8 @@ describe("POST /api/lines/[lineId]/fulfill", () => {
       { id: "t-ok", sellerId: "s1", amount: 10, ownerFee: 1, stripePaymentId: "cs_ok", lineId: "line-1" },
       { id: "t-lapsed", sellerId: "s2", amount: 10, ownerFee: 1, stripePaymentId: "cs_lapsed", lineId: "line-1" },
     ])
-    const { releaseFunds } = await import("@/lib/stripe")
-    vi.mocked(releaseFunds).mockResolvedValueOnce(true).mockResolvedValueOnce(false)
+    const { releaseAndSettle } = await import("@/lib/stripe")
+    vi.mocked(releaseAndSettle).mockResolvedValueOnce(true).mockResolvedValueOnce(false)
 
     const { POST } = await import("@/app/api/lines/[lineId]/fulfill/route")
     const response = await POST(
@@ -349,10 +350,16 @@ describe("POST /api/lines/[lineId]/fulfill", () => {
     const data = await response.json()
 
     expect(data).toMatchObject({ payoutsReleased: 1, payoutsFailed: 1 })
-    expect(mockPrisma.transaction.update).toHaveBeenCalledTimes(1)
-    expect(mockPrisma.transaction.update).toHaveBeenCalledWith({
-      where: { id: "t-ok" },
-      data: { settledAt: expect.any(Date) },
+    expect(releaseAndSettle).toHaveBeenCalledTimes(2)
+    // Served people can't sell their spot, so the listing comes down and
+    // offers to or from them stop
+    expect(mockPrisma.linePosition.updateMany).toHaveBeenCalledWith({
+      where: { id: "pos-1", fulfilled: false },
+      data: expect.objectContaining({ fulfilled: true, askingPrice: null }),
+    })
+    expect(mockPrisma.swapOffer.updateMany).toHaveBeenCalledWith({
+      where: { lineId: "line-1", status: "PENDING", OR: [{ fromUserId: "buyer-1" }, { toUserId: "buyer-1" }] },
+      data: { status: "EXPIRED" },
     })
   })
 })

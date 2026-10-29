@@ -38,7 +38,7 @@ export async function GET(req: Request) {
     // Verify the account belongs to this user
     const user = await prisma.user.findUnique({
       where: { id: result.userId },
-      select: { stripeConnectId: true, stripeConnectOnboarded: true },
+      select: { stripeConnectId: true },
     })
 
     if (!user || user.stripeConnectId !== accountId) {
@@ -53,14 +53,12 @@ export async function GET(req: Request) {
         where: { id: result.userId },
         data: { stripeConnectOnboarded: true },
       })
-      // Sales and owner fees captured before they could be paid are sitting
-      // in the platform balance; only on first onboarding, so a revisit
-      // can't re-send transfers made before transfer_group tagging existed.
-      if (!user.stripeConnectOnboarded) {
-        await payOutstandingPayouts(result.userId).catch((err) =>
-          console.error("Catch-up payouts failed:", err)
-        )
-      }
+      // Sales and owner fees collected before they could be paid are
+      // sitting in the platform balance. Each share is marked once paid, so
+      // revisiting this page never sends one twice.
+      await payOutstandingPayouts(result.userId).catch((err) =>
+        console.error("Catch-up payouts failed:", err)
+      )
       return NextResponse.redirect(`${baseUrl}${redirectWith("success")}`)
     }
 

@@ -166,8 +166,8 @@ describe("ProfileClient", () => {
 
     // Total available hero number (sellerAvailable + ownerAvailable = 100.50 + 55.25 = 155.75)
     expect(screen.getByText("$155.75")).toBeInTheDocument()
-    expect(screen.getByText("Total Available")).toBeInTheDocument()
-    expect(screen.getByText("Ready to withdraw")).toBeInTheDocument()
+    expect(screen.getByText("Paid to You")).toBeInTheDocument()
+    expect(screen.getByText("Sent to your payout account")).toBeInTheDocument()
 
     // Seller and Owner section headings
     expect(screen.getByText("Swap Earnings")).toBeInTheDocument()
@@ -202,8 +202,24 @@ describe("ProfileClient", () => {
       />
     )
 
-    expect(screen.queryByText("Pending settlement")).not.toBeInTheDocument()
+    expect(screen.queryByText("On hold")).not.toBeInTheDocument()
     expect(screen.queryByText("Pending payment")).not.toBeInTheDocument()
+  })
+
+  it("tells someone without payouts set up that money collected for them is waiting", () => {
+    render(
+      <ProfileClient
+        user={mockUser}
+        stats={{ ...mockStats, sellerAwaitingSetup: 12, ownerAwaitingSetup: 3 }}
+        recentTransactions={mockTransactions}
+        stripeConnectOnboarded={false}
+        emailNotifications={true}
+      />
+    )
+
+    expect(screen.getByText(/\$15\.00 has been collected for you and is waiting/)).toBeInTheDocument()
+    expect(screen.getByText(/Set up payouts below to receive it/)).toBeInTheDocument()
+    expect(screen.getAllByText("Waiting on payout setup")).toHaveLength(2)
   })
 
   it("renders transaction history with amounts and statuses", () => {

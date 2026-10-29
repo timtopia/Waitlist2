@@ -519,7 +519,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                       Pending Settlement ({statsModal.stats.pendingSettlementCount})
                     </p>
                     <p className="text-xs text-ink/40 mt-1">
-                      Settles automatically when both buyer and seller leave the line
+                      Collected when each buyer is served
                     </p>
                   </div>
                 )}

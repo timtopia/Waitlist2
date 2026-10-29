@@ -14,7 +14,7 @@ function makeLine(
 ): StatusLine {
   return {
     isActive: true,
-    nowServing: null,
+    nowServingUserId: null,
     announcement: null,
     announcementAt: null,
     positions: people.map((p, i) => ({
@@ -43,24 +43,27 @@ describe("getMemberStatus", () => {
     expect(getMemberStatus(line, "me")?.phase).toBe("next")
   })
 
-  it("is 'called' when now-serving names the viewer and no one is ahead", () => {
-    const line = makeLine([{ id: "me" }, { id: "b" }], { nowServing: "ME" })
+  it("is 'called' when the called user is the viewer and no one is ahead", () => {
+    const line = makeLine([{ id: "me" }, { id: "b" }], { nowServingUserId: "me" })
     expect(getMemberStatus(line, "me")?.phase).toBe("called")
-    // The person behind shares nothing with the called name
     expect(getMemberStatus(line, "b")?.phase).toBe("waiting")
   })
 
-  it("isn't fooled by a now-serving name belonging to a served person ahead", () => {
-    const line = makeLine([{ id: "a", fulfilled: true }, { id: "me" }], { nowServing: "A" })
+  it("isn't fooled when the called person is a served person ahead", () => {
+    const line = makeLine([{ id: "a", fulfilled: true }, { id: "me" }], { nowServingUserId: "a" })
     expect(getMemberStatus(line, "me")?.phase).toBe("next")
   })
 
-  it("matches call-next's fallback name for users without one", () => {
-    expect(getMemberPhase({ fulfilled: false, ahead: 0, nowServing: "Next person", userName: null })).toBe("called")
+  it("tells two people with the same name apart", () => {
+    // Before: the line stored only the called person's name, so a namesake
+    // at the front would be told it was their turn.
+    const line = makeLine([{ id: "me", name: "Sam" }, { id: "other", name: "Sam" }], { nowServingUserId: "other" })
+    expect(getMemberStatus(line, "me")?.phase).toBe("next")
+    expect(getMemberPhase({ fulfilled: false, ahead: 0, nowServingUserId: "other", userId: "me" })).toBe("next")
   })
 
   it("reports served once fulfilled, even at the front while called", () => {
-    const line = makeLine([{ id: "me", fulfilled: true }], { nowServing: "ME" })
+    const line = makeLine([{ id: "me", fulfilled: true }], { nowServingUserId: "me" })
     expect(getMemberStatus(line, "me")?.phase).toBe("served")
   })
 })
@@ -87,7 +90,7 @@ describe("diffMemberStatus", () => {
   it("reports being called without a duplicate announcement event", () => {
     const prev = makeLine([{ id: "me" }, { id: "b" }])
     const next = makeLine([{ id: "me" }, { id: "b" }], {
-      nowServing: "ME",
+      nowServingUserId: "me",
       announcement: "ME, you're up!",
       announcementAt: "t1",
     })
@@ -97,8 +100,8 @@ describe("diffMemberStatus", () => {
   })
 
   it("reports being served", () => {
-    const prev = makeLine([{ id: "me" }], { nowServing: "ME" })
-    const next = makeLine([{ id: "me", fulfilled: true }], { nowServing: "ME" })
+    const prev = makeLine([{ id: "me" }], { nowServingUserId: "me" })
+    const next = makeLine([{ id: "me", fulfilled: true }], { nowServingUserId: "me" })
     expect(diffMemberStatus(prev, next, "me")).toEqual([{ kind: "served" }])
   })
 
@@ -106,7 +109,7 @@ describe("diffMemberStatus", () => {
     const empty = makeLine([{ id: "b" }])
     expect(diffMemberStatus(makeLine([{ id: "me", fulfilled: true }, { id: "b" }]), empty, "me"))
       .toEqual([{ kind: "removed", wasServed: true }])
-    expect(diffMemberStatus(makeLine([{ id: "me" }, { id: "b" }], { nowServing: "ME" }), empty, "me"))
+    expect(diffMemberStatus(makeLine([{ id: "me" }, { id: "b" }], { nowServingUserId: "me" }), empty, "me"))
       .toEqual([{ kind: "removed", wasServed: true }])
     expect(diffMemberStatus(makeLine([{ id: "b" }, { id: "me" }]), empty, "me"))
       .toEqual([{ kind: "removed", wasServed: false }])

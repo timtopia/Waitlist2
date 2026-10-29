@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
-import { releaseFunds, cancelAuthorization, abandonPendingTransaction } from "@/lib/stripe"
+import { releaseAndSettle, cancelAuthorization, abandonPendingTransaction } from "@/lib/stripe"
 import { rateLimit } from "@/lib/rate-limit"
 
 const settlementLimiter = rateLimit({ interval: 60000, limit: 20 })
@@ -83,14 +83,10 @@ export async function POST(
       let capturedCount = 0
       let failedCount = 0
       for (const txn of transactions) {
-        if (!(await releaseFunds(txn))) {
+        if (!(await releaseAndSettle(txn))) {
           failedCount++
           continue
         }
-        await prisma.transaction.update({
-          where: { id: txn.id },
-          data: { settledAt: new Date() },
-        })
         capturedCount++
       }
 
@@ -155,16 +151,12 @@ export async function POST(
     }
 
     if (action === "capture") {
-      if (!(await releaseFunds(transaction))) {
+      if (!(await releaseAndSettle(transaction))) {
         return NextResponse.json(
           { error: "Couldn't collect this payment -- the card hold may have expired. You can release it instead." },
           { status: 402 }
         )
       }
-      await prisma.transaction.update({
-        where: { id: transactionId },
-        data: { settledAt: new Date() },
-      })
 
       return NextResponse.json({
         success: true,

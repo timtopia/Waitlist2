@@ -19,6 +19,8 @@ interface Transaction {
   ownerFee: number
   status: "PENDING" | "COMPLETED" | "FAILED" | "REFUNDED"
   settledAt: string | null
+  sellerUnpaid?: boolean
+  ownerFeeUnpaid?: boolean
   stripePaymentId: string | null
   buyerFulfilled: boolean
   buyerPosition: number | null
@@ -294,9 +296,18 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
     }
     // COMPLETED
     if (txn.settledAt) {
+      const waitingOn = [
+        txn.sellerUnpaid && `${txn.sellerName}'s payout`,
+        txn.ownerFeeUnpaid && "your fee",
+      ].filter(Boolean)
       return (
-        <span className="inline-flex items-center font-mono text-xs uppercase tracking-widest text-green-700">
-          Captured
+        <span className="inline-flex flex-col items-center">
+          <span className="font-mono text-xs uppercase tracking-widest text-green-700">Captured</span>
+          {waitingOn.length > 0 && (
+            <span className="text-xs text-ink/50 mt-0.5" title="Sent automatically once they set up payouts">
+              Holding {waitingOn.join(" and ")} until payout setup
+            </span>
+          )}
         </span>
       )
     }

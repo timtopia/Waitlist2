@@ -46,15 +46,9 @@ export async function GET(
       )
     }
 
-    const transaction = await prisma.transaction.findFirst({
-      where: {
-        lineId,
-        buyerId: offer.fromUserId,
-        sellerId: offer.toUserId,
-        status: "PENDING",
-      },
-      orderBy: { createdAt: "desc" },
-    })
+    const transaction = offer.transactionId
+      ? await prisma.transaction.findFirst({ where: { id: offer.transactionId, status: "PENDING" } })
+      : null
 
     if (!transaction?.stripePaymentId) {
       return NextResponse.json(

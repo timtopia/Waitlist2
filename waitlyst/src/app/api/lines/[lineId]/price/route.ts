@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
+import { tradeBlocker } from "@/lib/trading"
 
 export async function PATCH(
   req: Request,
@@ -29,7 +30,7 @@ export async function PATCH(
   if (price !== null) {
     const line = await prisma.line.findUnique({
       where: { id: lineId },
-      select: { allowResale: true, maxAskingPrice: true },
+      select: { allowResale: true, maxAskingPrice: true, nowServingUserId: true },
     })
     if (line && !line.allowResale) {
       return NextResponse.json(
@@ -42,6 +43,14 @@ export async function PATCH(
         { error: `Price exceeds the maximum of $${line.maxAskingPrice.toFixed(2)} for this line` },
         { status: 400 }
       )
+    }
+    const mine = await prisma.linePosition.findUnique({
+      where: { lineId_userId: { lineId, userId: result.userId } },
+      select: { userId: true, fulfilled: true },
+    })
+    const blocked = mine && tradeBlocker(mine, line?.nowServingUserId ?? null, "yours")
+    if (blocked) {
+      return NextResponse.json({ error: blocked }, { status: 400 })
     }
   }
 

@@ -359,7 +359,7 @@ describe("QueueDisplay", () => {
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith("/api/lines/line-1/checkout", expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ expectedPrice: 25, expectedSellerId: "user-1" }),
+        body: JSON.stringify({ expectedPrice: 25, expectedSellerId: "user-1", expectedTotal: 30 }),
       }))
     })
   })

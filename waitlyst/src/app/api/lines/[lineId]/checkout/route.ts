@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { getStripe, getBaseUrl, performPositionSwap, lockPositionsForTransaction } from "@/lib/stripe"
 import { calculateFees } from "@/lib/fees"
 import { rateLimit } from "@/lib/rate-limit"
+import { tradeBlocker } from "@/lib/trading"
 
 const checkoutLimiter = rateLimit({ interval: 60_000, limit: 10 })
 
@@ -28,6 +29,7 @@ export async function POST(
   const body = await req.json().catch(() => ({}))
   const expectedPrice: unknown = body?.expectedPrice
   const expectedSellerId: unknown = body?.expectedSellerId
+  const expectedTotal: unknown = body?.expectedTotal
 
   try {
     // Check if line is active (not paused)
@@ -92,6 +94,13 @@ export async function POST(
       )
     }
 
+    const blocked =
+      tradeBlocker(buyerPosition, line.nowServingUserId, "yours") ??
+      tradeBlocker(targetPosition, line.nowServingUserId, "theirs")
+    if (blocked) {
+      return NextResponse.json({ error: blocked }, { status: 400 })
+    }
+
     // The buyer agreed to a specific price from a specific person. If the
     // seller re-priced, or the person in front changed (a swap or leave
     // landed first), don't silently charge them for a different deal.
@@ -125,6 +134,14 @@ export async function POST(
 
     const askingPrice = targetPosition.askingPrice
     const fees = calculateFees(askingPrice, targetPosition.line.ownerFeePercent)
+
+    // Same for the total: the organizer can change their fee at any time.
+    if (typeof expectedTotal === "number" && Math.abs(expectedTotal - fees.totalPrice) > 0.005) {
+      return NextResponse.json(
+        { error: `The line's fees changed -- the total is now $${fees.totalPrice.toFixed(2)}. Review it before buying.`, code: "STALE_LISTING" },
+        { status: 409 }
+      )
+    }
 
     // ─── STRIPE MODE: Create a Checkout Session ───────────────────────
     const stripe = getStripe()

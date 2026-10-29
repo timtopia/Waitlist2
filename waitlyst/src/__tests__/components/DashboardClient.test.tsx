@@ -272,7 +272,7 @@ describe("DashboardClient", () => {
       await waitFor(() => {
         expect(screen.getByText("$75.00")).toBeInTheDocument()
         expect(screen.getByText("Pending Settlement (3)")).toBeInTheDocument()
-        expect(screen.getByText("Settles automatically when both buyer and seller leave the line")).toBeInTheDocument()
+        expect(screen.getByText("Collected when each buyer is served")).toBeInTheDocument()
       })
     })
 

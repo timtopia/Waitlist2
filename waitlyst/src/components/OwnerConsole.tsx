@@ -18,7 +18,7 @@ interface ConsolePosition {
 interface OwnerConsoleProps {
   lineId: string
   isActive: boolean
-  nowServing: string | null
+  nowServingUserId: string | null
   ownerFeePercent: number
   positions: ConsolePosition[]
   stripeEnabled: boolean
@@ -33,16 +33,10 @@ interface Earnings {
   pending: number
 }
 
-// Mirrors the call-next route's fallback so we can tell whether the person
-// at the head of the queue is the one already called.
-function calledName(name: string | null) {
-  return name || "Next person"
-}
-
 export function OwnerConsole({
   lineId,
   isActive,
-  nowServing,
+  nowServingUserId,
   ownerFeePercent,
   positions,
   stripeEnabled,
@@ -61,7 +55,7 @@ export function OwnerConsole({
   const served = positions.filter((p) => p.fulfilled)
   const upNext = waiting[0] ?? null
   const afterNext = waiting[1] ?? null
-  const isServingUpNext = !!upNext && nowServing === calledName(upNext.user.name)
+  const isServingUpNext = !!upNext && nowServingUserId === upNext.user.id
   const upNextLocked = !!upNext?.lockedUntil && new Date(upNext.lockedUntil) > new Date()
 
   const fetchEarnings = useCallback(async () => {

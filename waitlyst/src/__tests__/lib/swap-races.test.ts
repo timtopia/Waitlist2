@@ -7,16 +7,19 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
  * $transaction ends, so concurrent calls genuinely interleave at awaits.
  */
 
-type Pos = { id: string; lineId: string; userId: string; position: number; askingPrice: number | null; lockedUntil: Date | null; lockedBy: string | null }
-type Txn = { id: string; lineId: string; buyerId: string; sellerId: string; amount: number; ownerFee: number; platformFee: number; status: string; stripePaymentId: string | null; settledAt: Date | null; createdAt: Date }
-type Offer = { id: string; lineId: string; fromUserId: string; toUserId: string; amount: number; status: string; createdAt: Date }
+type Pos = { id: string; lineId: string; userId: string; position: number; askingPrice: number | null; lockedUntil: Date | null; lockedBy: string | null; fulfilled?: boolean }
+type Txn = {
+  id: string; lineId: string; buyerId: string; sellerId: string; amount: number; ownerFee: number; platformFee: number; status: string
+  stripePaymentId: string | null; settledAt: Date | null; capturedAt: Date | null; sellerPaidAt: Date | null; ownerPaidAt: Date | null; createdAt: Date
+}
+type Offer = { id: string; lineId: string; fromUserId: string; toUserId: string; amount: number; status: string; createdAt: Date; transactionId?: string | null }
 
 const db = {
   positions: [] as Pos[],
   transactions: [] as Txn[],
   offers: [] as Offer[],
   users: [] as { id: string; name: string; email: string | null; emailNotifications: boolean; stripeConnectId: string | null; stripeConnectOnboarded: boolean }[],
-  lines: [] as { id: string; name: string; createdById: string }[],
+  lines: [] as { id: string; name: string; createdById: string; nowServingUserId?: string | null }[],
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 0))
@@ -144,7 +147,8 @@ function seed() {
 function addTxn(id: string, buyerId: string, sellerId: string, extra: Partial<Txn> = {}): Txn {
   const txn: Txn = {
     id, lineId: "line-1", buyerId, sellerId, amount: 40, ownerFee: 4, platformFee: 4,
-    status: "PENDING", stripePaymentId: null, settledAt: null, createdAt: new Date(), ...extra,
+    status: "PENDING", stripePaymentId: null, settledAt: null, capturedAt: null, sellerPaidAt: null, ownerPaidAt: null,
+    createdAt: new Date(), ...extra,
   }
   db.transactions.push(txn)
   return txn
@@ -227,8 +231,31 @@ describe("performPositionSwap under concurrency", () => {
 
     expect(await performPositionSwap("t1")).toBe(true)
     expect([posOf("sam"), posOf("cal"), posOf("ben")]).toEqual([1, 2, 3])
-    expect(db.offers.every((o) => o.status === "DECLINED")).toBe(true)
+    expect(db.offers.every((o) => o.status === "EXPIRED")).toBe(true)
     expect(db.positions.find((p) => p.userId === "ben")!.askingPrice).toBeNull()
+  })
+
+  it("a seller who got served while the buyer was paying keeps their spot; the buyer's hold is released", async () => {
+    // Before: the swap went through anyway, and the buyer paid to stand
+    // behind... nobody -- served people don't count toward anyone's wait.
+    addTxn("t1", "ben", "sam", { stripePaymentId: "cs_1" })
+    db.positions.find((p) => p.userId === "sam")!.fulfilled = true
+    const { performPositionSwap } = await import("@/lib/stripe")
+
+    expect(await performPositionSwap("t1")).toBe(false)
+    expect(posOf("sam")).toBe(1)
+    expect(db.transactions[0].status).toBe("FAILED")
+    expect(fakeStripe.paymentIntents.cancel).toHaveBeenCalledWith("pi_for_cs_1")
+  })
+
+  it("a seller the organizer called up mid-checkout isn't pushed back behind the buyer", async () => {
+    addTxn("t1", "ben", "sam", { stripePaymentId: "cs_1" })
+    db.lines[0].nowServingUserId = "sam"
+    const { performPositionSwap } = await import("@/lib/stripe")
+
+    expect(await performPositionSwap("t1")).toBe(false)
+    expect(posOf("sam")).toBe(1)
+    expect(posOf("ben")).toBe(2)
   })
 
   it("the buyer's own old listing is cleared so the seller can't buy the better spot back cheaply", async () => {
@@ -291,6 +318,19 @@ describe("abandonPendingTransaction", () => {
     expect(db.offers[0].status).toBe("PENDING")
     expect(fakeStripe.checkout.sessions.expire).toHaveBeenCalledWith("cs_1")
   })
+
+  it("finds the accepted offer by its recorded checkout, without asking Stripe", async () => {
+    db.offers.push({ id: "o1", lineId: "line-1", fromUserId: "ben", toUserId: "sam", amount: 30, status: "ACCEPTED", createdAt: new Date(), transactionId: "t1" })
+    // Another accepted offer between the same two people, from an earlier trade
+    db.offers.push({ id: "o-old", lineId: "line-1", fromUserId: "ben", toUserId: "sam", amount: 5, status: "ACCEPTED", createdAt: new Date(), transactionId: "t0" })
+    addTxn("t1", "ben", "sam", { stripePaymentId: "cs_1" })
+    const { abandonPendingTransaction } = await import("@/lib/stripe")
+
+    expect(await abandonPendingTransaction("t1")).toBe(true)
+    expect(db.offers.find((o) => o.id === "o1")).toMatchObject({ status: "PENDING", transactionId: null })
+    expect(db.offers.find((o) => o.id === "o-old")!.status).toBe("ACCEPTED")
+    expect(fakeStripe.checkout.sessions.retrieve).not.toHaveBeenCalled()
+  })
 })
 
 describe("releaseFunds (capture + payouts)", () => {
@@ -310,7 +350,7 @@ describe("releaseFunds (capture + payouts)", () => {
     })
     const { releaseFunds } = await import("@/lib/stripe")
 
-    expect(await releaseFunds(txn())).toBe(true)
+    expect(await releaseFunds(txn())).toMatchObject({ sellerPaidAt: expect.any(Date), ownerPaidAt: expect.any(Date) })
     expect(fakeStripe.transfers.create).toHaveBeenCalledTimes(1)
     expect(fakeStripe.transfers.create).toHaveBeenCalledWith(expect.objectContaining({
       destination: "acct_owner", amount: 400, source_transaction: "ch_1", transfer_group: "t1",
@@ -339,25 +379,74 @@ describe("releaseFunds (capture + payouts)", () => {
     })
     const { releaseFunds } = await import("@/lib/stripe")
 
-    expect(await releaseFunds(txn())).toBe(true)
+    expect(await releaseFunds(txn())).toMatchObject({ sellerPaidAt: expect.any(Date), ownerPaidAt: expect.any(Date) })
     expect(fakeStripe.transfers.create).not.toHaveBeenCalled()
+  })
+
+  it("a seller with no payout account is reported unpaid, while the owner is paid", async () => {
+    connect("owner", "acct_owner")
+    fakeStripe.paymentIntents.capture.mockResolvedValue({ id: "pi_x", status: "succeeded", latest_charge: "ch_1", transfer_data: null })
+    const { releaseFunds } = await import("@/lib/stripe")
+
+    expect(await releaseFunds(txn())).toMatchObject({ capturedAt: expect.any(Date), sellerPaidAt: null, ownerPaidAt: expect.any(Date) })
+  })
+
+  it("a failed transfer is reported unpaid so catch-up retries it", async () => {
+    connect("sam", "acct_sam")
+    fakeStripe.paymentIntents.capture.mockResolvedValue({ id: "pi_x", status: "succeeded", latest_charge: "ch_1", transfer_data: null })
+    fakeStripe.transfers.create.mockRejectedValueOnce(new Error("account restricted"))
+    const { releaseFunds } = await import("@/lib/stripe")
+
+    expect((await releaseFunds(txn()))?.sellerPaidAt).toBeNull()
   })
 
   it("reports failure when the hold lapsed, so callers don't mark it paid out", async () => {
     fakeStripe.paymentIntents.retrieve.mockResolvedValue({ id: "pi_x", status: "canceled" })
     const { releaseFunds } = await import("@/lib/stripe")
 
-    expect(await releaseFunds(txn())).toBe(false)
+    expect(await releaseFunds(txn())).toBeNull()
     expect(fakeStripe.transfers.create).not.toHaveBeenCalled()
   })
 
+  it("releaseAndSettle records capture and payouts, and leaves a lapsed hold open", async () => {
+    connect("sam", "acct_sam")
+    fakeStripe.paymentIntents.capture.mockResolvedValue({ id: "pi_x", status: "succeeded", latest_charge: "ch_1", transfer_data: null })
+    const { releaseAndSettle } = await import("@/lib/stripe")
+
+    expect(await releaseAndSettle(txn())).toBe(true)
+    expect(db.transactions[0]).toMatchObject({
+      settledAt: expect.any(Date), capturedAt: expect.any(Date), sellerPaidAt: expect.any(Date), ownerPaidAt: null,
+    })
+
+    addTxn("t2", "cal", "ben", { status: "COMPLETED", stripePaymentId: "cs_2" })
+    fakeStripe.paymentIntents.retrieve.mockResolvedValue({ id: "pi_y", status: "canceled" })
+    expect(await releaseAndSettle(db.transactions[1])).toBe(false)
+    expect(db.transactions[1]).toMatchObject({ settledAt: null, capturedAt: null })
+  })
+
   it("catch-up: a seller who finishes payout setup later gets the sale captured while they had no account", async () => {
-    addTxn("t1", "ben", "sam", { status: "COMPLETED", stripePaymentId: "cs_1", settledAt: new Date() })
+    addTxn("t1", "ben", "sam", { status: "COMPLETED", stripePaymentId: "cs_1", settledAt: new Date(), capturedAt: new Date() })
     connect("sam", "acct_sam")
     fakeStripe.paymentIntents.retrieve.mockResolvedValue({ id: "pi_x", status: "succeeded", latest_charge: "ch_1", transfer_data: null })
     const { payOutstandingPayouts } = await import("@/lib/stripe")
 
     await payOutstandingPayouts("sam")
     expect(fakeStripe.transfers.create).toHaveBeenCalledWith(expect.objectContaining({ destination: "acct_sam", amount: 4000 }))
+    expect(db.transactions[0].sellerPaidAt).toBeInstanceOf(Date)
+
+    // Coming back to the payout page again doesn't re-send it, even if
+    // Stripe's transfer listing were to come back empty.
+    fakeStripe.transfers.create.mockClear()
+    await payOutstandingPayouts("sam")
+    expect(fakeStripe.transfers.create).not.toHaveBeenCalled()
+  })
+
+  it("catch-up skips purchases that were never collected", async () => {
+    addTxn("t1", "ben", "sam", { status: "COMPLETED", stripePaymentId: "cs_1" })
+    connect("sam", "acct_sam")
+    const { payOutstandingPayouts } = await import("@/lib/stripe")
+
+    await payOutstandingPayouts("sam")
+    expect(fakeStripe.transfers.create).not.toHaveBeenCalled()
   })
 })

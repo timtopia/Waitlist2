@@ -11,6 +11,9 @@ const mockPrisma = {
   transaction: {
     findMany: vi.fn(),
   },
+  queueVisit: {
+    findMany: vi.fn(),
+  },
   user: {
     findMany: vi.fn(),
   },
@@ -165,6 +168,8 @@ describe("GET /api/lines/[lineId]/export", () => {
 describe("GET /api/lines/[lineId]/wait-time", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockPrisma.queueVisit.findMany.mockResolvedValue([])
+    mockPrisma.linePosition.findMany.mockResolvedValue([])
   })
 
   it("should return 404 if line not found", async () => {
@@ -179,7 +184,7 @@ describe("GET /api/lines/[lineId]/wait-time", () => {
 
   it("should return null estimate when not enough data", async () => {
     mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdAt: new Date() })
-    mockPrisma.transaction.findMany.mockResolvedValue([])
+    mockPrisma.queueVisit.findMany.mockResolvedValue([])
     mockPrisma.linePosition.findMany.mockResolvedValue([])
 
     const { GET } = await import("@/app/api/lines/[lineId]/wait-time/route")
@@ -192,15 +197,15 @@ describe("GET /api/lines/[lineId]/wait-time", () => {
     expect(data.basedOn).toBe(0)
   })
 
-  it("should estimate wait time from settled transactions", async () => {
+  it("should estimate from people served and since cleared from the line", async () => {
     mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdAt: new Date() })
 
-    // Three settled events 10 minutes apart -> avg 10 min per person
+    // Three service events 10 minutes apart -> avg 10 min per person
     const base = new Date("2025-06-01T12:00:00Z")
-    mockPrisma.transaction.findMany.mockResolvedValue([
-      { settledAt: new Date(base.getTime()) },
-      { settledAt: new Date(base.getTime() + 10 * 60000) },
-      { settledAt: new Date(base.getTime() + 20 * 60000) },
+    mockPrisma.queueVisit.findMany.mockResolvedValue([
+      { servedAt: new Date(base.getTime()) },
+      { servedAt: new Date(base.getTime() + 10 * 60000) },
+      { servedAt: new Date(base.getTime() + 20 * 60000) },
     ])
 
     const { GET } = await import("@/app/api/lines/[lineId]/wait-time/route")
@@ -213,9 +218,9 @@ describe("GET /api/lines/[lineId]/wait-time", () => {
     expect(data.basedOn).toBe(3)
   })
 
-  it("should estimate from fulfillments when there are no settled swaps", async () => {
+  it("should estimate from fulfillments of people still in line", async () => {
     mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdAt: new Date() })
-    mockPrisma.transaction.findMany.mockResolvedValue([])
+    mockPrisma.queueVisit.findMany.mockResolvedValue([])
 
     const base = new Date("2025-06-01T12:00:00Z")
     mockPrisma.linePosition.findMany.mockResolvedValue([
@@ -239,7 +244,7 @@ describe("GET /api/lines/[lineId]/wait-time", () => {
 
   it("should not estimate from join times (a burst of joins says nothing about pace)", async () => {
     mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdAt: new Date() })
-    mockPrisma.transaction.findMany.mockResolvedValue([])
+    mockPrisma.queueVisit.findMany.mockResolvedValue([])
     // No one has been served yet; the route only asks for fulfilled positions.
     mockPrisma.linePosition.findMany.mockResolvedValue([])
 
@@ -251,17 +256,17 @@ describe("GET /api/lines/[lineId]/wait-time", () => {
     expect(data.estimatedMinutesPerPerson).toBeNull()
   })
 
-  it("should deduplicate settled timestamps within 5 seconds", async () => {
+  it("should deduplicate service timestamps within 5 seconds", async () => {
     mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdAt: new Date() })
     mockPrisma.linePosition.findMany.mockResolvedValue([])
 
     const base = new Date("2025-06-01T12:00:00Z")
-    // Two transactions settled at the same moment, then one 6 minutes later, then another 6 minutes later
-    mockPrisma.transaction.findMany.mockResolvedValue([
-      { settledAt: new Date(base.getTime()) },
-      { settledAt: new Date(base.getTime() + 2000) }, // within 5s, should be deduped
-      { settledAt: new Date(base.getTime() + 6 * 60000) },
-      { settledAt: new Date(base.getTime() + 12 * 60000) },
+    // Two people served at the same moment, then one 6 minutes later, then another 6 minutes later
+    mockPrisma.queueVisit.findMany.mockResolvedValue([
+      { servedAt: new Date(base.getTime()) },
+      { servedAt: new Date(base.getTime() + 2000) }, // within 5s, should be deduped
+      { servedAt: new Date(base.getTime() + 6 * 60000) },
+      { servedAt: new Date(base.getTime() + 12 * 60000) },
     ])
 
     const { GET } = await import("@/app/api/lines/[lineId]/wait-time/route")

@@ -8,10 +8,15 @@ const mockPrisma = {
   linePosition: {
     findFirst: vi.fn(),
     count: vi.fn(),
+    update: vi.fn(),
   },
   transaction: {
     findMany: vi.fn(),
   },
+  swapOffer: {
+    updateMany: vi.fn(),
+  },
+  $transaction: vi.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
 }
 
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }))
@@ -20,6 +25,9 @@ const mockAuth = vi.fn()
 vi.mock("@/auth", () => ({ auth: () => mockAuth() }))
 
 vi.mock("@/lib/email", () => ({ sendEmail: vi.fn().mockResolvedValue(undefined) }))
+
+const abandonPendingTransaction = vi.fn().mockResolvedValue(true)
+vi.mock("@/lib/stripe", () => ({ abandonPendingTransaction: (...a: unknown[]) => abandonPendingTransaction(...a) }))
 
 const params = { params: Promise.resolve({ lineId: "line-1" }) }
 
@@ -37,7 +45,10 @@ describe("POST /api/lines/[lineId]/call-next", () => {
     asOwner()
     mockPrisma.linePosition.findFirst.mockResolvedValue({
       id: "pos-2",
+      userId: "bob",
       position: 2,
+      lockedBy: null,
+      lockedUntil: null,
       user: { name: "Bob", email: null, emailNotifications: false },
     })
     mockPrisma.line.update.mockResolvedValue({ id: "line-1", name: "Line" })
@@ -46,7 +57,7 @@ describe("POST /api/lines/[lineId]/call-next", () => {
     const res = await POST(new Request("http://localhost/api/lines/line-1/call-next", { method: "POST" }), params)
 
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ calledUser: "Bob", position: 2, positionId: "pos-2" })
+    expect(await res.json()).toEqual({ calledUser: "Bob", calledUserId: "bob", position: 2, positionId: "pos-2" })
     expect(mockPrisma.linePosition.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { lineId: "line-1", fulfilled: false },
@@ -54,8 +65,37 @@ describe("POST /api/lines/[lineId]/call-next", () => {
       })
     )
     expect(mockPrisma.line.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ nowServing: "Bob" }) })
+      expect.objectContaining({ data: expect.objectContaining({ nowServing: "Bob", nowServingUserId: "bob" }) })
     )
+    // Their spot is at the counter now: listing down, offers expired
+    expect(mockPrisma.linePosition.update).toHaveBeenCalledWith({
+      where: { id: "pos-2" },
+      data: { calledAt: expect.any(Date), askingPrice: null },
+    })
+    expect(mockPrisma.swapOffer.updateMany).toHaveBeenCalledWith({
+      where: { lineId: "line-1", status: "PENDING", OR: [{ fromUserId: "bob" }, { toUserId: "bob" }] },
+      data: { status: "EXPIRED" },
+    })
+    expect(abandonPendingTransaction).not.toHaveBeenCalled()
+  })
+
+  it("calls off a swap still on the payment page so the called person isn't pushed back", async () => {
+    asOwner()
+    mockPrisma.linePosition.findFirst.mockResolvedValue({
+      id: "pos-1",
+      userId: "ann",
+      position: 1,
+      lockedBy: "txn-buying-ann",
+      lockedUntil: new Date(Date.now() + 10 * 60000),
+      user: { name: "Ann", email: null, emailNotifications: false },
+    })
+    mockPrisma.line.update.mockResolvedValue({ id: "line-1", name: "Line" })
+
+    const { POST } = await import("@/app/api/lines/[lineId]/call-next/route")
+    const res = await POST(new Request("http://localhost/api/lines/line-1/call-next", { method: "POST" }), params)
+
+    expect(res.status).toBe(200)
+    expect(abandonPendingTransaction).toHaveBeenCalledWith("txn-buying-ann")
   })
 
   it("says everyone has been served when only served people remain", async () => {

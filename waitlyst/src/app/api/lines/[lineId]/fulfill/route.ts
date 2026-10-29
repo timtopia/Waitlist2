@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
-import { releaseFunds } from "@/lib/stripe"
+import { releaseAndSettle } from "@/lib/stripe"
 import { sendEmail } from "@/lib/email"
 import { fulfilledEmail } from "@/lib/email-templates"
 
@@ -39,16 +39,26 @@ export async function POST(
       }
 
       // Conditional so two concurrent fulfills can't both release payouts.
+      // A served spot can't be traded, so its listing comes down with it.
       const marked = await tx.linePosition.updateMany({
         where: { id: positionId, fulfilled: false },
         data: {
           fulfilled: true,
           fulfilledAt: new Date(),
+          askingPrice: null,
         },
       })
       if (marked.count === 0) {
         throw new Error("Position already fulfilled")
       }
+      await tx.swapOffer.updateMany({
+        where: {
+          lineId,
+          status: "PENDING",
+          OR: [{ fromUserId: position.userId }, { toUserId: position.userId }],
+        },
+        data: { status: "EXPIRED" },
+      })
 
       // Find all COMPLETED transactions where this user was the BUYER
       // (they paid to swap forward). Release payment to the sellers.
@@ -70,11 +80,7 @@ export async function POST(
     let payoutsReleased = 0
     let payoutsFailed = 0
     for (const txn of result.buyerTransactions) {
-      if (await releaseFunds(txn)) {
-        await prisma.transaction.update({
-          where: { id: txn.id },
-          data: { settledAt: new Date() },
-        })
+      if (await releaseAndSettle(txn)) {
         payoutsReleased++
       } else {
         payoutsFailed++

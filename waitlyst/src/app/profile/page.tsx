@@ -72,24 +72,31 @@ export default async function ProfilePage() {
   const completedAsBuyer = asBuyer.filter((t) => t.status === "COMPLETED")
   const completedAsSeller = asSeller.filter((t) => t.status === "COMPLETED")
 
-  // Seller earnings: split by settlement status
+  // Seller earnings: paid out, collected but waiting on payout setup, or
+  // still on hold until the buyer is served
   const sellerAvailable = completedAsSeller
-    .filter((t) => t.settledAt !== null)
+    .filter((t) => t.sellerPaidAt !== null)
+    .reduce((sum, t) => sum + t.amount, 0)
+  const sellerAwaitingSetup = completedAsSeller
+    .filter((t) => t.capturedAt !== null && t.sellerPaidAt === null)
     .reduce((sum, t) => sum + t.amount, 0)
   const sellerPendingSettlement = completedAsSeller
-    .filter((t) => t.settledAt === null)
+    .filter((t) => t.capturedAt === null && t.settledAt === null)
     .reduce((sum, t) => sum + t.amount, 0)
   const sellerPendingPayment = asSeller
     .filter((t) => t.status === "PENDING")
     .reduce((sum, t) => sum + t.amount, 0)
 
-  // Owner fee earnings: split by settlement status
+  // Owner fee earnings, split the same way
   const completedOwnerTxns = ownerTransactions.filter((t) => t.status === "COMPLETED")
   const ownerAvailable = completedOwnerTxns
-    .filter((t) => t.settledAt !== null)
+    .filter((t) => t.ownerPaidAt !== null)
+    .reduce((sum, t) => sum + t.ownerFee, 0)
+  const ownerAwaitingSetup = completedOwnerTxns
+    .filter((t) => t.capturedAt !== null && t.ownerPaidAt === null)
     .reduce((sum, t) => sum + t.ownerFee, 0)
   const ownerPendingSettlement = completedOwnerTxns
-    .filter((t) => t.settledAt === null)
+    .filter((t) => t.capturedAt === null && t.settledAt === null)
     .reduce((sum, t) => sum + t.ownerFee, 0)
   const ownerPendingPayment = ownerTransactions
     .filter((t) => t.status === "PENDING")
@@ -108,9 +115,11 @@ export default async function ProfilePage() {
         activePositions,
         totalTransactions: transactions.length,
         sellerAvailable,
+        sellerAwaitingSetup,
         sellerPendingSettlement,
         sellerPendingPayment,
         ownerAvailable,
+        ownerAwaitingSetup,
         ownerPendingSettlement,
         ownerPendingPayment,
         purchaseCount: completedAsBuyer.length,

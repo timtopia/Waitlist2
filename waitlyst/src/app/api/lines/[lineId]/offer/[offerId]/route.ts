@@ -13,6 +13,7 @@ import { sendEmail } from "@/lib/email"
 import { swapAcceptedEmail } from "@/lib/email-templates"
 import { rateLimit } from "@/lib/rate-limit"
 import { isOfferExpired } from "@/lib/offers"
+import { tradeBlocker } from "@/lib/trading"
 
 const LOCK_DURATION_MS = 30 * 60 * 1000 // 30 minutes
 const offerRespondLimiter = rateLimit({ interval: 60000, limit: 10 })
@@ -77,10 +78,10 @@ export async function PATCH(
       return NextResponse.json(updated)
     }
 
-    if (isOfferExpired(offer.createdAt)) {
+    if (isOfferExpired(offer)) {
       await prisma.swapOffer.updateMany({
         where: { id: offerId, status: "PENDING" },
-        data: { status: "DECLINED" },
+        data: { status: "EXPIRED" },
       })
       return NextResponse.json(
         { error: "This offer has expired. They can send you a new one." },
@@ -128,12 +129,19 @@ export async function PATCH(
     if (sellerPosition.position !== buyerPosition.position - 1) {
       await prisma.swapOffer.update({
         where: { id: offerId },
-        data: { status: "DECLINED" },
+        data: { status: "EXPIRED" },
       })
       return NextResponse.json(
         { error: "This offer is no longer valid -- queue positions have changed since it was sent." },
         { status: 409 }
       )
+    }
+
+    const blocked =
+      tradeBlocker(sellerPosition, line.nowServingUserId, "yours") ??
+      tradeBlocker(buyerPosition, line.nowServingUserId, "theirs")
+    if (blocked) {
+      return NextResponse.json({ error: blocked }, { status: 400 })
     }
 
     // Check if either position is locked
@@ -169,7 +177,7 @@ export async function PATCH(
     const revertOffer = () =>
       prisma.swapOffer.updateMany({
         where: { id: offerId, status: "ACCEPTED" },
-        data: { status: "PENDING" },
+        data: { status: "PENDING", transactionId: null },
       })
 
     // --- STRIPE MODE ---
@@ -200,6 +208,7 @@ export async function PATCH(
           )
           if (!locked) throw new Error("POSITIONS_LOCKED")
 
+          await tx.swapOffer.update({ where: { id: offerId }, data: { transactionId: txn.id } })
           return txn
         })
       } catch (error) {
@@ -310,6 +319,7 @@ export async function PATCH(
         status: "PENDING",
       },
     })
+    await prisma.swapOffer.update({ where: { id: offerId }, data: { transactionId: transaction.id } })
 
     const swapped = await performPositionSwap(transaction.id)
 
@@ -369,10 +379,9 @@ export async function DELETE(
     }
 
     if (offer.status === "ACCEPTED") {
-      const pending = await prisma.transaction.findFirst({
-        where: { lineId, buyerId: offer.fromUserId, sellerId: offer.toUserId, status: "PENDING" },
-        orderBy: { createdAt: "desc" },
-      })
+      const pending = offer.transactionId
+        ? await prisma.transaction.findFirst({ where: { id: offer.transactionId, status: "PENDING" } })
+        : null
       if (!pending) {
         return NextResponse.json(
           { error: "This swap already went through and can't be withdrawn" },
@@ -387,7 +396,11 @@ export async function DELETE(
       )
     }
 
-    await prisma.swapOffer.delete({ where: { id: offerId } })
+    // Kept (not deleted) so the person in front sees it was taken back.
+    await prisma.swapOffer.update({
+      where: { id: offerId },
+      data: { status: "WITHDRAWN", transactionId: null },
+    })
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Withdraw offer error:", error)

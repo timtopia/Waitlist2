@@ -21,9 +21,11 @@ interface Stats {
   activePositions: number
   totalTransactions: number
   sellerAvailable: number
+  sellerAwaitingSetup?: number
   sellerPendingSettlement: number
   sellerPendingPayment: number
   ownerAvailable: number
+  ownerAwaitingSetup?: number
   ownerPendingSettlement: number
   ownerPendingPayment: number
   purchaseCount: number
@@ -63,6 +65,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
   const [connectLoading, setConnectLoading] = useState(false)
   const [connectError, setConnectError] = useState<string | null>(null)
   const [connectOnboarded, setConnectOnboarded] = useState(stripeConnectOnboarded)
+  const awaitingSetup = (stats.sellerAwaitingSetup ?? 0) + (stats.ownerAwaitingSetup ?? 0)
   const [connectMessage, setConnectMessage] = useState<{ text: string; type: "success" | "info" | "error" } | null>(null)
   const [emailNotifs, setEmailNotifs] = useState(emailNotifications)
   const [emailNotifsLoading, setEmailNotifsLoading] = useState(false)
@@ -320,12 +323,23 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
 
           {/* Total Available — hero number */}
           <div className="border border-ink p-5 text-center mb-4">
-            <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mb-1">Total Available</p>
+            <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mb-1">Paid to You</p>
             <p className="font-mono text-3xl tabular-nums text-green-700">
               {formatCurrency(stats.sellerAvailable + stats.ownerAvailable)}
             </p>
-            <p className="text-xs text-ink/40 mt-1">Ready to withdraw</p>
+            <p className="text-xs text-ink/40 mt-1">Sent to your payout account</p>
           </div>
+
+          {awaitingSetup > 0 && (
+            <div className="border border-accent/40 bg-accent/5 px-4 py-3 mb-4">
+              <p className="text-sm text-ink">
+                {formatCurrency(awaitingSetup)} has been collected for you and is waiting.
+                {connectOnboarded
+                  ? " It's being sent to your payout account."
+                  : " Set up payouts below to receive it."}
+              </p>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Seller Earnings */}
@@ -335,17 +349,28 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="w-1.5 h-1.5 bg-green-600 flex-shrink-0" aria-hidden />
-                    <span className="text-sm text-ink/60">Available</span>
+                    <span className="text-sm text-ink/60">Paid out</span>
                   </div>
                   <span className="font-mono text-sm tabular-nums text-green-700">
                     {formatCurrency(stats.sellerAvailable)}
                   </span>
                 </div>
+                {(stats.sellerAwaitingSetup ?? 0) > 0 && (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 bg-accent flex-shrink-0" aria-hidden />
+                      <span className="text-sm text-ink/60">Waiting on payout setup</span>
+                    </div>
+                    <span className="font-mono text-sm tabular-nums text-accent">
+                      {formatCurrency(stats.sellerAwaitingSetup ?? 0)}
+                    </span>
+                  </div>
+                )}
                 {stats.sellerPendingSettlement > 0 && (
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="w-1.5 h-1.5 bg-amber-500 flex-shrink-0" aria-hidden />
-                      <span className="text-sm text-ink/60">Pending settlement</span>
+                      <span className="text-sm text-ink/60">On hold</span>
                     </div>
                     <span className="font-mono text-sm tabular-nums text-amber-600">
                       {formatCurrency(stats.sellerPendingSettlement)}
@@ -366,7 +391,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
               </div>
               {(stats.sellerPendingSettlement > 0 || stats.sellerPendingPayment > 0) && (
                 <p className="text-xs text-ink/40 mt-3 pt-2 border-t border-rule">
-                  {stats.sellerPendingSettlement > 0 && "Settlement completes when both parties leave the line. "}
+                  {stats.sellerPendingSettlement > 0 && "The buyer's card is held until they're served, then you're paid. "}
                   {stats.sellerPendingPayment > 0 && "Pending payments are transactions in progress."}
                 </p>
               )}
@@ -379,17 +404,28 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="w-1.5 h-1.5 bg-green-600 flex-shrink-0" aria-hidden />
-                    <span className="text-sm text-ink/60">Available</span>
+                    <span className="text-sm text-ink/60">Paid out</span>
                   </div>
                   <span className="font-mono text-sm tabular-nums text-green-700">
                     {formatCurrency(stats.ownerAvailable)}
                   </span>
                 </div>
+                {(stats.ownerAwaitingSetup ?? 0) > 0 && (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 bg-accent flex-shrink-0" aria-hidden />
+                      <span className="text-sm text-ink/60">Waiting on payout setup</span>
+                    </div>
+                    <span className="font-mono text-sm tabular-nums text-accent">
+                      {formatCurrency(stats.ownerAwaitingSetup ?? 0)}
+                    </span>
+                  </div>
+                )}
                 {stats.ownerPendingSettlement > 0 && (
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="w-1.5 h-1.5 bg-amber-500 flex-shrink-0" aria-hidden />
-                      <span className="text-sm text-ink/60">Pending settlement</span>
+                      <span className="text-sm text-ink/60">On hold</span>
                     </div>
                     <span className="font-mono text-sm tabular-nums text-amber-600">
                       {formatCurrency(stats.ownerPendingSettlement)}
@@ -410,7 +446,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
               </div>
               {(stats.ownerPendingSettlement > 0 || stats.ownerPendingPayment > 0) && (
                 <p className="text-xs text-ink/40 mt-3 pt-2 border-t border-rule">
-                  {stats.ownerPendingSettlement > 0 && "Settlement completes when both parties leave the line. "}
+                  {stats.ownerPendingSettlement > 0 && "Fees are collected when each buyer is served. "}
                   {stats.ownerPendingPayment > 0 && "Pending payments are transactions in progress."}
                 </p>
               )}

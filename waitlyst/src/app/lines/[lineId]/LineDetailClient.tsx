@@ -46,6 +46,7 @@ interface Line {
   allowResale: boolean
   maxAskingPrice: number | null
   nowServing: string | null
+  nowServingUserId: string | null
   nowServingAt: string | null
   hideCapacity: boolean
   createdAt: string
@@ -580,7 +581,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         <OwnerConsole
           lineId={line.id}
           isActive={line.isActive}
-          nowServing={line.nowServing}
+          nowServingUserId={line.nowServingUserId}
           ownerFeePercent={line.ownerFeePercent}
           positions={line.positions}
           stripeEnabled={stripeEnabled}
@@ -815,6 +816,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             allowResale={line.allowResale}
             maxAskingPrice={line.maxAskingPrice}
             hideCapacity={!isCreator && line.hideCapacity}
+            nowServingUserId={line.nowServingUserId}
           />
         </CardContent>
       </Card>

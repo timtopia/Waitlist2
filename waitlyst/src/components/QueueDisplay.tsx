@@ -29,7 +29,7 @@ interface SwapOffer {
   fromUserId: string
   toUserId: string
   amount: number
-  status: "PENDING" | "ACCEPTED" | "DECLINED"
+  status: "PENDING" | "ACCEPTED" | "DECLINED" | "EXPIRED" | "WITHDRAWN"
   createdAt: string
   expiresAt?: string | null
   awaitingPayment?: boolean
@@ -85,6 +85,7 @@ interface QueueDisplayProps {
   allowResale?: boolean
   maxAskingPrice?: number | null
   hideCapacity?: boolean
+  nowServingUserId?: string | null
 }
 
 /** Format estimated wait time into a human-readable string */
@@ -96,7 +97,7 @@ function formatWaitTime(minutes: number): string {
   return `~${Math.round(hours)} hrs`
 }
 
-export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, feeInfo, isPaused = false, hasPayoutSetup = false, stripeEnabled = false, allowResale = true, maxAskingPrice = null, hideCapacity = false }: QueueDisplayProps) {
+export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, feeInfo, isPaused = false, hasPayoutSetup = false, stripeEnabled = false, allowResale = true, maxAskingPrice = null, hideCapacity = false, nowServingUserId = null }: QueueDisplayProps) {
   const { data: session } = useSession()
   const { addToast } = useToast()
   const [loadingAction, setLoadingAction] = useState<string | null>(null)
@@ -182,6 +183,9 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
     ? positions.find((p) => p.position === currentUserPosition.position - 1)
     : null
 
+  // Called-up and served spots are off the market (the server enforces it too).
+  const offMarket = (p: Position) => !!p.fulfilled || p.user.id === nowServingUserId
+
   // Find the sent offer for the person directly in front
   const sentOfferToFront = positionInFront
     ? sentOffers.find((o) => o.toUserId === positionInFront.user.id)
@@ -261,7 +265,11 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
       const res = await fetch(`/api/lines/${lineId}/checkout`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ expectedPrice: confirm.askingPrice, expectedSellerId: confirm.sellerId }),
+        body: JSON.stringify({
+          expectedPrice: confirm.askingPrice,
+          expectedSellerId: confirm.sellerId,
+          ...(feeInfo ? { expectedTotal: buyerTotal(confirm.askingPrice) } : {}),
+        }),
       })
       const data = await res.json()
       if (res.ok) {
@@ -663,7 +671,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
       <ConfirmModal
         open={showLeaveConfirm}
         title="Leave Line"
-        message="Are you sure you want to leave this line? You'll lose your position and any unsettled transactions."
+        message="Are you sure you want to leave this line? You'll lose your place. Spots you bought stay paid for -- leaving doesn't refund them."
         confirmLabel="Leave Line"
         variant="danger"
         isLoading={loadingAction === "leave"}
@@ -958,7 +966,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                 })}
 
                 {/* List / re-price / un-list the current user's own position */}
-                {isCurrentUser && allowResale && !isPaused && !selectMode && (
+                {isCurrentUser && allowResale && !isPaused && !selectMode && !offMarket(pos) && (
                   <div className="mt-3">
                     {isLocked ? (
                       <p className="text-sm text-ink/50">
@@ -1055,7 +1063,8 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                 {/* Shown even while the spot is locked: once the person in front
                     accepts, both spots lock, and the buyer still has to be able
                     to reach their payment link. */}
-                {isDirectlyInFront && !isCurrentUser && allowResale && !isPaused && !selectMode && (
+                {isDirectlyInFront && !isCurrentUser && allowResale && !isPaused && !selectMode &&
+                  !offMarket(pos) && !(currentUserPosition && offMarket(currentUserPosition)) && (
                   <div className="mt-3 space-y-2">
                     {pos.askingPrice != null && !isLocked && (
                       <div>
@@ -1114,10 +1123,12 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                           Withdraw
                         </button>
                       </div>
-                    ) : sentOfferToFront?.status === "DECLINED" && offerFormOpen !== pos.user.id ? (
+                    ) : sentOfferToFront && ["DECLINED", "EXPIRED", "WITHDRAWN"].includes(sentOfferToFront.status) && offerFormOpen !== pos.user.id ? (
                       <div className="flex items-center gap-3 flex-wrap">
                         <p className="text-sm text-ink/40">
-                          Your {formatCurrency(sentOfferToFront.amount)} offer was declined or expired.
+                          {sentOfferToFront.status === "WITHDRAWN"
+                            ? `You withdrew your ${formatCurrency(sentOfferToFront.amount)} offer.`
+                            : `Your ${formatCurrency(sentOfferToFront.amount)} offer ${sentOfferToFront.status === "DECLINED" ? "was declined" : "expired"}.`}
                         </p>
                         <button
                           onClick={() => setOfferFormOpen(pos.user.id)}

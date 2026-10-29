@@ -56,6 +56,9 @@ export async function GET(
         ownerFee: txn.ownerFee,
         status: txn.status,
         settledAt: txn.settledAt?.toISOString() || null,
+        // Collected but not yet passed on -- the payee has no payout account.
+        sellerUnpaid: !!txn.capturedAt && !txn.sellerPaidAt,
+        ownerFeeUnpaid: !!txn.capturedAt && !txn.ownerPaidAt && txn.ownerFee > 0,
         stripePaymentId: txn.stripePaymentId,
         buyerFulfilled: buyerPos?.fulfilled ?? false,
         buyerPosition: buyerPos?.position ?? null,

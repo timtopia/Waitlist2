@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client"
 import { prisma } from "./prisma"
 import { sendEmail } from "./email"
 import { positionSoldEmail } from "./email-templates"
+import { tradeBlocker } from "./trading"
 
 // Lazy-initialize Stripe to ensure env vars are loaded by Next.js before we read them.
 // Module-level `process.env` reads can happen before Next.js injects .env values.
@@ -221,21 +222,29 @@ export async function abandonPendingTransaction(
   })
   if (!abandoned) return false
 
-  let offerId = opts.offerId
-  const stripe = getStripe()
-  if (offerId === undefined && stripe && transaction.stripePaymentId) {
-    try {
-      const session = await stripe.checkout.sessions.retrieve(transaction.stripePaymentId)
-      offerId = session.metadata?.offerId ?? null
-    } catch {
-      offerId = null
-    }
-  }
-  if (offerId) {
-    await prisma.swapOffer.updateMany({
-      where: { id: offerId, status: "ACCEPTED" },
-      data: { status: "PENDING" },
+  if (opts.offerId !== null) {
+    const reopened = await prisma.swapOffer.updateMany({
+      where: { transactionId, status: "ACCEPTED" },
+      data: { status: "PENDING", transactionId: null },
     })
+    // Checkouts started before offers recorded their transaction only carry
+    // the offer id in the Stripe session metadata.
+    let offerId: string | null | undefined = opts.offerId
+    const stripe = getStripe()
+    if (reopened.count === 0 && offerId === undefined && stripe && transaction.stripePaymentId) {
+      try {
+        const session = await stripe.checkout.sessions.retrieve(transaction.stripePaymentId)
+        offerId = session.metadata?.offerId ?? null
+      } catch {
+        offerId = null
+      }
+    }
+    if (reopened.count === 0 && offerId) {
+      await prisma.swapOffer.updateMany({
+        where: { id: offerId, status: "ACCEPTED" },
+        data: { status: "PENDING", transactionId: null },
+      })
+    }
   }
 
   if (opts.expireSession !== false) {
@@ -287,8 +296,20 @@ export async function performPositionSwap(transactionId: string): Promise<boolea
       const sellerPosition = await tx.linePosition.findUnique({
         where: { lineId_userId: { lineId, userId: sellerId } },
       })
+      const line = await tx.line.findUnique({
+        where: { id: lineId },
+        select: { nowServingUserId: true },
+      })
+      const nowServingUserId = line?.nowServingUserId ?? null
 
-      if (!buyerPosition || !sellerPosition || buyerPosition.position !== sellerPosition.position + 1) {
+      // Either side may have been called up or served while the buyer was
+      // on the payment page; that spot isn't for sale any more.
+      if (
+        !buyerPosition || !sellerPosition ||
+        buyerPosition.position !== sellerPosition.position + 1 ||
+        tradeBlocker(buyerPosition, nowServingUserId, "yours") ||
+        tradeBlocker(sellerPosition, nowServingUserId, "theirs")
+      ) {
         await tx.transaction.update({
           where: { id: transactionId },
           data: { status: "FAILED" },
@@ -342,7 +363,7 @@ export async function performPositionSwap(transactionId: string): Promise<boolea
             { toUserId: sellerId },
           ],
         },
-        data: { status: "DECLINED" },
+        data: { status: "EXPIRED" },
       })
 
       return "swapped" as const
@@ -396,50 +417,90 @@ interface ReleasableTransaction {
   stripePaymentId: string | null
 }
 
+/** When the buyer's money was collected and when each payee got their share. */
+export interface ReleaseResult {
+  capturedAt: Date
+  sellerPaidAt: Date | null
+  ownerPaidAt: Date | null
+}
+
 /**
  * Capture the buyer's authorization and pay the seller and line owner.
- * Returns false only when money could not be collected (e.g. the hold
- * expired) -- callers must then NOT mark the transaction settled.
- * Without Stripe (dev mode) there is nothing to collect, so it's a success.
+ * Returns null only when money could not be collected (e.g. the hold
+ * expired) -- callers must then NOT mark the transaction settled. A payee
+ * with no payout account yet gets a null paid-at, and is paid by
+ * payOutstandingPayouts once they finish setup.
+ * Without Stripe (dev mode) nothing is really collected; it's all "paid".
  */
-export async function releaseFunds(txn: ReleasableTransaction): Promise<boolean> {
+export async function releaseFunds(txn: ReleasableTransaction): Promise<ReleaseResult | null> {
   const stripe = getStripe()
-  if (!stripe || !txn.stripePaymentId) return true
+  const now = new Date()
+  if (!stripe || !txn.stripePaymentId) {
+    return { capturedAt: now, sellerPaidAt: now, ownerPaidAt: now }
+  }
 
   try {
-    const session = await stripe.checkout.sessions.retrieve(txn.stripePaymentId)
-    if (!session.payment_intent) return false
-    const paymentIntentId = typeof session.payment_intent === "string"
-      ? session.payment_intent
-      : session.payment_intent.id
-
-    let paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
+    let paymentIntent = await paymentIntentFor(stripe, txn.stripePaymentId)
+    if (!paymentIntent) return null
     if (paymentIntent.status === "requires_capture") {
-      paymentIntent = await stripe.paymentIntents.capture(paymentIntentId)
+      paymentIntent = await stripe.paymentIntents.capture(paymentIntent.id)
     }
     if (paymentIntent.status !== "succeeded") {
-      console.warn(`releaseFunds: payment intent ${paymentIntentId} is "${paymentIntent.status}", nothing captured`)
-      return false
+      console.warn(`releaseFunds: payment intent ${paymentIntent.id} is "${paymentIntent.status}", nothing captured`)
+      return null
     }
 
-    await transferPayouts(stripe, txn, paymentIntent)
-    return true
+    const paid = await transferPayouts(stripe, txn, paymentIntent)
+    return {
+      capturedAt: now,
+      sellerPaidAt: paid.seller ? now : null,
+      ownerPaidAt: paid.owner ? now : null,
+    }
   } catch (error) {
     console.error(`releaseFunds failed for transaction ${txn.id}:`, error)
-    return false
+    return null
   }
+}
+
+/**
+ * Collect a completed purchase and close it out in one step. Returns false
+ * if the money couldn't be collected, leaving it open for the organizer.
+ */
+export async function releaseAndSettle(txn: ReleasableTransaction): Promise<boolean> {
+  const released = await releaseFunds(txn)
+  if (!released) return false
+  await prisma.transaction.update({
+    where: { id: txn.id },
+    data: { settledAt: released.capturedAt, ...released },
+  })
+  return true
+}
+
+async function paymentIntentFor(stripe: Stripe, sessionId: string): Promise<Stripe.PaymentIntent | null> {
+  const session = await stripe.checkout.sessions.retrieve(sessionId)
+  if (!session.payment_intent) return null
+  const paymentIntentId = typeof session.payment_intent === "string"
+    ? session.payment_intent
+    : session.payment_intent.id
+  return stripe.paymentIntents.retrieve(paymentIntentId)
 }
 
 /**
  * Send the seller's take and the owner's fee for a captured payment, unless
  * already sent. Transfers are tagged with transfer_group = transaction id so
  * this is safe to re-run (e.g. when a payee finishes payout setup later).
+ * Reports, per payee, whether their share has now reached them (or nothing
+ * was owed).
  */
-async function transferPayouts(stripe: Stripe, txn: ReleasableTransaction, paymentIntent: Stripe.PaymentIntent) {
+async function transferPayouts(
+  stripe: Stripe,
+  txn: ReleasableTransaction,
+  paymentIntent: Stripe.PaymentIntent
+): Promise<{ seller: boolean; owner: boolean }> {
   const chargeId = typeof paymentIntent.latest_charge === "string"
     ? paymentIntent.latest_charge
     : paymentIntent.latest_charge?.id
-  if (!chargeId) return
+  if (!chargeId) return { seller: false, owner: false }
 
   const line = await prisma.line.findUnique({
     where: { id: txn.lineId },
@@ -457,37 +518,42 @@ async function transferPayouts(stripe: Stripe, txn: ReleasableTransaction, payme
   const existing = await stripe.transfers.list({ transfer_group: txn.id, limit: 10 })
   const alreadySent = (type: string) => existing.data.some((t) => t.metadata?.type === type)
 
+  const send = (type: "seller_payout" | "owner_fee", amount: number, destination: string) =>
+    stripe.transfers.create({
+      amount: Math.round(amount * 100),
+      currency: "usd",
+      destination,
+      source_transaction: chargeId,
+      transfer_group: txn.id,
+      metadata: { transactionId: txn.id, type },
+    }).then(() => true, (err) => {
+      console.error(`${type} transfer failed for transaction ${txn.id}:`, err)
+      return false
+    })
+
   // A destination charge already routed the seller's take on capture;
   // transferring it again would pay them twice out of the platform balance.
+  let seller = !!paymentIntent.transfer_data?.destination || txn.amount <= 0 || alreadySent("seller_payout")
   const sellerConnectId = connectIdOf(txn.sellerId)
-  if (!paymentIntent.transfer_data?.destination && sellerConnectId && txn.amount > 0 && !alreadySent("seller_payout")) {
-    await stripe.transfers.create({
-      amount: Math.round(txn.amount * 100),
-      currency: "usd",
-      destination: sellerConnectId,
-      source_transaction: chargeId,
-      transfer_group: txn.id,
-      metadata: { transactionId: txn.id, type: "seller_payout" },
-    }).catch((err) => console.error(`Seller payout failed for transaction ${txn.id}:`, err))
+  if (!seller && sellerConnectId) {
+    seller = await send("seller_payout", txn.amount, sellerConnectId)
   }
 
+  let owner = !line || line.createdById === txn.sellerId || txn.ownerFee <= 0 || alreadySent("owner_fee")
   const ownerConnectId = connectIdOf(line?.createdById)
-  if (line && line.createdById !== txn.sellerId && ownerConnectId && txn.ownerFee > 0 && !alreadySent("owner_fee")) {
-    await stripe.transfers.create({
-      amount: Math.round(txn.ownerFee * 100),
-      currency: "usd",
-      destination: ownerConnectId,
-      source_transaction: chargeId,
-      transfer_group: txn.id,
-      metadata: { transactionId: txn.id, type: "owner_fee" },
-    }).catch((err) => console.error(`Owner fee transfer failed for transaction ${txn.id}:`, err))
+  if (!owner && ownerConnectId) {
+    owner = await send("owner_fee", txn.ownerFee, ownerConnectId)
   }
+
+  return { seller, owner }
 }
 
 /**
  * Catch up payouts for someone who just finished payout setup: any sale or
- * owner fee that was captured while they had nowhere to be paid is sitting
- * in the platform balance and is sent now.
+ * owner fee that was collected while they had nowhere to be paid is sitting
+ * in the platform balance and is sent now. Safe to call repeatedly -- only
+ * shares not yet marked paid are looked at, and Stripe's transfer_group is
+ * checked again before sending.
  */
 export async function payOutstandingPayouts(userId: string): Promise<void> {
   const stripe = getStripe()
@@ -500,25 +566,28 @@ export async function payOutstandingPayouts(userId: string): Promise<void> {
   const transactions = await prisma.transaction.findMany({
     where: {
       status: "COMPLETED",
-      settledAt: { not: null },
+      capturedAt: { not: null },
       stripePaymentId: { not: null },
       OR: [
-        { sellerId: userId },
-        { lineId: { in: ownedLines.map((l) => l.id) }, ownerFee: { gt: 0 } },
+        { sellerId: userId, sellerPaidAt: null },
+        { lineId: { in: ownedLines.map((l) => l.id) }, ownerFee: { gt: 0 }, ownerPaidAt: null },
       ],
     },
   })
 
   for (const txn of transactions) {
     try {
-      const session = await stripe.checkout.sessions.retrieve(txn.stripePaymentId!)
-      if (!session.payment_intent) continue
-      const paymentIntentId = typeof session.payment_intent === "string"
-        ? session.payment_intent
-        : session.payment_intent.id
-      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
-      if (paymentIntent.status !== "succeeded") continue
-      await transferPayouts(stripe, txn, paymentIntent)
+      const paymentIntent = await paymentIntentFor(stripe, txn.stripePaymentId!)
+      if (paymentIntent?.status !== "succeeded") continue
+      const paid = await transferPayouts(stripe, txn, paymentIntent)
+      const now = new Date()
+      await prisma.transaction.update({
+        where: { id: txn.id },
+        data: {
+          ...(paid.seller && !txn.sellerPaidAt ? { sellerPaidAt: now } : {}),
+          ...(paid.owner && !txn.ownerPaidAt ? { ownerPaidAt: now } : {}),
+        },
+      })
     } catch (error) {
       console.error(`Catch-up payout failed for transaction ${txn.id}:`, error)
     }

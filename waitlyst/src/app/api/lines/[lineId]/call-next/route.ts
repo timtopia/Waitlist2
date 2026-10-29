@@ -3,6 +3,7 @@ import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { sendEmail } from "@/lib/email"
 import { positionCalledEmail } from "@/lib/email-templates"
+import { abandonPendingTransaction } from "@/lib/stripe"
 
 export async function POST(
   req: Request,
@@ -32,16 +33,38 @@ export async function POST(
 
     const userName = frontPosition.user?.name || "Next person"
 
-    // Update the line's announcement and now-serving display
-    const line = await prisma.line.update({
-      where: { id: lineId },
-      data: {
-        announcement: `\u{1F4E2} ${userName}, you're up! Please come forward.`,
-        announcementAt: new Date(),
-        nowServing: userName,
-        nowServingAt: new Date(),
-      },
-    })
+    // Once called, this spot is at the counter and stops being tradeable.
+    // A swap still on the payment page would push them back after they were
+    // called, so it's called off (the buyer's hold is released).
+    if (frontPosition.lockedBy && frontPosition.lockedUntil && frontPosition.lockedUntil > new Date()) {
+      await abandonPendingTransaction(frontPosition.lockedBy)
+    }
+
+    const calledAt = new Date()
+    const [line] = await prisma.$transaction([
+      prisma.line.update({
+        where: { id: lineId },
+        data: {
+          announcement: `\u{1F4E2} ${userName}, you're up! Please come forward.`,
+          announcementAt: calledAt,
+          nowServing: userName,
+          nowServingUserId: frontPosition.userId,
+          nowServingAt: calledAt,
+        },
+      }),
+      prisma.linePosition.update({
+        where: { id: frontPosition.id },
+        data: { calledAt, askingPrice: null },
+      }),
+      prisma.swapOffer.updateMany({
+        where: {
+          lineId,
+          status: "PENDING",
+          OR: [{ fromUserId: frontPosition.userId }, { toUserId: frontPosition.userId }],
+        },
+        data: { status: "EXPIRED" },
+      }),
+    ])
 
     // Send email notification (fire-and-forget)
     const calledUser = frontPosition.user
@@ -54,6 +77,7 @@ export async function POST(
 
     return NextResponse.json({
       calledUser: userName,
+      calledUserId: frontPosition.userId,
       position: frontPosition.position,
       positionId: frontPosition.id,
     })

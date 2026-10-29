@@ -24,7 +24,7 @@ function respond(routes: Record<string, unknown>) {
 const baseProps = {
   lineId: "line-1",
   isActive: true,
-  nowServing: null as string | null,
+  nowServingUserId: null as string | null,
   ownerFeePercent: 10,
   stripeEnabled: false,
   hasPayoutSetup: false,
@@ -57,7 +57,7 @@ describe("OwnerConsole", () => {
     render(
       <OwnerConsole
         {...baseProps}
-        nowServing="Bob"
+        nowServingUserId="u-p2"
         onChanged={onChanged}
         positions={[pos("p2", 1, "Bob"), pos("p3", 2, "Cara")]}
       />
@@ -83,7 +83,7 @@ describe("OwnerConsole", () => {
       )
     )
     render(
-      <OwnerConsole {...baseProps} nowServing="Bob" positions={[pos("p2", 1, "Bob"), pos("p3", 2, "Cara")]} />
+      <OwnerConsole {...baseProps} nowServingUserId="u-p2" positions={[pos("p2", 1, "Bob"), pos("p3", 2, "Cara")]} />
     )
     fireEvent.click(screen.getByRole("button", { name: "Done · Call Next" }))
     await waitFor(() => expect(baseProps.onChanged).toHaveBeenCalled())

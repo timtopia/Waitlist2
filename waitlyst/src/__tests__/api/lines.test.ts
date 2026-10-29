@@ -7,6 +7,7 @@ const mockPrisma = {
     findMany: vi.fn(),
     findUnique: vi.fn(),
     delete: vi.fn(),
+    updateMany: vi.fn(),
   },
   linePosition: {
     findUnique: vi.fn(),
@@ -20,11 +21,16 @@ const mockPrisma = {
   },
   transaction: {
     findMany: vi.fn(),
+    findUnique: vi.fn(),
     update: vi.fn(),
     updateMany: vi.fn(),
   },
   swapOffer: {
     updateMany: vi.fn(),
+    deleteMany: vi.fn(),
+  },
+  queueVisit: {
+    create: vi.fn(),
   },
   user: {
     findMany: vi.fn(),
@@ -51,6 +57,8 @@ const mockStripe = {
 vi.mock("@/lib/stripe", () => ({
   stripe: mockStripe,
   refundTransactions: vi.fn().mockResolvedValue(0),
+  returnBuyerFunds: vi.fn().mockResolvedValue(0),
+  releaseAndSettle: vi.fn().mockResolvedValue(true),
   expireCheckoutSession: vi.fn().mockResolvedValue(undefined),
 }))
 
@@ -389,19 +397,52 @@ describe("Leave Line API", () => {
       position: 2,
       lockedBy: "txn-pending",
     })
-    mockPrisma.transaction.update.mockResolvedValue({ id: "txn-pending", status: "FAILED" })
+    mockPrisma.transaction.updateMany.mockResolvedValue({ count: 1 })
+    mockPrisma.transaction.findUnique.mockResolvedValue({ stripePaymentId: "cs_1" })
     mockPrisma.transaction.findMany.mockResolvedValue([])
     mockPrisma.linePosition.delete.mockResolvedValue({ id: "pos-1" })
     mockPrisma.linePosition.updateMany.mockResolvedValue({ count: 1 })
 
     const { DELETE } = await import("@/app/api/lines/[lineId]/leave/route")
+    const { expireCheckoutSession } = await import("@/lib/stripe")
     const req = new Request("http://localhost/api/lines/line-1/leave", { method: "DELETE" })
     const response = await DELETE(req, { params: Promise.resolve({ lineId: "line-1" }) })
 
     expect(response.status).toBe(200)
-    expect(mockPrisma.transaction.update).toHaveBeenCalledWith({
-      where: { id: "txn-pending" },
+    // Only an unpaid checkout is failed -- never one that already completed
+    expect(mockPrisma.transaction.updateMany).toHaveBeenCalledWith({
+      where: { id: "txn-pending", status: "PENDING" },
       data: { status: "FAILED" },
+    })
+    expect(expireCheckoutSession).toHaveBeenCalledWith("cs_1")
+  })
+
+  it("records the visit and collects purchases the leaver already made", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "user-1" } })
+    const joinedAt = new Date("2026-01-01T10:00:00Z")
+    mockPrisma.linePosition.findUnique.mockResolvedValue({
+      id: "pos-1", lineId: "line-1", userId: "user-1", position: 2, lockedBy: null,
+      fulfilled: false, joinedAt, calledAt: null, fulfilledAt: null,
+    })
+    const purchase = { id: "txn-1", lineId: "line-1", sellerId: "seller-1", amount: 20, ownerFee: 2, stripePaymentId: "cs_9" }
+    mockPrisma.transaction.findMany.mockResolvedValue([purchase])
+    mockPrisma.linePosition.updateMany.mockResolvedValue({ count: 1 })
+
+    const { DELETE } = await import("@/app/api/lines/[lineId]/leave/route")
+    const { releaseAndSettle } = await import("@/lib/stripe")
+    const req = new Request("http://localhost/api/lines/line-1/leave", { method: "DELETE" })
+    const response = await DELETE(req, { params: Promise.resolve({ lineId: "line-1" }) })
+
+    expect(response.status).toBe(200)
+    expect((await response.json()).purchasesCollected).toBe(1)
+    expect(mockPrisma.queueVisit.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ lineId: "line-1", userId: "user-1", outcome: "LEFT", position: 2, joinedAt }),
+    })
+    // The seller gave up their place; leaving doesn't take their money back
+    expect(releaseAndSettle).toHaveBeenCalledWith(purchase)
+    expect(mockPrisma.swapOffer.updateMany).toHaveBeenCalledWith({
+      where: { lineId: "line-1", status: "PENDING", OR: [{ fromUserId: "user-1" }, { toUserId: "user-1" }] },
+      data: { status: "EXPIRED" },
     })
   })
 

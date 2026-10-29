@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireLineOwner } from "@/lib/auth-helpers"
-import { refundTransactions } from "@/lib/stripe"
+import { expireCheckoutSession, returnBuyerFunds } from "@/lib/stripe"
 import { getPlatformFeePercent } from "@/lib/fees"
 import { rateLimit } from "@/lib/rate-limit"
 
@@ -65,21 +65,30 @@ export async function DELETE(
 
   try {
     // Get unsettled transactions to refund
-    const transactionsToRefund = await prisma.$transaction(async (tx) => {
+    const { transactionsToRefund, abandonedSessions } = await prisma.$transaction(async (tx) => {
       // Fail any pending transactions
+      const pending = await tx.transaction.findMany({
+        where: { lineId, status: "PENDING" },
+        select: { stripePaymentId: true },
+      })
       await tx.transaction.updateMany({
         where: { lineId, status: "PENDING" },
         data: { status: "FAILED" },
       })
 
       // Find unsettled COMPLETED transactions that need refunding
-      return tx.transaction.findMany({
+      const transactionsToRefund = await tx.transaction.findMany({
         where: { lineId, status: "COMPLETED", settledAt: null },
       })
+      return { transactionsToRefund, abandonedSessions: pending.map((t) => t.stripePaymentId) }
     })
 
-    // Refund unsettled transactions (only changes status to REFUNDED, not settledAt)
-    const refundedCount = await refundTransactions(transactionsToRefund)
+    // Someone still on a payment page must not be able to pay for a spot in
+    // a line that no longer exists.
+    await Promise.all(abandonedSessions.map((id) => expireCheckoutSession(id)))
+
+    // Release uncaptured holds (no fees), refund anything already captured.
+    const refundedCount = await returnBuyerFunds(transactionsToRefund)
 
     // Settle ALL unsettled transactions (COMPLETED and REFUNDED) and delete line
     await prisma.$transaction(async (tx) => {
@@ -91,6 +100,8 @@ export async function DELETE(
         },
         data: { settledAt: new Date() },
       })
+      // Offers aren't tied to the line by a foreign key, so clear them here.
+      await tx.swapOffer.deleteMany({ where: { lineId } })
       await tx.line.delete({ where: { id: lineId } })
     })
 

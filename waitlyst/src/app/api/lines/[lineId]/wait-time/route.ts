@@ -22,20 +22,24 @@ export async function GET(
     // Only real service events count. Join times were used before, but they
     // measure how fast people arrive, not how fast the line moves -- a drop
     // where 200 people join in a minute would promise #200 a one-minute wait.
-    const [settledTransactions, fulfilledPositions] = await Promise.all([
-      prisma.transaction.findMany({
-        where: { lineId, settledAt: { not: null } },
-        select: { settledAt: true },
-      }),
+    // Served people who are still in line, plus everyone served and since
+    // cleared out (their position is gone but the visit is kept).
+    const [fulfilledPositions, servedVisits] = await Promise.all([
       prisma.linePosition.findMany({
         where: { lineId, fulfilledAt: { not: null } },
         select: { fulfilledAt: true },
       }),
+      prisma.queueVisit.findMany({
+        where: { lineId, servedAt: { not: null } },
+        select: { servedAt: true },
+        orderBy: { servedAt: "desc" },
+        take: 200,
+      }),
     ])
 
     const timestamps = [
-      ...settledTransactions.map((t) => t.settledAt),
       ...fulfilledPositions.map((p) => p.fulfilledAt),
+      ...servedVisits.map((v) => v.servedAt),
     ].filter((t): t is Date => t instanceof Date)
 
     const { minutes, basedOn } = estimateMinutesPerPerson(timestamps)

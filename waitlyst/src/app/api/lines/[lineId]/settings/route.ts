@@ -141,6 +141,21 @@ export async function PATCH(
       data: allowedUpdates,
     })
 
+    // Listings and offers made under the old rules would otherwise stay up
+    // and only fail when someone tries to act on them.
+    if (updatedLine.allowResale === false) {
+      await prisma.$transaction([
+        prisma.linePosition.updateMany({ where: { lineId, askingPrice: { not: null } }, data: { askingPrice: null } }),
+        prisma.swapOffer.updateMany({ where: { lineId, status: "PENDING" }, data: { status: "EXPIRED" } }),
+      ])
+    } else if (typeof allowedUpdates.maxAskingPrice === "number") {
+      const cap = allowedUpdates.maxAskingPrice
+      await prisma.$transaction([
+        prisma.linePosition.updateMany({ where: { lineId, askingPrice: { gt: cap } }, data: { askingPrice: null } }),
+        prisma.swapOffer.updateMany({ where: { lineId, status: "PENDING", amount: { gt: cap } }, data: { status: "EXPIRED" } }),
+      ])
+    }
+
     return NextResponse.json(updatedLine)
   } catch (error) {
     console.error("Settings update error:", error)

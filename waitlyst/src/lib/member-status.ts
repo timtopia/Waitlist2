@@ -8,7 +8,7 @@ export type MemberPhase = "waiting" | "next" | "called" | "served"
 
 export interface StatusLine {
   isActive: boolean
-  nowServing: string | null
+  nowServingUserId: string | null
   announcement: string | null
   announcementAt: string | null
   positions: {
@@ -25,23 +25,15 @@ export interface MemberStatus {
   ahead: number
 }
 
-// Mirrors the name call-next writes into Line.nowServing. The line only
-// stores the called person's display name, not their id.
-export function nowServingNameFor(userName: string | null): string {
-  return userName || "Next person"
-}
-
 export function getMemberPhase(input: {
   fulfilled: boolean
   ahead: number
-  nowServing: string | null
-  userName: string | null
+  nowServingUserId: string | null
+  userId: string
 }): MemberPhase {
   if (input.fulfilled) return "served"
   if (input.ahead === 0) {
-    return input.nowServing !== null && input.nowServing === nowServingNameFor(input.userName)
-      ? "called"
-      : "next"
+    return input.nowServingUserId === input.userId ? "called" : "next"
   }
   return "waiting"
 }
@@ -52,7 +44,7 @@ export function getMemberStatus(line: StatusLine, userId: string | undefined): M
   if (!mine) return null
   const ahead = line.positions.filter((p) => p.position < mine.position && !p.fulfilled).length
   return {
-    phase: getMemberPhase({ fulfilled: mine.fulfilled, ahead, nowServing: line.nowServing, userName: mine.user.name }),
+    phase: getMemberPhase({ fulfilled: mine.fulfilled, ahead, nowServingUserId: line.nowServingUserId, userId }),
     position: mine.position,
     ahead,
   }
