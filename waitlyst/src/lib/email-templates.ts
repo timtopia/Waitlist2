@@ -1,10 +1,19 @@
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
 function wrapTemplate(title: string, body: string, ctaText: string, ctaUrl: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${title}</title>
+  <title>${escapeHtml(title)}</title>
 </head>
 <body style="margin:0;padding:0;background-color:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6;padding:40px 0;">
@@ -49,11 +58,29 @@ export function positionCalledEmail(
   lineName: string,
   lineUrl: string
 ): { subject: string; html: string } {
+  const safeName = escapeHtml(userName)
+  const safeLine = escapeHtml(lineName)
   const subject = `You're up! You've been called in ${lineName}`
   const body = `
-    <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">You're up, ${userName}!</h2>
-    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">You've been called to the front of <strong>${lineName}</strong>.</p>
+    <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">You're up, ${safeName}!</h2>
+    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">You've been called to the front of <strong>${safeLine}</strong>.</p>
     <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Please come forward as soon as possible so you don't lose your spot.</p>
+  `
+  return { subject, html: wrapTemplate(subject, body, "Go to Line", lineUrl) }
+}
+
+export function youreNextEmail(
+  userName: string,
+  lineName: string,
+  lineUrl: string
+): { subject: string; html: string } {
+  const safeName = escapeHtml(userName)
+  const safeLine = escapeHtml(lineName)
+  const subject = `You're next in ${lineName}`
+  const body = `
+    <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">You're next, ${safeName}</h2>
+    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">The person ahead of you in <strong>${safeLine}</strong> was just called.</p>
+    <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Head back now so you're ready when it's your turn.</p>
   `
   return { subject, html: wrapTemplate(subject, body, "Go to Line", lineUrl) }
 }
@@ -64,11 +91,13 @@ export function swapOfferEmail(
   offerAmount: number,
   lineUrl: string
 ): { subject: string; html: string } {
+  const safeName = escapeHtml(userName)
+  const safeLine = escapeHtml(lineName)
   const formattedAmount = offerAmount.toLocaleString("en-US", { style: "currency", currency: "USD" })
   const subject = `New swap offer: ${formattedAmount} in ${lineName}`
   const body = `
-    <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">New swap offer, ${userName}!</h2>
-    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">Someone offered <strong>${formattedAmount}</strong> to swap positions with you in <strong>${lineName}</strong>.</p>
+    <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">New swap offer, ${safeName}!</h2>
+    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">Someone offered <strong>${formattedAmount}</strong> to swap positions with you in <strong>${safeLine}</strong>.</p>
     <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Review the offer and accept or decline it before it expires.</p>
   `
   return { subject, html: wrapTemplate(subject, body, "View Offer", lineUrl) }
@@ -79,10 +108,12 @@ export function swapAcceptedEmail(
   lineName: string,
   lineUrl: string
 ): { subject: string; html: string } {
+  const safeName = escapeHtml(userName)
+  const safeLine = escapeHtml(lineName)
   const subject = `Your swap offer was accepted in ${lineName}`
   const body = `
-    <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">Offer accepted, ${userName}!</h2>
-    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">Your swap offer in <strong>${lineName}</strong> has been accepted.</p>
+    <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">Offer accepted, ${safeName}!</h2>
+    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">Your swap offer in <strong>${safeLine}</strong> has been accepted.</p>
     <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Head over to the line to complete the swap.</p>
   `
   return { subject, html: wrapTemplate(subject, body, "Go to Line", lineUrl) }
@@ -94,10 +125,12 @@ export function lineOpeningEmail(
   opensAt: string,
   lineUrl: string
 ): { subject: string; html: string } {
+  const safeName = escapeHtml(userName)
+  const safeLine = escapeHtml(lineName)
   const subject = `${lineName} opens in 30 minutes`
   const body = `
-    <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">Get ready, ${userName}!</h2>
-    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;"><strong>${lineName}</strong> opens at <strong>${opensAt}</strong>.</p>
+    <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">Get ready, ${safeName}!</h2>
+    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;"><strong>${safeLine}</strong> opens at <strong>${opensAt}</strong>.</p>
     <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Make sure you're ready to join when it opens.</p>
   `
   return { subject, html: wrapTemplate(subject, body, "View Line", lineUrl) }
@@ -108,11 +141,51 @@ export function fulfilledEmail(
   lineName: string,
   lineUrl: string
 ): { subject: string; html: string } {
+  const safeName = escapeHtml(userName)
+  const safeLine = escapeHtml(lineName)
   const subject = `You've been fulfilled in ${lineName}`
   const body = `
-    <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">All done, ${userName}!</h2>
-    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">You've been marked as fulfilled in <strong>${lineName}</strong>.</p>
+    <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">All done, ${safeName}!</h2>
+    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">You've been marked as fulfilled in <strong>${safeLine}</strong>.</p>
     <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Thanks for using Waitlyst!</p>
   `
   return { subject, html: wrapTemplate(subject, body, "View Line", lineUrl) }
+}
+
+export function positionSoldEmail(
+  userName: string,
+  lineName: string,
+  amount: number,
+  newPosition: number,
+  lineUrl: string
+): { subject: string; html: string } {
+  const safeName = escapeHtml(userName)
+  const safeLine = escapeHtml(lineName)
+  const formattedAmount = amount.toLocaleString("en-US", { style: "currency", currency: "USD" })
+  const subject = `Your spot in ${lineName} sold for ${formattedAmount}`
+  const body = `
+    <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">Your spot sold, ${safeName}!</h2>
+    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">Someone bought your position in <strong>${safeLine}</strong> for <strong>${formattedAmount}</strong>. You traded places with them and are now <strong>#${newPosition}</strong>.</p>
+    <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Your earnings are released once the line owner settles the sale. Make sure a payout account is connected in your profile so the money can reach you.</p>
+  `
+  return { subject, html: wrapTemplate(subject, body, "View Line", lineUrl) }
+}
+
+export function lineDeletedEmail(
+  userName: string,
+  lineName: string,
+  hadPurchase: boolean,
+  browseUrl: string
+): { subject: string; html: string } {
+  const safeName = escapeHtml(userName)
+  const safeLine = escapeHtml(lineName)
+  const subject = `${lineName} has been closed`
+  const body = `
+    <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">This line has closed, ${safeName}</h2>
+    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">The organizer deleted <strong>${safeLine}</strong>, so your place in it is gone.</p>
+    ${hadPurchase
+      ? `<p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Any payment you made to move up in this line has been returned to you. A hold on your card is released right away; a completed charge is refunded and can take a few days to appear.</p>`
+      : ""}
+  `
+  return { subject, html: wrapTemplate(subject, body, "Browse Other Lines", browseUrl) }
 }

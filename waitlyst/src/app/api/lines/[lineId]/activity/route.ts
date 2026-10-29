@@ -89,10 +89,16 @@ export async function GET(
           timestamp: tx.createdAt.toISOString(),
         })
       } else if (tx.status === "COMPLETED") {
+        // tx.amount is the seller's asking price (what they receive), not
+        // what the buyer actually paid -- the buyer also covers owner +
+        // platform fees on top. Showing tx.amount alone as "bought for $X"
+        // understated the real price and didn't match what either side saw
+        // on their own screen (checkout total vs. "Listed $X").
+        const buyerPaid = tx.amount + tx.ownerFee + tx.platformFee
         activities.push({
           id: `sale-${tx.id}`,
           type: "sale",
-          description: `${buyerName} bought a spot from ${sellerName} for $${tx.amount.toFixed(2)}`,
+          description: `${buyerName} bought a spot from ${sellerName} for $${buyerPaid.toFixed(2)} ($${tx.amount.toFixed(2)} to ${sellerName})`,
           timestamp: tx.createdAt.toISOString(),
         })
       }

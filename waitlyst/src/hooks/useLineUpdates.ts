@@ -12,20 +12,36 @@ export type LineUpdateEvent = {
 
 const POLL_INTERVAL_MS = 30000 // 30 seconds (reduced from 5s to save DB compute)
 
+export interface LineUpdateOptions {
+  intervalMs?: number
+  /**
+   * Keep polling while the tab is in the background. Needed for browser
+   * notifications, which are only shown when the tab is hidden.
+   */
+  pollWhenHidden?: boolean
+}
+
 /**
  * Subscribe to line updates via polling.
  *
- * Polls every 30 seconds and only when the tab is visible.
- * Pauses automatically when the user switches tabs.
+ * Polls every 30 seconds (or `intervalMs`), by default only while the tab is
+ * visible.
  *
  * SSE was removed — on Vercel serverless, SSE events fired from API routes
  * can't reach the SSE connection because each request runs in a separate
  * invocation with its own memory. Polling is the reliable approach.
  */
-export function useLineUpdates(lineId: string, onUpdate: (event: LineUpdateEvent) => void) {
+export function useLineUpdates(
+  lineId: string,
+  onUpdate: (event: LineUpdateEvent) => void,
+  { intervalMs = POLL_INTERVAL_MS, pollWhenHidden = false }: LineUpdateOptions = {}
+) {
   const lastSnapshotRef = useRef<string | null>(null)
+  const etagRef = useRef<string | null>(null)
   const onUpdateRef = useRef(onUpdate)
-  onUpdateRef.current = onUpdate
+  useEffect(() => {
+    onUpdateRef.current = onUpdate
+  }, [onUpdate])
 
   const stableOnUpdate = useCallback((event: LineUpdateEvent) => {
     onUpdateRef.current(event)
@@ -35,14 +51,17 @@ export function useLineUpdates(lineId: string, onUpdate: (event: LineUpdateEvent
     let interval: ReturnType<typeof setInterval> | null = null
 
     const poll = async () => {
-      // Skip polling when tab is hidden
-      if (document.visibilityState === "hidden") return
+      if (document.visibilityState === "hidden" && !pollWhenHidden) return
 
       try {
         const res = await fetch(`/api/lines/${lineId}`, {
           cache: "no-store",
+          // Unchanged since the last poll: the server answers 304 with no body
+          headers: etagRef.current ? { "If-None-Match": etagRef.current } : undefined,
         })
+        if (res.status === 304) return
         if (res.ok) {
+          etagRef.current = res.headers.get("ETag")
           const text = await res.text()
           if (lastSnapshotRef.current !== null && lastSnapshotRef.current !== text) {
             const parsed = JSON.parse(text)
@@ -59,7 +78,7 @@ export function useLineUpdates(lineId: string, onUpdate: (event: LineUpdateEvent
       if (!interval) {
         // Do an immediate poll when tab becomes visible again
         poll()
-        interval = setInterval(poll, POLL_INTERVAL_MS)
+        interval = setInterval(poll, intervalMs)
       }
     }
 
@@ -72,8 +91,9 @@ export function useLineUpdates(lineId: string, onUpdate: (event: LineUpdateEvent
 
     function handleVisibilityChange() {
       if (document.visibilityState === "visible") {
-        startPolling()
-      } else {
+        if (pollWhenHidden) poll()
+        else startPolling()
+      } else if (!pollWhenHidden) {
         stopPolling()
       }
     }
@@ -88,5 +108,11 @@ export function useLineUpdates(lineId: string, onUpdate: (event: LineUpdateEvent
       clearTimeout(startTimeout)
       stopPolling()
     }
-  }, [lineId, stableOnUpdate])
+  }, [lineId, stableOnUpdate, intervalMs, pollWhenHidden])
+
+  // A different line's ETag means nothing here
+  useEffect(() => {
+    etagRef.current = null
+    lastSnapshotRef.current = null
+  }, [lineId])
 }

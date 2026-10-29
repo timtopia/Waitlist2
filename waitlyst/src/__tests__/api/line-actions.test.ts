@@ -6,6 +6,7 @@ const mockPrisma = {
     create: vi.fn(),
     findUnique: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
   },
   linePosition: {
     findFirst: vi.fn(),
@@ -15,11 +16,20 @@ const mockPrisma = {
   },
   transaction: {
     update: vi.fn(),
+    updateMany: vi.fn(),
+    findUnique: vi.fn(),
     findMany: vi.fn(),
+  },
+  swapOffer: {
+    updateMany: vi.fn(),
+  },
+  queueVisit: {
+    create: vi.fn(),
   },
   user: {
     update: vi.fn(),
   },
+  $queryRaw: vi.fn(),
   $transaction: vi.fn((fn) => fn(mockPrisma)),
 }
 
@@ -42,6 +52,8 @@ vi.mock("@/lib/settle-transactions", () => ({
 // Mock stripe
 vi.mock("@/lib/stripe", () => ({
   refundTransactions: vi.fn().mockResolvedValue(0),
+  returnBuyerFunds: vi.fn().mockResolvedValue(0),
+  expireCheckoutSession: vi.fn().mockResolvedValue(undefined),
 }))
 
 // Mock fees
@@ -667,11 +679,13 @@ describe("POST /api/lines/[lineId]/remove-front", () => {
       user: { name: "Bob" },
     })
     mockPrisma.transaction.findMany.mockResolvedValue([])
-    mockPrisma.transaction.update.mockResolvedValue({ id: "txn-pending", status: "FAILED" })
+    mockPrisma.transaction.updateMany.mockResolvedValue({ count: 1 })
+    mockPrisma.transaction.findUnique.mockResolvedValue({ stripePaymentId: "cs_live" })
     mockPrisma.linePosition.updateMany.mockResolvedValue({ count: 0 })
     mockPrisma.linePosition.delete.mockResolvedValue({ id: "pos-1" })
 
     const { POST } = await import("@/app/api/lines/[lineId]/remove-front/route")
+    const { expireCheckoutSession } = await import("@/lib/stripe")
     const req = new Request("http://localhost/api/lines/line-1/remove-front", {
       method: "POST",
     })
@@ -679,9 +693,15 @@ describe("POST /api/lines/[lineId]/remove-front", () => {
     const response = await POST(req, { params: Promise.resolve({ lineId: "line-1" }) })
     expect(response.status).toBe(200)
 
-    expect(mockPrisma.transaction.update).toHaveBeenCalledWith({
-      where: { id: "txn-pending" },
+    expect(mockPrisma.transaction.updateMany).toHaveBeenCalledWith({
+      where: { id: "txn-pending", status: "PENDING" },
       data: { status: "FAILED" },
+    })
+    // The buyer's payment page is killed too, so they can't pay for a spot
+    // whose holder was just removed.
+    expect(expireCheckoutSession).toHaveBeenCalledWith("cs_live")
+    expect(mockPrisma.queueVisit.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ userId: "user-1", outcome: "REMOVED", position: 1 }),
     })
   })
 })

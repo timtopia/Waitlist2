@@ -1,6 +1,31 @@
 import { NextResponse } from "next/server"
-import { getStripe, performPositionSwap } from "@/lib/stripe"
+import {
+  getStripe,
+  performPositionSwap,
+  abandonPendingTransaction,
+  isCheckoutAuthorized,
+  recordPaymentIntent,
+} from "@/lib/stripe"
 import { prisma } from "@/lib/prisma"
+import type Stripe from "stripe"
+
+/** The purchase a PaymentIntent paid for. */
+async function transactionForPaymentIntent(stripe: Stripe, paymentIntentId: string) {
+  const transaction = await prisma.transaction.findFirst({
+    where: { stripePaymentIntentId: paymentIntentId },
+  })
+  if (transaction) return transaction
+
+  // Purchases made before the PaymentIntent was recorded
+  const sessions = await stripe.checkout.sessions.list({
+    payment_intent: paymentIntentId,
+    limit: 1,
+  })
+  if (sessions.data.length === 0) return null
+  return prisma.transaction.findFirst({
+    where: { stripePaymentId: sessions.data[0].id },
+  })
+}
 
 export async function POST(req: Request) {
   const stripe = getStripe()
@@ -49,17 +74,26 @@ export async function POST(req: Request) {
       case "checkout.session.completed": {
         const session = event.data.object
         const transactionId = session.metadata?.transactionId
-        const lineId = session.metadata?.lineId
 
         if (!transactionId) {
           console.error("Webhook: checkout.session.completed missing transactionId in metadata")
           break
         }
 
+        // Same check as the return URL: a completed session isn't proof the
+        // buyer's card was actually authorized.
+        if (!(await isCheckoutAuthorized(session))) {
+          console.error(`Webhook: session ${session.id} completed but payment is not authorized`)
+          break
+        }
+
+        await recordPaymentIntent(transactionId, session)
+
         // Perform the position swap (idempotent — won't swap if already done).
         // With auth-then-capture, this fires on authorization (not capture).
         // The payment is held but not charged yet — capture happens on fulfillment.
-        const swapped = await performPositionSwap(transactionId)
+        // If the swap can no longer happen, performPositionSwap releases the hold.
+        await performPositionSwap(transactionId)
 
         // Note: Owner fee transfers are deferred until fulfillment (capture).
         // With auth-then-capture, the payment is not yet captured at this point,
@@ -76,18 +110,9 @@ export async function POST(req: Request) {
 
         if (transactionId) {
           try {
-            await prisma.$transaction(async (tx) => {
-              // Unlock positions
-              await tx.linePosition.updateMany({
-                where: { lockedBy: transactionId },
-                data: { lockedUntil: null, lockedBy: null },
-              })
-
-              // Mark transaction as failed
-              await tx.transaction.update({
-                where: { id: transactionId },
-                data: { status: "FAILED" },
-              })
+            await abandonPendingTransaction(transactionId, {
+              offerId: session.metadata?.offerId ?? null,
+              expireSession: false,
             })
           } catch (error) {
             console.error(`Webhook: Failed to clean up expired session for transaction ${transactionId}:`, error)
@@ -98,32 +123,41 @@ export async function POST(req: Request) {
       }
 
       case "charge.refunded": {
-        // A refund was issued (possibly from Stripe dashboard)
+        // A refund was issued (possibly from Stripe dashboard). A partial
+        // refund leaves the purchase standing.
         const charge = event.data.object
+        if (!charge.refunded) break
+
         const paymentIntentId = typeof charge.payment_intent === "string"
           ? charge.payment_intent
           : charge.payment_intent?.id
+        if (!paymentIntentId) break
 
-        if (paymentIntentId) {
-          // Find the checkout session associated with this payment intent
-          const sessions = await stripe.checkout.sessions.list({
-            payment_intent: paymentIntentId,
-            limit: 1,
+        const transaction = await transactionForPaymentIntent(stripe, paymentIntentId)
+        if (transaction && transaction.status !== "REFUNDED") {
+          await prisma.transaction.update({
+            where: { id: transaction.id },
+            data: { status: "REFUNDED", settledAt: new Date() },
           })
+        }
 
-          if (sessions.data.length > 0) {
-            const sessionId = sessions.data[0].id
-            const transaction = await prisma.transaction.findFirst({
-              where: { stripePaymentId: sessionId },
-            })
+        break
+      }
 
-            if (transaction && transaction.status !== "REFUNDED") {
-              await prisma.transaction.update({
-                where: { id: transaction.id },
-                data: { status: "REFUNDED", settledAt: new Date() },
-              })
-            }
-          }
+      case "payment_intent.canceled": {
+        // "automatic" is Stripe letting an uncollected hold lapse. Our own
+        // releases cancel with other reasons and are already recorded.
+        const paymentIntent = event.data.object
+        if (paymentIntent.cancellation_reason !== "automatic") break
+
+        const transaction = await transactionForPaymentIntent(stripe, paymentIntent.id)
+        if (transaction && transaction.status === "COMPLETED" && !transaction.capturedAt) {
+          const now = new Date()
+          await prisma.transaction.update({
+            where: { id: transaction.id },
+            data: { status: "FAILED", holdExpiredAt: now, settledAt: now },
+          })
+          console.warn(`Webhook: hold lapsed before collection for transaction ${transaction.id}`)
         }
 
         break
@@ -134,9 +168,10 @@ export async function POST(req: Request) {
         break
     }
   } catch (error) {
+    // Let Stripe retry: every handler is safe to run again, and a dropped
+    // checkout.session.completed would leave a buyer charged but not moved.
     console.error(`Webhook handler error for ${event.type}:`, error)
-    // Return 200 even on handler errors to prevent Stripe from retrying indefinitely
-    // The error is logged for investigation
+    return NextResponse.json({ error: "Webhook handler failed" }, { status: 500 })
   }
 
   return NextResponse.json({ received: true })

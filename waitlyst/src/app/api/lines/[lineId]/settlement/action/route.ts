@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
-import { captureAuthorization, cancelAuthorization } from "@/lib/stripe"
+import { releaseAndSettle, cancelAuthorization, abandonPendingTransaction } from "@/lib/stripe"
 import { rateLimit } from "@/lib/rate-limit"
 
 const settlementLimiter = rateLimit({ interval: 60000, limit: 20 })
@@ -81,14 +81,12 @@ export async function POST(
 
       // capture-all
       let capturedCount = 0
+      let failedCount = 0
       for (const txn of transactions) {
-        if (txn.stripePaymentId) {
-          await captureAuthorization(txn.stripePaymentId)
+        if (!(await releaseAndSettle(txn))) {
+          failedCount++
+          continue
         }
-        await prisma.transaction.update({
-          where: { id: txn.id },
-          data: { settledAt: new Date() },
-        })
         capturedCount++
       }
 
@@ -96,6 +94,7 @@ export async function POST(
         success: true,
         action: "capture-all",
         count: capturedCount,
+        failedCount,
       })
     }
 
@@ -118,6 +117,25 @@ export async function POST(
       )
     }
 
+    // A PENDING transaction never got as far as an authorized payment — it's
+    // an abandoned or stuck checkout, not something to "capture" or "release
+    // a hold" on. The only sane owner action is cancelling it outright so the
+    // locked positions free up and the queue stops showing a phantom swap.
+    if (transaction.status === "PENDING") {
+      if (action !== "cancel") {
+        return NextResponse.json(
+          { error: "A pending (unpaid) checkout can only be cancelled, not captured." },
+          { status: 400 }
+        )
+      }
+
+      // Also kills the Stripe session so a stale link the buyer still has
+      // can't be used, and puts an accepted offer back to PENDING.
+      await abandonPendingTransaction(transactionId)
+
+      return NextResponse.json({ success: true, action: "cancel", transactionId })
+    }
+
     if (transaction.status !== "COMPLETED") {
       return NextResponse.json(
         { error: "Transaction is not in a settleable state" },
@@ -133,13 +151,12 @@ export async function POST(
     }
 
     if (action === "capture") {
-      if (transaction.stripePaymentId) {
-        await captureAuthorization(transaction.stripePaymentId)
+      if (!(await releaseAndSettle(transaction))) {
+        return NextResponse.json(
+          { error: "Couldn't collect this payment -- the card hold may have expired. You can release it instead." },
+          { status: 402 }
+        )
       }
-      await prisma.transaction.update({
-        where: { id: transactionId },
-        data: { settledAt: new Date() },
-      })
 
       return NextResponse.json({
         success: true,

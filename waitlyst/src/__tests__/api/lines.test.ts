@@ -7,6 +7,7 @@ const mockPrisma = {
     findMany: vi.fn(),
     findUnique: vi.fn(),
     delete: vi.fn(),
+    updateMany: vi.fn(),
   },
   linePosition: {
     findUnique: vi.fn(),
@@ -17,15 +18,26 @@ const mockPrisma = {
     update: vi.fn(),
     updateMany: vi.fn(),
     count: vi.fn(),
+    aggregate: vi.fn().mockResolvedValue({ _max: { updatedAt: null }, _count: 0 }),
   },
   transaction: {
     findMany: vi.fn(),
+    findUnique: vi.fn(),
     update: vi.fn(),
     updateMany: vi.fn(),
+  },
+  swapOffer: {
+    updateMany: vi.fn(),
+    deleteMany: vi.fn(),
+  },
+  queueVisit: {
+    create: vi.fn(),
+    findMany: vi.fn().mockResolvedValue([]),
   },
   user: {
     findMany: vi.fn(),
   },
+  $queryRaw: vi.fn(),
   $transaction: vi.fn((fn) => fn(mockPrisma)),
 }
 
@@ -48,6 +60,15 @@ const mockStripe = {
 vi.mock("@/lib/stripe", () => ({
   stripe: mockStripe,
   refundTransactions: vi.fn().mockResolvedValue(0),
+  returnBuyerFunds: vi.fn().mockResolvedValue(0),
+  releaseAndSettle: vi.fn().mockResolvedValue(true),
+  expireCheckoutSession: vi.fn().mockResolvedValue(undefined),
+  getBaseUrl: () => "http://localhost:3000",
+}))
+
+const mockSendEmail = vi.fn().mockResolvedValue(true)
+vi.mock("@/lib/email", () => ({
+  sendEmail: (...args: unknown[]) => mockSendEmail(...args),
 }))
 
 // Mock settle-transactions
@@ -114,7 +135,7 @@ describe("Lines API", () => {
   describe("GET /api/lines", () => {
     it("should return only public active lines", async () => {
       mockPrisma.line.findMany.mockResolvedValue([
-        { id: "line-1", name: "Public Line", isPublic: true, isActive: true, positions: [] },
+        { id: "line-1", name: "Public Line", isPublic: true, isActive: true, maxCapacity: null, hideCapacity: false, createdById: "creator-1", _count: { positions: 0 } },
       ])
 
       const { GET } = await import("@/app/api/lines/route")
@@ -128,6 +149,19 @@ describe("Lines API", () => {
         })
       )
     })
+
+    it("hides a hidden capacity but still says whether the line is full", async () => {
+      mockPrisma.line.findMany.mockResolvedValue([
+        { id: "line-1", maxCapacity: 3, hideCapacity: true, createdById: "creator-1", _count: { positions: 3 } },
+        { id: "line-2", maxCapacity: 50, hideCapacity: false, createdById: "creator-1", _count: { positions: 3 } },
+      ])
+
+      const { GET } = await import("@/app/api/lines/route")
+      const data = await (await GET(new Request("http://localhost/api/lines"))).json()
+
+      expect(data[0]).toMatchObject({ maxCapacity: null, hasCapacityLimit: true, isFull: true })
+      expect(data[1]).toMatchObject({ maxCapacity: 50, hasCapacityLimit: true, isFull: false })
+    })
   })
 })
 
@@ -140,6 +174,7 @@ describe("GET /api/lines/[lineId]", () => {
     mockPrisma.line.findUnique.mockResolvedValue({
       id: "line-1",
       name: "Test Line",
+      updatedAt: new Date(),
       createdBy: { id: "user-1", name: "Creator", image: null },
       positions: [],
     })
@@ -149,6 +184,59 @@ describe("GET /api/lines/[lineId]", () => {
     const response = await GET(req, { params: Promise.resolve({ lineId: "line-1" }) })
 
     expect(response.status).toBe(200)
+  })
+
+  it("hides a hidden capacity from everyone but the owner", async () => {
+    mockPrisma.line.findUnique.mockResolvedValue({
+      id: "line-1",
+      createdById: "owner-1",
+      maxCapacity: 10,
+      hideCapacity: true,
+      updatedAt: new Date(),
+      createdBy: { id: "owner-1", name: "Creator", image: null },
+      positions: [{ id: "p1" }],
+    })
+    const { GET } = await import("@/app/api/lines/[lineId]/route")
+    const get = async () =>
+      (await GET(new Request("http://localhost/api/lines/line-1"), { params: Promise.resolve({ lineId: "line-1" }) })).json()
+
+    mockAuth.mockResolvedValue({ user: { id: "member-1" } })
+    expect(await get()).toMatchObject({ maxCapacity: null, hasCapacityLimit: true, isFull: false })
+
+    mockAuth.mockResolvedValue(null)
+    expect(await get()).toMatchObject({ maxCapacity: null })
+
+    mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
+    expect(await get()).toMatchObject({ maxCapacity: 10 })
+  })
+
+  it("answers 304 without loading positions when the poller's ETag still matches", async () => {
+    mockAuth.mockResolvedValue(null)
+    mockPrisma.line.findUnique.mockResolvedValue({
+      id: "line-1",
+      createdById: "owner-1",
+      maxCapacity: null,
+      hideCapacity: false,
+      updatedAt: new Date("2026-10-29T00:00:00Z"),
+      createdBy: { id: "owner-1", name: "Creator", image: null },
+      positions: [],
+    })
+    const { GET } = await import("@/app/api/lines/[lineId]/route")
+    const ctx = { params: Promise.resolve({ lineId: "line-1" }) }
+
+    const first = await GET(new Request("http://localhost/api/lines/line-1"), ctx)
+    const etag = first.headers.get("ETag")!
+    expect(etag).toBeTruthy()
+
+    mockPrisma.line.findUnique.mockClear()
+    const again = await GET(new Request("http://localhost/api/lines/line-1", { headers: { "If-None-Match": etag } }), ctx)
+    expect(again.status).toBe(304)
+    expect(mockPrisma.line.findUnique).toHaveBeenCalledTimes(1) // just the cheap check
+
+    // Someone joins: the count changes, so the ETag no longer matches
+    mockPrisma.linePosition.aggregate.mockResolvedValueOnce({ _max: { updatedAt: new Date() }, _count: 1 })
+    const changed = await GET(new Request("http://localhost/api/lines/line-1", { headers: { "If-None-Match": etag } }), ctx)
+    expect(changed.status).toBe(200)
   })
 
   it("should return 404 if line not found", async () => {
@@ -204,6 +292,7 @@ describe("DELETE /api/lines/[lineId]", () => {
 
   it("should delete line and refund unsettled transactions", async () => {
     mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
+    mockPrisma.linePosition.findMany.mockResolvedValue([])
     mockPrisma.line.findUnique.mockResolvedValue({
       id: "line-1",
       createdById: "owner-1",
@@ -225,6 +314,7 @@ describe("DELETE /api/lines/[lineId]", () => {
 
   it("should mark pending transactions as failed", async () => {
     mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
+    mockPrisma.linePosition.findMany.mockResolvedValue([])
     mockPrisma.line.findUnique.mockResolvedValue({
       id: "line-1",
       createdById: "owner-1",
@@ -241,6 +331,29 @@ describe("DELETE /api/lines/[lineId]", () => {
       where: { lineId: "line-1", status: "PENDING" },
       data: { status: "FAILED" },
     })
+  })
+
+  it("emails members who allow it, telling buyers their money was returned", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", name: "Drop", createdById: "owner-1" })
+    mockPrisma.linePosition.findMany.mockResolvedValue([
+      { user: { id: "buyer", name: "Bea", email: "bea@test", emailNotifications: true } },
+      { user: { id: "plain", name: "Pat", email: "pat@test", emailNotifications: true } },
+      { user: { id: "quiet", name: "Q", email: "q@test", emailNotifications: false } },
+    ])
+    mockPrisma.transaction.findMany
+      .mockResolvedValueOnce([]) // pending
+      .mockResolvedValueOnce([{ id: "txn-1", buyerId: "buyer", stripePaymentId: "cs_1" }])
+    mockPrisma.transaction.updateMany.mockResolvedValue({ count: 0 })
+    mockPrisma.line.delete.mockResolvedValue({ id: "line-1" })
+
+    const { DELETE } = await import("@/app/api/lines/[lineId]/route")
+    const response = await DELETE(new Request("http://localhost/api/lines/line-1", { method: "DELETE" }), { params: Promise.resolve({ lineId: "line-1" }) })
+
+    expect(response.status).toBe(200)
+    expect(mockSendEmail.mock.calls.map((c) => c[0])).toEqual(["bea@test", "pat@test"])
+    expect(mockSendEmail.mock.calls[0][2]).toContain("returned to you")
+    expect(mockSendEmail.mock.calls[1][2]).not.toContain("returned to you")
   })
 })
 
@@ -282,11 +395,8 @@ describe("Join Line API", () => {
 
   it("should not allow joining an inactive line", async () => {
     mockAuth.mockResolvedValue({ user: { id: "user-1" } })
-    mockPrisma.line.findUnique.mockResolvedValue({
-      id: "line-1",
-      createdById: "creator-1",
-      isActive: false,
-    })
+    // The route queries with isActive: true, so an inactive line isn't found
+    mockPrisma.line.findUnique.mockResolvedValue(null)
 
     const { POST } = await import("@/app/api/lines/[lineId]/join/route")
     const req = new Request("http://localhost/api/lines/line-1/join", {
@@ -325,6 +435,25 @@ describe("Join Line API", () => {
 
     const response = await POST(req, { params: Promise.resolve({ lineId: "line-1" }) })
     expect(response.status).toBe(200)
+    // The line row is locked before the next position is read
+    const lockOrder = mockPrisma.$queryRaw.mock.invocationCallOrder[0]
+    const readOrder = mockPrisma.linePosition.findFirst.mock.invocationCallOrder[0]
+    expect(lockOrder).toBeLessThan(readOrder)
+    expect(mockPrisma.$queryRaw.mock.calls[0][0].join("")).toContain("FOR UPDATE")
+  })
+
+  it("returns 500 without leaking the database error when the join fails unexpectedly", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "user-2" } })
+    mockPrisma.$transaction.mockRejectedValueOnce(new Error("Unique constraint failed on the fields: (`lineId`,`position`)"))
+
+    vi.resetModules()
+    const { POST } = await import("@/app/api/lines/[lineId]/join/route")
+    const req = new Request("http://localhost/api/lines/line-1/join", { method: "POST" })
+
+    const response = await POST(req, { params: Promise.resolve({ lineId: "line-1" }) })
+    expect(response.status).toBe(500)
+    const data = await response.json()
+    expect(data.error).not.toContain("constraint")
   })
 })
 
@@ -385,19 +514,52 @@ describe("Leave Line API", () => {
       position: 2,
       lockedBy: "txn-pending",
     })
-    mockPrisma.transaction.update.mockResolvedValue({ id: "txn-pending", status: "FAILED" })
+    mockPrisma.transaction.updateMany.mockResolvedValue({ count: 1 })
+    mockPrisma.transaction.findUnique.mockResolvedValue({ stripePaymentId: "cs_1" })
     mockPrisma.transaction.findMany.mockResolvedValue([])
     mockPrisma.linePosition.delete.mockResolvedValue({ id: "pos-1" })
     mockPrisma.linePosition.updateMany.mockResolvedValue({ count: 1 })
 
     const { DELETE } = await import("@/app/api/lines/[lineId]/leave/route")
+    const { expireCheckoutSession } = await import("@/lib/stripe")
     const req = new Request("http://localhost/api/lines/line-1/leave", { method: "DELETE" })
     const response = await DELETE(req, { params: Promise.resolve({ lineId: "line-1" }) })
 
     expect(response.status).toBe(200)
-    expect(mockPrisma.transaction.update).toHaveBeenCalledWith({
-      where: { id: "txn-pending" },
+    // Only an unpaid checkout is failed -- never one that already completed
+    expect(mockPrisma.transaction.updateMany).toHaveBeenCalledWith({
+      where: { id: "txn-pending", status: "PENDING" },
       data: { status: "FAILED" },
+    })
+    expect(expireCheckoutSession).toHaveBeenCalledWith("cs_1")
+  })
+
+  it("records the visit and collects purchases the leaver already made", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "user-1" } })
+    const joinedAt = new Date("2026-01-01T10:00:00Z")
+    mockPrisma.linePosition.findUnique.mockResolvedValue({
+      id: "pos-1", lineId: "line-1", userId: "user-1", position: 2, lockedBy: null,
+      fulfilled: false, joinedAt, calledAt: null, fulfilledAt: null,
+    })
+    const purchase = { id: "txn-1", lineId: "line-1", sellerId: "seller-1", amount: 20, ownerFee: 2, stripePaymentId: "cs_9" }
+    mockPrisma.transaction.findMany.mockResolvedValue([purchase])
+    mockPrisma.linePosition.updateMany.mockResolvedValue({ count: 1 })
+
+    const { DELETE } = await import("@/app/api/lines/[lineId]/leave/route")
+    const { releaseAndSettle } = await import("@/lib/stripe")
+    const req = new Request("http://localhost/api/lines/line-1/leave", { method: "DELETE" })
+    const response = await DELETE(req, { params: Promise.resolve({ lineId: "line-1" }) })
+
+    expect(response.status).toBe(200)
+    expect((await response.json()).purchasesCollected).toBe(1)
+    expect(mockPrisma.queueVisit.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ lineId: "line-1", userId: "user-1", outcome: "LEFT", position: 2, joinedAt }),
+    })
+    // The seller gave up their place; leaving doesn't take their money back
+    expect(releaseAndSettle).toHaveBeenCalledWith(purchase)
+    expect(mockPrisma.swapOffer.updateMany).toHaveBeenCalledWith({
+      where: { lineId: "line-1", status: "PENDING", OR: [{ fromUserId: "user-1" }, { toUserId: "user-1" }] },
+      data: { status: "EXPIRED" },
     })
   })
 
@@ -515,6 +677,12 @@ describe("Stats API", () => {
       { id: "txn-2", status: "COMPLETED", amount: 50, settledAt: null },
       { id: "txn-3", status: "REFUNDED", amount: 25, settledAt: new Date() },
     ])
+    const joinedAt = new Date(Date.now() - 30 * 60000)
+    mockPrisma.queueVisit.findMany.mockResolvedValue([
+      { outcome: "SERVED", joinedAt, servedAt: new Date(joinedAt.getTime() + 12 * 60000) },
+      { outcome: "LEFT", joinedAt, servedAt: null },
+    ])
+    mockPrisma.linePosition.findMany.mockResolvedValue([{ fulfilled: false, joinedAt, fulfilledAt: null }])
 
     const { GET } = await import("@/app/api/lines/[lineId]/stats/route")
     const req = new Request("http://localhost/api/lines/line-1/stats")
@@ -529,6 +697,9 @@ describe("Stats API", () => {
     expect(data.totalCompleted).toBe(100)
     expect(data.pendingSettlement).toBe(50)
     expect(data.netRevenue).toBe(75)
+    expect(data.service).toEqual({
+      served: 1, left: 1, removed: 0, waiting: 1, medianWaitMinutes: 12, servedLastHour: 1,
+    })
   })
 })
 

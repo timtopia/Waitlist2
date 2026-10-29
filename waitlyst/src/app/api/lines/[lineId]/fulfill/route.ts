@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
-import { getStripe, captureAuthorization } from "@/lib/stripe"
+import { releaseAndSettle } from "@/lib/stripe"
 import { sendEmail } from "@/lib/email"
 import { fulfilledEmail } from "@/lib/email-templates"
 
@@ -34,13 +34,30 @@ export async function POST(
         throw new Error("Position already fulfilled")
       }
 
-      // Mark position as fulfilled
-      await tx.linePosition.update({
-        where: { id: positionId },
+      if (position.lockedUntil && position.lockedUntil > new Date()) {
+        throw new Error("Position locked")
+      }
+
+      // Conditional so two concurrent fulfills can't both release payouts.
+      // A served spot can't be traded, so its listing comes down with it.
+      const marked = await tx.linePosition.updateMany({
+        where: { id: positionId, fulfilled: false },
         data: {
           fulfilled: true,
           fulfilledAt: new Date(),
+          askingPrice: null,
         },
+      })
+      if (marked.count === 0) {
+        throw new Error("Position already fulfilled")
+      }
+      await tx.swapOffer.updateMany({
+        where: {
+          lineId,
+          status: "PENDING",
+          OR: [{ fromUserId: position.userId }, { toUserId: position.userId }],
+        },
+        data: { status: "EXPIRED" },
       })
 
       // Find all COMPLETED transactions where this user was the BUYER
@@ -54,96 +71,19 @@ export async function POST(
         },
       })
 
-      // Mark these transactions as settled (payment released)
-      const now = new Date()
-      let payoutsReleased = 0
-
-      if (buyerTransactions.length > 0) {
-        await tx.transaction.updateMany({
-          where: {
-            id: { in: buyerTransactions.map((t) => t.id) },
-          },
-          data: { settledAt: now },
-        })
-        payoutsReleased = buyerTransactions.length
-      }
-
-      return { position, buyerTransactions, payoutsReleased }
+      return { position, buyerTransactions }
     })
 
-    // Capture authorized payments and process Stripe Connect transfers
-    const stripe = getStripe()
-    if (stripe && result.buyerTransactions.length > 0) {
-      for (const txn of result.buyerTransactions) {
-        try {
-          // First, capture the authorized payment (auth-then-capture flow)
-          if (txn.stripePaymentId) {
-            const capturedAmount = await captureAuthorization(txn.stripePaymentId)
-            if (capturedAmount !== null) {
-              // Payment captured successfully
-            } else {
-              console.warn(`Could not capture payment for transaction ${txn.id} — may already be captured`)
-            }
-          }
-
-          // Then, process Stripe Connect transfer to seller
-          const seller = await prisma.user.findUnique({
-            where: { id: txn.sellerId },
-            select: { stripeConnectId: true, stripeConnectOnboarded: true },
-          })
-
-          if (txn.stripePaymentId) {
-            // Retrieve the checkout session to get the payment intent and metadata
-            const session = await stripe.checkout.sessions.retrieve(txn.stripePaymentId)
-            if (session.payment_intent) {
-              const paymentIntentId = typeof session.payment_intent === "string"
-                ? session.payment_intent
-                : session.payment_intent.id
-
-              // Transfer seller payout via Connect
-              if (seller?.stripeConnectId && seller.stripeConnectOnboarded) {
-                await stripe.transfers.create({
-                  amount: Math.round(txn.amount * 100), // Convert to cents
-                  currency: "usd",
-                  destination: seller.stripeConnectId,
-                  source_transaction: paymentIntentId,
-                  description: `Swap payout for fulfilled position in line`,
-                }).catch((err) => {
-                  // Log but don't fail — the transaction is already marked settled
-                  console.error(`Stripe transfer failed for transaction ${txn.id}:`, err)
-                })
-              }
-
-              // Transfer owner fee if applicable (moved here from webhook for auth-then-capture)
-              const ownerConnectId = session.metadata?.ownerConnectId
-              const ownerFeeAmountCents = session.metadata?.ownerFeeAmountCents
-              if (ownerConnectId && ownerFeeAmountCents && parseInt(ownerFeeAmountCents) > 0) {
-                try {
-                  const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
-                  const chargeId = typeof paymentIntent.latest_charge === "string"
-                    ? paymentIntent.latest_charge
-                    : (paymentIntent.latest_charge as { id: string } | null)?.id
-
-                  await stripe.transfers.create({
-                    amount: parseInt(ownerFeeAmountCents),
-                    currency: "usd",
-                    destination: ownerConnectId,
-                    ...(chargeId ? { source_transaction: chargeId } : {}),
-                    metadata: {
-                      transactionId: txn.id,
-                      type: "owner_fee",
-                    },
-                  })
-                  // Owner fee transferred successfully
-                } catch (transferError) {
-                  console.error(`Owner fee transfer failed for transaction ${txn.id}:`, transferError)
-                }
-              }
-            }
-          }
-        } catch (err) {
-          console.error(`Failed to process payout for transaction ${txn.id}:`, err)
-        }
+    // Capture each purchase and pay seller + owner. A purchase is only marked
+    // settled once its money was actually collected; one whose hold lapsed
+    // stays open on the settlement page instead of looking paid out.
+    let payoutsReleased = 0
+    let payoutsFailed = 0
+    for (const txn of result.buyerTransactions) {
+      if (await releaseAndSettle(txn)) {
+        payoutsReleased++
+      } else {
+        payoutsFailed++
       }
     }
 
@@ -165,7 +105,8 @@ export async function POST(
 
     return NextResponse.json({
       fulfilled: true,
-      payoutsReleased: result.payoutsReleased,
+      payoutsReleased,
+      payoutsFailed,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : ""
@@ -179,6 +120,12 @@ export async function POST(
       return NextResponse.json(
         { error: "This position has already been fulfilled" },
         { status: 400 }
+      )
+    }
+    if (message === "Position locked") {
+      return NextResponse.json(
+        { error: "This position is in the middle of a pending swap and can't be fulfilled until it completes or the lock expires." },
+        { status: 409 }
       )
     }
     console.error("Fulfill error:", error)

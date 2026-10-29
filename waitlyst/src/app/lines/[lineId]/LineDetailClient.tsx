@@ -15,8 +15,10 @@ import { DropdownMenu } from "@/components/ui/DropdownMenu"
 import { useToast } from "@/components/ui/Toast"
 import { useLineUpdates, LineUpdateEvent } from "@/hooks/useLineUpdates"
 import { useNotifications } from "@/hooks/useNotifications"
-import { MemberStatusCard } from "@/components/MemberStatusCard"
+import { MemberStatusCard, NotificationState } from "@/components/MemberStatusCard"
+import { OwnerConsole } from "@/components/OwnerConsole"
 import { timeAgo } from "@/lib/format"
+import { getMemberStatus, diffMemberStatus, describeMemberEvent, memberTabTitle } from "@/lib/member-status"
 
 interface ActivityItem {
   id: string
@@ -32,7 +34,9 @@ interface Line {
   isActive: boolean
   opensAt: string | null
   closesAt: string | null
-  maxCapacity: number | null
+  maxCapacity: number | null // null when hidden from this viewer
+  hasCapacityLimit: boolean
+  isFull: boolean
   ownerFeePercent: number
   platformFeePercent: number
   announcement: string | null
@@ -44,6 +48,7 @@ interface Line {
   allowResale: boolean
   maxAskingPrice: number | null
   nowServing: string | null
+  nowServingUserId: string | null
   nowServingAt: string | null
   hideCapacity: boolean
   createdAt: string
@@ -73,7 +78,10 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [loading, setLoading] = useState(true)
   const [joining, setJoining] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false)
+  const [notificationPermission, setNotificationPermission] = useState<NotificationState>("unsupported")
+  const notificationsEnabled = notificationPermission === "granted"
+  const [departure, setDeparture] = useState<{ wasServed: boolean } | null>(null)
+  const [, setScheduleTick] = useState(0)
   const [deleting, setDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showAnnouncementEditor, setShowAnnouncementEditor] = useState(false)
@@ -86,11 +94,17 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [qrSvg, setQrSvg] = useState<string | null>(null)
   const [qrLoading, setQrLoading] = useState(false)
   const [hasPayoutSetup, setHasPayoutSetup] = useState(false)
+  const [stripeEnabled, setStripeEnabled] = useState(false)
   const qrCanvasRef = useRef<HTMLCanvasElement>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
   const { requestPermission, sendNotification } = useNotifications()
   const { addToast } = useToast()
+  const [justCreated, setJustCreated] = useState(() => searchParams.get("created") === "1")
+
+  useEffect(() => {
+    if (searchParams.get("created") === "1") router.replace(`/lines/${lineId}`, { scroll: false })
+  }, [searchParams, lineId, router])
 
   // Derive fee info from line data — updates automatically when line data changes via polling
   const feeInfo = line ? {
@@ -116,17 +130,40 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         not_paid: "Payment was not completed.",
         no_transaction: "Transaction could not be found.",
         invalid_transaction: "Invalid transaction.",
+        swap_failed: "Your spot changed before the swap could finish, so it was cancelled. The hold on your card has been released.",
       }
       addToast(messages[reason || ""] || "Something went wrong with your payment.", "error")
       router.replace(`/lines/${lineId}`, { scroll: false })
     }
   }, [searchParams, lineId, addToast, router])
 
+  // Handle Stripe Connect onboarding status, if the user set up payouts
+  // from this page (e.g. right after listing their position for sale).
+  useEffect(() => {
+    const connectStatus = searchParams.get("connect")
+    if (connectStatus === "success") {
+      setHasPayoutSetup(true)
+      addToast("Payout account connected -- you'll now get paid for swaps.", "success")
+      router.replace(`/lines/${lineId}`, { scroll: false })
+    } else if (connectStatus === "incomplete") {
+      addToast("Payout setup isn't finished yet. Pick it back up whenever you're ready.", "info")
+      router.replace(`/lines/${lineId}`, { scroll: false })
+    } else if (connectStatus === "error") {
+      addToast("Something went wrong connecting your payout account. Please try again.", "error")
+      router.replace(`/lines/${lineId}`, { scroll: false })
+    }
+  }, [searchParams, lineId, addToast, router])
+
   useEffect(() => {
     if (typeof window !== "undefined" && "Notification" in window) {
-      setNotificationsEnabled(Notification.permission === "granted")
+      setNotificationPermission(Notification.permission)
     }
   }, [])
+
+  async function enableNotifications() {
+    const result = await requestPermission()
+    setNotificationPermission(result)
+  }
 
   // Fetch current user's payout setup status
   useEffect(() => {
@@ -137,6 +174,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         if (res.ok) {
           const data = await res.json()
           setHasPayoutSetup(!!data.stripeConnectOnboarded)
+          setStripeEnabled(!!data.stripeEnabled)
         }
       } catch {
         // Non-critical — default to false
@@ -184,51 +222,99 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     fetchActivity()
   }, [fetchActivity])
 
-  const handleLineUpdate = useCallback((event: LineUpdateEvent) => {
-    if (event.type === "poll-update" && event.data) {
-      // Poll detected a change — use the fresh data directly (no extra fetch)
-      setLine(event.data as Line)
-      fetchActivity()
-      return
-    }
-
-    // SSE event — refetch and notify
+  // After the viewer's own action (join, buy, list, swap), refresh the
+  // activity feed too -- otherwise it lags until the next background poll.
+  const refreshAll = useCallback(() => {
     fetchLine()
     fetchActivity()
+  }, [fetchLine, fetchActivity])
 
-    const messages: Record<string, string> = {
-      join: `${event.userName || "Someone"} joined the line`,
-      leave: `${event.userName || "Someone"} left the line — you may have moved up!`,
-      swap: "Positions were swapped!",
-      lock: "A position purchase is pending...",
-      "price-change": `${event.userName || "Someone"} changed their price`,
-      delete: "This line has been deleted",
+  // Diff polls against what's on screen, not the previous poll: the viewer's
+  // own actions already refetched the line, so they never alert themselves.
+  const lineRef = useRef<Line | null>(null)
+  useEffect(() => {
+    lineRef.current = line
+  }, [line])
+
+  const handleLineUpdate = useCallback((event: LineUpdateEvent) => {
+    if (event.type !== "poll-update" || !event.data) return
+    const next = event.data as Line
+    const prev = lineRef.current
+    setLine(next)
+    fetchActivity()
+    if (!prev) return
+
+    for (const change of diffMemberStatus(prev, next, session?.user?.id)) {
+      if (change.kind === "removed") setDeparture({ wasServed: change.wasServed })
+      if (change.kind === "called" || change.kind === "next") setDeparture(null)
+      const alert = describeMemberEvent(change, next.name)
+      if (!alert) continue
+      sendNotification(alert.title, { body: alert.body, tag: `waitlyst-${lineId}` })
+      if (alert.toast && document.visibilityState === "visible") {
+        addToast(`${alert.title}: ${alert.body}`, alert.tone)
+      }
     }
-    const message = messages[event.type]
-    if (message) {
-      sendNotification(`Waitlyst - ${line?.name || "Line Update"}`, { body: message })
+  }, [fetchActivity, sendNotification, addToast, session?.user?.id, lineId])
+
+  const memberStatus = line ? getMemberStatus(line, session?.user?.id) : null
+  const nearFront = !!memberStatus && memberStatus.phase !== "served" && memberStatus.ahead <= 2
+
+  useLineUpdates(lineId, handleLineUpdate, {
+    intervalMs: nearFront ? 10000 : 30000,
+    pollWhenHidden: !!memberStatus && notificationsEnabled,
+  })
+
+  const tabTitle = line ? memberTabTitle(memberStatus, line.name) : null
+  useEffect(() => {
+    if (!tabTitle) return
+    const original = document.title
+    document.title = tabTitle
+    return () => {
+      document.title = original
     }
-  }, [fetchLine, fetchActivity, sendNotification, line?.name])
+  }, [tabTitle])
 
-  // Subscribe to real-time updates
-  useLineUpdates(lineId, handleLineUpdate)
-
-  const isInLine = line?.positions.some((p) => p.user.id === session?.user?.id)
+  const isInLine = !!memberStatus
   const isCreator = line?.createdBy.id === session?.user?.id
 
   const now = new Date()
   const linePaused = line ? !line.isActive : false
   const lineNotYetOpen = line?.opensAt && now < new Date(line.opensAt)
   const lineClosed = line?.closesAt && now > new Date(line.closesAt)
-  const lineFull = line?.maxCapacity ? line.positions.length >= line.maxCapacity : false
+  const lineFull = line?.isFull ?? false
   const canJoin = !isInLine && !isCreator && !lineNotYetOpen && !lineClosed && !lineFull && !linePaused
   const userPosition = line?.positions.find((p) => p.user.id === session?.user?.id)
   const hasProductInfo = !!(line?.productName || line?.productImage)
 
-  async function handleJoin() {
+  // canJoin depends on the clock, but nothing re-rendered when opensAt or
+  // closesAt passed, so people waiting on a drop had to refresh to see Join.
+  const opensAtMs = line?.opensAt ? new Date(line.opensAt).getTime() : null
+  const closesAtMs = line?.closesAt ? new Date(line.closesAt).getTime() : null
+  const viewerId = session?.user?.id
+  useEffect(() => {
+    const nowMs = Date.now()
+    const upcoming = [opensAtMs, closesAtMs].filter((t): t is number => t !== null && t > nowMs)
+    if (upcoming.length === 0) return
+    const boundary = Math.min(...upcoming)
+    const delay = boundary - nowMs + 250
+    if (delay > 2_147_000_000) return
+    const timer = setTimeout(() => {
+      setScheduleTick((t) => t + 1)
+      const current = lineRef.current
+      if (boundary !== opensAtMs || !current || current.createdBy.id === viewerId) return
+      if (getMemberStatus(current, viewerId)) return
+      sendNotification("The line is open", { body: `${current.name} is open. Join now.`, tag: `waitlyst-${lineId}` })
+      addToast(`${current.name} is open. Join now!`, "success")
+    }, delay)
+    return () => clearTimeout(timer)
+  }, [opensAtMs, closesAtMs, viewerId, lineId, sendNotification, addToast])
+
+  async function handleJoin(): Promise<boolean> {
     if (!session) {
-      signIn("google")
-      return
+      // Come back with ?join=1 so the join completes on return instead of
+      // making them find and press "Join Line" a second time after sign-in.
+      signIn("google", { callbackUrl: `/lines/${lineId}?join=1` })
+      return false
     }
 
     setJoining(true)
@@ -237,15 +323,32 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         method: "POST",
       })
       if (res.ok) {
-        fetchLine()
-      } else {
-        const data = await res.json()
-        addToast(data.error || "Failed to join line", "error")
+        refreshAll()
+        return true
       }
+      const data = await res.json()
+      addToast(data.error || "Failed to join line", "error")
+      return false
     } finally {
       setJoining(false)
     }
   }
+
+  // Finish a join that was interrupted by the sign-in redirect. Ref guard so
+  // a re-render while the request is in flight can't double-submit.
+  const autoJoinAttempted = useRef(false)
+  useEffect(() => {
+    if (searchParams.get("join") !== "1" || !session || !line) return
+    if (autoJoinAttempted.current) return
+    autoJoinAttempted.current = true
+    router.replace(`/lines/${lineId}`, { scroll: false })
+    if (canJoin) {
+      handleJoin().then((joined) => {
+        if (joined) addToast("You're in line!", "success")
+      })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, session, line, canJoin])
 
   async function handleDelete() {
     setDeleting(true)
@@ -410,6 +513,11 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                   {session ? "Join Line" : "Sign in to Join"}
                 </Button>
               )}
+              {!session && status !== "loading" && lineNotYetOpen && !linePaused && (
+                <Button variant="secondary" onClick={() => signIn("google", { callbackUrl: `/lines/${lineId}` })}>
+                  Sign in to get ready
+                </Button>
+              )}
               {isCreator && (
                 <>
                   <Link href={`/lines/${lineId}/edit`}>
@@ -467,25 +575,24 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
               {line.createdBy.name || "Anonymous"}
             </span>
           </div>
-          {session && (
-            <button
-              onClick={async () => {
-                const result = await requestPermission()
-                setNotificationsEnabled(result === "granted")
-              }}
-              className={`flex items-center gap-2 px-3 py-1.5 font-mono text-xs uppercase tracking-widest border transition-colors ${
-                notificationsEnabled
-                  ? "border-rule text-green-700"
-                  : "border-rule text-ink/60 hover:text-ink hover:border-ink"
-              }`}
-            >
-              <span className={`w-1.5 h-1.5 flex-shrink-0 ${notificationsEnabled ? "bg-green-600" : "bg-ink/30"}`} aria-hidden />
-              <span>{notificationsEnabled ? "Notifications On" : "Enable Notifications"}</span>
-            </button>
-          )}
           </div>
         </CardContent>
       </Card>
+
+      {isCreator && (
+        <OwnerConsole
+          lineId={line.id}
+          isActive={line.isActive}
+          nowServingUserId={line.nowServingUserId}
+          ownerFeePercent={line.ownerFeePercent}
+          positions={line.positions}
+          stripeEnabled={stripeEnabled}
+          hasPayoutSetup={hasPayoutSetup}
+          justCreated={justCreated}
+          onDismissCreated={() => setJustCreated(false)}
+          onChanged={refreshAll}
+        />
+      )}
 
       {/* Paused Banner */}
       {linePaused && (
@@ -604,28 +711,65 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       )}
 
       {/* Status Banner */}
-      {(line.opensAt || line.closesAt || line.maxCapacity) && (
+      {(line.opensAt || line.closesAt || line.hasCapacityLimit) && (
         <div className="mb-6">
           <LineStatusBanner
             opensAt={line.opensAt}
             closesAt={line.closesAt}
             maxCapacity={line.maxCapacity}
             currentCount={line.positions.length}
-            hideCapacity={!isCreator && line.hideCapacity}
+            isFull={line.isFull}
+            hideCapacity={line.hasCapacityLimit && line.maxCapacity === null}
           />
         </div>
       )}
 
       {/* My Status Card — only for authenticated members in the line */}
-      {isInLine && userPosition && (
+      {memberStatus && userPosition && (
         <MemberStatusCard
-          position={userPosition.position}
+          status={memberStatus}
           maxCapacity={line.maxCapacity}
           totalPositions={line.positions.length}
           askingPrice={userPosition.askingPrice}
           lineId={line.id}
           hideCapacity={!isCreator && line.hideCapacity}
+          isPaused={linePaused}
+          calledAt={line.nowServingAt}
+          notificationPermission={notificationPermission}
+          onEnableNotifications={enableNotifications}
         />
+      )}
+
+      {!memberStatus && departure && (
+        <Card className={`mb-6 border-l-2 ${departure.wasServed ? "border-l-green-700" : "border-l-amber-600"}`}>
+          <div className="px-5 py-4 sm:px-6 flex items-start justify-between gap-4" role="status">
+            <div>
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/50">Your place</p>
+              <p className="text-xl font-semibold tracking-tight text-ink mt-1">
+                {departure.wasServed ? "You're all done here" : "You're no longer in this line"}
+              </p>
+              <p className="text-sm text-ink/60 mt-1">
+                {departure.wasServed
+                  ? "The organizer served you and cleared your spot. Thanks for waiting."
+                  : "The organizer removed you from the line."}
+              </p>
+              {canJoin && (
+                <Button size="sm" variant="secondary" className="mt-3" onClick={handleJoin} isLoading={joining}>
+                  Rejoin at the back
+                </Button>
+              )}
+            </div>
+            <button
+              onClick={() => setDeparture(null)}
+              className="text-ink/40 hover:text-ink flex-shrink-0"
+              aria-label="Dismiss"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </Card>
       )}
 
       <Card>
@@ -634,9 +778,9 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             <h2 className="text-lg font-semibold tracking-tight text-ink">
               Queue ({line.positions.length} {line.positions.length === 1 ? "person" : "people"})
             </h2>
-            {line.maxCapacity != null && (
+            {line.hasCapacityLimit && (
               <div className="flex items-center gap-3">
-                {(!line.hideCapacity || isCreator) ? (
+                {line.maxCapacity !== null ? (
                   <span className="font-mono text-xs uppercase tracking-widest text-ink/40 tabular-nums">
                     {line.positions.length} of {line.maxCapacity} spots filled
                   </span>
@@ -645,7 +789,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                     Limited spots available
                   </span>
                 )}
-                {userPosition && (
+                {userPosition && line.maxCapacity !== null && (
                   userPosition.position <= line.maxCapacity ? (
                     <span className="inline-flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-green-700">
                       <span className="w-1.5 h-1.5 bg-green-600" aria-hidden />
@@ -666,14 +810,16 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
           <QueueDisplay
             lineId={line.id}
             positions={line.positions}
-            onRefresh={fetchLine}
+            onRefresh={refreshAll}
             isCreator={isCreator}
             feeInfo={feeInfo}
             isPaused={linePaused}
             hasPayoutSetup={hasPayoutSetup}
+            stripeEnabled={stripeEnabled}
             allowResale={line.allowResale}
             maxAskingPrice={line.maxAskingPrice}
             hideCapacity={!isCreator && line.hideCapacity}
+            nowServingUserId={line.nowServingUserId}
           />
         </CardContent>
       </Card>

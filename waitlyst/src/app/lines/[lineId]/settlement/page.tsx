@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { getStripe } from "@/lib/stripe"
 import { SettlementClient } from "./SettlementClient"
 
 export const dynamic = "force-dynamic"
@@ -30,5 +31,17 @@ export default async function SettlementPage({ params }: Props) {
     redirect(`/lines/${lineId}`)
   }
 
-  return <SettlementClient lineId={line.id} lineName={line.name} />
+  const owner = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { stripeConnectOnboarded: true },
+  })
+
+  return (
+    <SettlementClient
+      lineId={line.id}
+      lineName={line.name}
+      stripeConnectOnboarded={owner?.stripeConnectOnboarded ?? false}
+      stripeEnabled={!!getStripe()}
+    />
+  )
 }

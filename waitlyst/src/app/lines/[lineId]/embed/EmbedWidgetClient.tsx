@@ -9,10 +9,13 @@ interface EmbedWidgetClientProps {
   productImage: string | null
   productPrice: number | null
   positionCount: number
+  /** null when there's no limit or it's hidden */
   maxCapacity: number | null
+  isFull: boolean
   opensAt: string | null
   closesAt: string | null
   nowServing: string | null
+  /** The line has a limit that isn't shown */
   hideCapacity: boolean
 }
 
@@ -48,8 +51,7 @@ type LineStatus =
 function getLineStatus(
   opensAt: string | null,
   closesAt: string | null,
-  maxCapacity: number | null,
-  currentCount: number
+  isFull: boolean
 ): LineStatus {
   const now = new Date()
 
@@ -61,7 +63,7 @@ function getLineStatus(
     return { state: "closed" }
   }
 
-  if (maxCapacity && currentCount >= maxCapacity) {
+  if (isFull) {
     return { state: "full" }
   }
 
@@ -76,6 +78,7 @@ export function EmbedWidgetClient({
   productPrice,
   positionCount,
   maxCapacity,
+  isFull,
   opensAt,
   closesAt,
   nowServing,
@@ -88,7 +91,7 @@ export function EmbedWidgetClient({
     return () => clearInterval(interval)
   }, [])
 
-  const status = getLineStatus(opensAt, closesAt, maxCapacity, positionCount)
+  const status = getLineStatus(opensAt, closesAt, isFull)
   const lineUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/lines/${lineId}`
 
   const canJoin = status.state === "open" || status.state === "not_yet_open"
@@ -191,13 +194,13 @@ export function EmbedWidgetClient({
           <div className="bg-white border border-accent p-3 mb-3">
             <p className="text-sm font-semibold text-accent">Line Full</p>
             <p className="text-xs text-ink/50">
-              {hideCapacity ? "All spots have been taken." : `All ${maxCapacity} spots have been taken.`}
+              {maxCapacity === null ? "All spots have been taken." : `All ${maxCapacity} spots have been taken.`}
             </p>
           </div>
         )}
 
         {/* Capacity Bar */}
-        {maxCapacity && status.state !== "closed" && !hideCapacity ? (
+        {maxCapacity !== null && status.state !== "closed" ? (
           <div className="mb-3">
             <div className="flex items-center justify-between mb-1">
               <span className="font-mono text-xs uppercase tracking-widest text-ink/50">
@@ -231,11 +234,11 @@ export function EmbedWidgetClient({
               </p>
             )}
           </div>
-        ) : maxCapacity && status.state !== "closed" && hideCapacity ? (
+        ) : status.state !== "closed" && hideCapacity ? (
           <div className="mb-3">
             <p className="text-xs text-ink/50">Limited spots available</p>
           </div>
-        ) : !maxCapacity ? (
+        ) : maxCapacity === null && !hideCapacity ? (
           <div className="mb-3">
             <p className="text-xs text-ink/50">
               {positionCount} {positionCount === 1 ? "person" : "people"} in

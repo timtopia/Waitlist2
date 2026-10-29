@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { useState, useEffect, useCallback } from "react"
+import { useSearchParams, useRouter, usePathname } from "next/navigation"
 import { Card, CardContent, CardHeader } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { ConfirmModal } from "@/components/ui/ConfirmModal"
@@ -15,9 +16,15 @@ interface Transaction {
   sellerId: string
   sellerName: string
   amount: number
+  ownerFee: number
   status: "PENDING" | "COMPLETED" | "FAILED" | "REFUNDED"
   settledAt: string | null
+  sellerUnpaid?: boolean
+  ownerFeeUnpaid?: boolean
   stripePaymentId: string | null
+  /** The buyer's card hold lapses after this unless collected */
+  captureBefore?: string | null
+  holdExpired?: boolean
   buyerFulfilled: boolean
   buyerPosition: number | null
   createdAt: string
@@ -30,6 +37,13 @@ interface Summary {
   totalAmount: number
   capturedAmount: number
   pendingAmount: number
+  stuckCount: number
+  stuckAmount: number
+  expiringCount?: number
+  expiredCount?: number
+  expiredAmount?: number
+  ownerFeeCaptured: number
+  ownerFeePending: number
 }
 
 interface SettlementData {
@@ -37,17 +51,64 @@ interface SettlementData {
   summary: Summary
 }
 
+function formatDeadline(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+}
+
 interface SettlementClientProps {
   lineId: string
   lineName: string
+  stripeConnectOnboarded: boolean
+  stripeEnabled: boolean
 }
 
-export function SettlementClient({ lineId, lineName }: SettlementClientProps) {
+export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, stripeEnabled }: SettlementClientProps) {
   const { addToast } = useToast()
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [data, setData] = useState<SettlementData | null>(null)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [bulkConfirm, setBulkConfirm] = useState<"capture-all" | "cancel-all-unfulfilled" | null>(null)
+  const [connectOnboarded, setConnectOnboarded] = useState(stripeConnectOnboarded)
+  const [connectLoading, setConnectLoading] = useState(false)
+
+  useEffect(() => {
+    const connectStatus = searchParams.get("connect")
+    if (connectStatus === "success") {
+      setConnectOnboarded(true)
+      addToast("Payout account connected -- fees from this line will now be paid out.", "success")
+      router.replace(pathname, { scroll: false })
+    } else if (connectStatus === "incomplete") {
+      addToast("Payout setup isn't finished yet. Pick it back up whenever you're ready.", "info")
+      router.replace(pathname, { scroll: false })
+    } else if (connectStatus === "error") {
+      addToast("Something went wrong connecting your payout account. Please try again.", "error")
+      router.replace(pathname, { scroll: false })
+    }
+  }, [searchParams, router, pathname, addToast])
+
+  async function handleConnectSetup() {
+    setConnectLoading(true)
+    try {
+      const res = await fetch("/api/stripe/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ returnTo: pathname }),
+      })
+      const result = await res.json()
+      if (res.ok && result.url) {
+        window.location.href = result.url
+      } else {
+        addToast(result.error || "Failed to start payout setup", "error")
+        setConnectLoading(false)
+      }
+    } catch {
+      addToast("Failed to start payout setup", "error")
+      setConnectLoading(false)
+    }
+  }
 
   const fetchData = useCallback(async () => {
     try {
@@ -75,6 +136,9 @@ export function SettlementClient({ lineId, lineName }: SettlementClientProps) {
   ) {
     setActionLoading(transactionId)
 
+    const target = data?.transactions.find((t) => t.id === transactionId)
+    const wasStuck = target?.status === "PENDING"
+
     // Optimistic update
     setData((prev) => {
       if (!prev) return prev
@@ -85,21 +149,33 @@ export function SettlementClient({ lineId, lineName }: SettlementClientProps) {
           if (action === "capture") {
             return { ...t, settledAt: new Date().toISOString() }
           }
-          return { ...t, status: "REFUNDED" as const, settledAt: new Date().toISOString() }
+          // A stuck/unpaid checkout never had a hold, so cancelling it fails
+          // it out rather than "refunding" money that was never charged.
+          return {
+            ...t,
+            status: wasStuck ? ("FAILED" as const) : ("REFUNDED" as const),
+            settledAt: new Date().toISOString(),
+          }
         }),
-        summary: {
-          ...prev.summary,
-          pendingAmount: Math.max(
-            0,
-            prev.summary.pendingAmount -
-              (prev.transactions.find((t) => t.id === transactionId)?.amount || 0)
-          ),
-          capturedAmount:
-            action === "capture"
-              ? prev.summary.capturedAmount +
-                (prev.transactions.find((t) => t.id === transactionId)?.amount || 0)
-              : prev.summary.capturedAmount,
-        },
+        summary: wasStuck
+          ? {
+              ...prev.summary,
+              stuckCount: Math.max(0, prev.summary.stuckCount - 1),
+              stuckAmount: Math.max(0, prev.summary.stuckAmount - (target?.amount || 0)),
+            }
+          : {
+              ...prev.summary,
+              pendingAmount: Math.max(0, prev.summary.pendingAmount - (target?.amount || 0)),
+              capturedAmount:
+                action === "capture"
+                  ? prev.summary.capturedAmount + (target?.amount || 0)
+                  : prev.summary.capturedAmount,
+              ownerFeePending: Math.max(0, prev.summary.ownerFeePending - (target?.ownerFee || 0)),
+              ownerFeeCaptured:
+                action === "capture"
+                  ? prev.summary.ownerFeeCaptured + (target?.ownerFee || 0)
+                  : prev.summary.ownerFeeCaptured,
+            },
       }
     })
 
@@ -114,6 +190,8 @@ export function SettlementClient({ lineId, lineName }: SettlementClientProps) {
         addToast(
           action === "capture"
             ? "Payment captured successfully"
+            : wasStuck
+            ? "Stuck checkout cancelled -- positions unlocked"
             : "Authorization cancelled, hold released",
           "success"
         )
@@ -212,6 +290,14 @@ export function SettlementClient({ lineId, lineName }: SettlementClientProps) {
         </span>
       )
     }
+    if (txn.holdExpired) {
+      return (
+        <span className="inline-flex flex-col items-center">
+          <span className="font-mono text-xs uppercase tracking-widest text-accent">Hold expired</span>
+          <span className="text-xs text-ink/50 mt-0.5">Not collected in time</span>
+        </span>
+      )
+    }
     if (txn.status === "FAILED") {
       return (
         <span className="inline-flex items-center font-mono text-xs uppercase tracking-widest text-ink/50">
@@ -221,38 +307,69 @@ export function SettlementClient({ lineId, lineName }: SettlementClientProps) {
     }
     if (txn.status === "PENDING") {
       return (
-        <span className="inline-flex items-center font-mono text-xs uppercase tracking-widest text-ink/50">
-          Pending
+        <span className="inline-flex items-center font-mono text-xs uppercase tracking-widest text-accent">
+          Awaiting payment
         </span>
       )
     }
     // COMPLETED
     if (txn.settledAt) {
+      const waitingOn = [
+        txn.sellerUnpaid && `${txn.sellerName}'s payout`,
+        txn.ownerFeeUnpaid && "your fee",
+      ].filter(Boolean)
       return (
-        <span className="inline-flex items-center font-mono text-xs uppercase tracking-widest text-green-700">
-          Captured
+        <span className="inline-flex flex-col items-center">
+          <span className="font-mono text-xs uppercase tracking-widest text-green-700">Captured</span>
+          {waitingOn.length > 0 && (
+            <span className="text-xs text-ink/50 mt-0.5" title="Sent automatically once they set up payouts">
+              Holding {waitingOn.join(" and ")} until payout setup
+            </span>
+          )}
         </span>
       )
     }
+    const deadline = txn.captureBefore && (
+      <span className="text-xs text-amber-600 mt-0.5" title="The buyer's card hold lapses after this and the payment can no longer be collected">
+        Collect by {formatDeadline(txn.captureBefore)}
+      </span>
+    )
     if (txn.buyerFulfilled) {
       return (
-        <span className="inline-flex items-center font-mono text-xs uppercase tracking-widest text-green-700">
-          Fulfilled
+        <span className="inline-flex flex-col items-center">
+          <span className="font-mono text-xs uppercase tracking-widest text-green-700">Fulfilled</span>
+          {deadline}
         </span>
       )
     }
     return (
-      <span className="inline-flex items-center font-mono text-xs uppercase tracking-widest text-amber-600">
-        Not fulfilled
+      <span className="inline-flex flex-col items-center">
+        <span className="font-mono text-xs uppercase tracking-widest text-amber-600">Not fulfilled</span>
+        {deadline}
       </span>
     )
   }
 
   function getActionButtons(txn: Transaction) {
-    // Only show actions for COMPLETED, unsettled transactions
-    if (txn.status !== "COMPLETED" || txn.settledAt) return null
-
     const isLoading = actionLoading === txn.id
+
+    // A PENDING transaction's checkout was never completed -- there's no
+    // hold to capture or release, just a stuck/abandoned swap to clear out.
+    if (txn.status === "PENDING") {
+      return (
+        <Button
+          size="sm"
+          variant="danger"
+          onClick={() => handleAction("cancel", txn.id)}
+          isLoading={isLoading}
+        >
+          Cancel Stuck Checkout
+        </Button>
+      )
+    }
+
+    // Only show capture/release actions for COMPLETED, unsettled transactions
+    if (txn.status !== "COMPLETED" || txn.settledAt) return null
 
     if (txn.buyerFulfilled) {
       return (
@@ -360,6 +477,28 @@ export function SettlementClient({ lineId, lineName }: SettlementClientProps) {
         </div>
       </div>
 
+      {/* Payout Setup Prompt -- this is the moment an owner is looking at
+          money they've earned, so it's the right place to ask them to
+          connect a payout account if they haven't, rather than leaving that
+          buried in Profile. */}
+      {stripeEnabled && !connectOnboarded && (summary.ownerFeeCaptured > 0 || summary.ownerFeePending > 0) && (
+        <Card className="mb-6 border-accent">
+          <CardContent className="py-4 flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <p className="font-medium text-ink">
+                You&apos;ve earned {formatCurrency(summary.ownerFeeCaptured + summary.ownerFeePending)} in fees from this line, but have no payout account connected.
+              </p>
+              <p className="text-sm text-ink/60 mt-0.5">
+                Connect one now so this (and future) earnings actually reach you.
+              </p>
+            </div>
+            <Button onClick={handleConnectSetup} isLoading={connectLoading} className="flex-shrink-0">
+              Set Up Payouts
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Summary Stats */}
       <Card className="mb-6">
         <CardContent className="py-5">
@@ -397,6 +536,65 @@ export function SettlementClient({ lineId, lineName }: SettlementClientProps) {
               <p className="font-mono text-xs uppercase tracking-widest text-ink/50">Pending Decision</p>
             </div>
           </div>
+          {(summary.ownerFeeCaptured > 0 || summary.ownerFeePending > 0) && (
+            <div className="mt-4 pt-4 border-t border-rule flex items-center justify-between">
+              <div>
+                <p className="font-mono text-sm text-ink/60 uppercase tracking-widest">Your fee earnings</p>
+                <p className="text-xs text-ink/50 mt-0.5">What you actually receive, on top of what sellers get.</p>
+              </div>
+              <div className="text-right">
+                <p className="font-mono text-lg tabular-nums text-green-700">
+                  {formatCurrency(summary.ownerFeeCaptured)}
+                  {summary.ownerFeePending > 0 && (
+                    <span className="text-amber-600"> + {formatCurrency(summary.ownerFeePending)} pending</span>
+                  )}
+                </p>
+              </div>
+            </div>
+          )}
+          {stripeEnabled && connectOnboarded && (summary.ownerFeeCaptured > 0 || summary.ownerFeePending > 0) && (
+            <div className="mt-4 pt-4 border-t border-rule flex items-center justify-between">
+              <p className="text-xs text-ink/50">Payouts are connected -- captured earnings go to your bank automatically.</p>
+              <Link
+                href="/profile"
+                className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4 flex-shrink-0"
+              >
+                View Payout Dashboard &rarr;
+              </Link>
+            </div>
+          )}
+          {(summary.expiringCount ?? 0) > 0 && (
+            <div className="mt-4 pt-4 border-t border-rule">
+              <p className="font-mono text-sm tabular-nums text-amber-600">
+                {summary.expiringCount} payment hold{summary.expiringCount === 1 ? "" : "s"} expire{summary.expiringCount === 1 ? "s" : ""} within 48 hours
+              </p>
+              <p className="text-xs text-ink/50 mt-0.5">
+                Card holds only last about a week. Capture or release these before their deadline, or the money can&apos;t be collected.
+              </p>
+            </div>
+          )}
+          {(summary.expiredCount ?? 0) > 0 && (
+            <div className="mt-4 pt-4 border-t border-rule">
+              <p className="font-mono text-sm tabular-nums text-accent">
+                {summary.expiredCount} hold{summary.expiredCount === 1 ? "" : "s"} expired before collection ({formatCurrency(summary.expiredAmount ?? 0)})
+              </p>
+              <p className="text-xs text-ink/50 mt-0.5">
+                The buyer kept the spot but wasn&apos;t charged, and the seller won&apos;t be paid for it.
+              </p>
+            </div>
+          )}
+          {summary.stuckCount > 0 && (
+            <div className="mt-4 pt-4 border-t border-rule flex items-center justify-between">
+              <div>
+                <p className="font-mono text-sm tabular-nums text-accent">
+                  {summary.stuckCount} checkout{summary.stuckCount === 1 ? "" : "s"} never completed ({formatCurrency(summary.stuckAmount)})
+                </p>
+                <p className="text-xs text-ink/50 mt-0.5">
+                  Someone started a swap but never paid, or the link broke. Cancel it below to free up the positions.
+                </p>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

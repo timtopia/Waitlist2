@@ -1,9 +1,19 @@
 import { NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
-import { getStripe, getBaseUrl } from "@/lib/stripe"
+import { getStripe, getBaseUrl, payOutstandingPayouts } from "@/lib/stripe"
+import { sanitizeReturnPath } from "@/lib/validate"
 
 export async function GET(req: Request) {
+  const url = new URL(req.url)
+  // Send the owner back to wherever they started the Connect flow from
+  // (e.g. a line's settlement page), not always /profile.
+  const returnTo = sanitizeReturnPath(url.searchParams.get("return_to"), "/profile")
+  const redirectWith = (status: "success" | "incomplete" | "error") => {
+    const sep = returnTo.includes("?") ? "&" : "?"
+    return `${returnTo}${sep}connect=${status}`
+  }
+
   const result = await requireAuth()
   if (result instanceof NextResponse) {
     // Not authenticated — redirect to home
@@ -15,15 +25,14 @@ export async function GET(req: Request) {
   const baseUrl = getBaseUrl()
 
   if (!stripe) {
-    return NextResponse.redirect(`${baseUrl}/profile?connect=error`)
+    return NextResponse.redirect(`${baseUrl}${redirectWith("error")}`)
   }
 
   try {
-    const url = new URL(req.url)
     const accountId = url.searchParams.get("account_id")
 
     if (!accountId) {
-      return NextResponse.redirect(`${baseUrl}/profile?connect=error`)
+      return NextResponse.redirect(`${baseUrl}${redirectWith("error")}`)
     }
 
     // Verify the account belongs to this user
@@ -33,7 +42,7 @@ export async function GET(req: Request) {
     })
 
     if (!user || user.stripeConnectId !== accountId) {
-      return NextResponse.redirect(`${baseUrl}/profile?connect=error`)
+      return NextResponse.redirect(`${baseUrl}${redirectWith("error")}`)
     }
 
     // Check the account status
@@ -44,13 +53,19 @@ export async function GET(req: Request) {
         where: { id: result.userId },
         data: { stripeConnectOnboarded: true },
       })
-      return NextResponse.redirect(`${baseUrl}/profile?connect=success`)
+      // Sales and owner fees collected before they could be paid are
+      // sitting in the platform balance. Each share is marked once paid, so
+      // revisiting this page never sends one twice.
+      await payOutstandingPayouts(result.userId).catch((err) =>
+        console.error("Catch-up payouts failed:", err)
+      )
+      return NextResponse.redirect(`${baseUrl}${redirectWith("success")}`)
     }
 
     // Onboarding is incomplete
-    return NextResponse.redirect(`${baseUrl}/profile?connect=incomplete`)
+    return NextResponse.redirect(`${baseUrl}${redirectWith("incomplete")}`)
   } catch (error) {
     console.error("Stripe Connect callback error:", error)
-    return NextResponse.redirect(`${baseUrl}/profile?connect=error`)
+    return NextResponse.redirect(`${baseUrl}${redirectWith("error")}`)
   }
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { rateLimit } from "@/lib/rate-limit"
+import { capacityView } from "@/lib/capacity"
 import { validateString, validateNumber, validateUrl } from "@/lib/validate"
 
 const createLimiter = rateLimit({ interval: 60_000, limit: 5 })
@@ -131,7 +132,10 @@ export async function GET(req: Request) {
       orderBy: { createdAt: "desc" },
     })
 
-    return NextResponse.json(lines, {
+    // Cached publicly, so every viewer gets the anonymous view of capacity
+    const visible = lines.map((line) => ({ ...line, ...capacityView(line, line._count.positions) }))
+
+    return NextResponse.json(visible, {
       headers: {
         "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
       },

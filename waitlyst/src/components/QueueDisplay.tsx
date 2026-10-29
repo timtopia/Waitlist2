@@ -7,6 +7,7 @@ import { useToast } from "./ui/Toast"
 import { useState, useEffect, useCallback } from "react"
 import { useSession } from "next-auth/react"
 import { formatCurrency } from "@/lib/format"
+import { calcFees } from "@/lib/fees"
 
 interface Position {
   id: string
@@ -28,8 +29,24 @@ interface SwapOffer {
   fromUserId: string
   toUserId: string
   amount: number
-  status: "PENDING" | "ACCEPTED" | "DECLINED"
+  status: "PENDING" | "ACCEPTED" | "DECLINED" | "EXPIRED" | "WITHDRAWN"
   createdAt: string
+  expiresAt?: string | null
+  awaitingPayment?: boolean
+}
+
+interface BuyConfirm {
+  positionId: string
+  sellerId: string
+  sellerName: string | null
+  position: number
+  askingPrice: number
+}
+
+function formatTimeLeft(iso: string): string {
+  const minutes = Math.max(0, (new Date(iso).getTime() - Date.now()) / 60000)
+  if (minutes < 60) return `${Math.max(1, Math.round(minutes))} min`
+  return `${Math.round(minutes / 60)} hr`
 }
 
 interface TransactionInfo {
@@ -64,9 +81,11 @@ interface QueueDisplayProps {
   feeInfo?: FeeInfo
   isPaused?: boolean
   hasPayoutSetup?: boolean
+  stripeEnabled?: boolean
   allowResale?: boolean
   maxAskingPrice?: number | null
   hideCapacity?: boolean
+  nowServingUserId?: string | null
 }
 
 /** Format estimated wait time into a human-readable string */
@@ -78,14 +97,14 @@ function formatWaitTime(minutes: number): string {
   return `~${Math.round(hours)} hrs`
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, feeInfo, isPaused = false, hasPayoutSetup = false, allowResale = true, maxAskingPrice = null, hideCapacity = false }: QueueDisplayProps) {
+export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, feeInfo, isPaused = false, hasPayoutSetup = false, stripeEnabled = false, allowResale = true, maxAskingPrice = null, hideCapacity = false, nowServingUserId = null }: QueueDisplayProps) {
   const { data: session } = useSession()
   const { addToast } = useToast()
   const [loadingAction, setLoadingAction] = useState<string | null>(null)
   const [removalModal, setRemovalModal] = useState<RemovalModal | null>(null)
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
   const [waitTimeData, setWaitTimeData] = useState<{ estimatedMinutesPerPerson: number | null; basedOn: number } | null>(null)
+  const [connectLoading, setConnectLoading] = useState(false)
 
   // Offer system state
   const [sentOffers, setSentOffers] = useState<SwapOffer[]>([])
@@ -93,6 +112,12 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
   const [offerFormOpen, setOfferFormOpen] = useState<string | null>(null)
   const [offerAmount, setOfferAmount] = useState("")
   const [offerLoading, setOfferLoading] = useState(false)
+  const [buyConfirm, setBuyConfirm] = useState<BuyConfirm | null>(null)
+
+  // Listing-for-sale state (the current user's own position)
+  const [listPriceFormOpen, setListPriceFormOpen] = useState(false)
+  const [listPriceAmount, setListPriceAmount] = useState("")
+  const [priceLoading, setPriceLoading] = useState(false)
 
   // Batch select state
   const [selectMode, setSelectMode] = useState(false)
@@ -134,10 +159,32 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
     fetchOffers()
   }, [fetchOffers, positions.length])
 
+  // Poll for offer status changes (e.g. the person in front accepting your
+  // offer) even when nothing else on the page has changed.
+  useEffect(() => {
+    if (!session?.user?.id) return
+    const interval = setInterval(fetchOffers, 10000)
+    return () => clearInterval(interval)
+  }, [fetchOffers, session?.user?.id])
+
+  /** What a buyer actually pays for a listed position, including owner + platform fees. */
+  function buyerTotal(askingPrice: number): number {
+    if (!feeInfo) return askingPrice
+    return calcFees(askingPrice, feeInfo.ownerFeePercent, feeInfo.platformFeePercent).total
+  }
+
+  function feeBreakdown(price: number) {
+    if (!feeInfo) return { ownerFee: 0, platformFee: 0, total: price }
+    return calcFees(price, feeInfo.ownerFeePercent, feeInfo.platformFeePercent)
+  }
+
   const currentUserPosition = positions.find((p) => p.user.id === session?.user?.id)
   const positionInFront = currentUserPosition
     ? positions.find((p) => p.position === currentUserPosition.position - 1)
     : null
+
+  // Called-up and served spots are off the market (the server enforces it too).
+  const offMarket = (p: Position) => !!p.fulfilled || p.user.id === nowServingUserId
 
   // Find the sent offer for the person directly in front
   const sentOfferToFront = positionInFront
@@ -146,8 +193,8 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
 
   async function handleSendOffer(toUserId: string) {
     const amount = parseFloat(offerAmount)
-    if (!amount || amount <= 0) {
-      addToast("Please enter a valid amount", "error")
+    if (!amount || amount < 1) {
+      addToast("Offers must be at least $1.00", "error")
       return
     }
     if (maxAskingPrice != null && amount > maxAskingPrice) {
@@ -187,12 +234,11 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
       const data = await res.json()
       if (res.ok) {
         if (action === "accept") {
-          if (data.checkoutUrl) {
-            window.location.href = data.checkoutUrl
-            return
-          } else if (data.devMode) {
+          if (data.devMode) {
             addToast("Swap completed!", "success")
-            onRefresh()
+          } else if (data.pendingBuyerPayment) {
+            // Payment is on the buyer, not us — we just wait for them now.
+            addToast("Offer accepted — waiting for the buyer to complete payment.", "success")
           }
         } else {
           addToast("Offer declined", "info")
@@ -207,6 +253,130 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
     }
   }
 
+  /**
+   * Buy a listed position outright (the person directly in front of you).
+   * Sends the price and seller the buyer actually saw, so a re-price or a
+   * queue shift between viewing and clicking is rejected, not charged.
+   */
+  async function handleBuyPosition(confirm: BuyConfirm) {
+    setBuyConfirm(null)
+    setLoadingAction(`buy-${confirm.positionId}`)
+    try {
+      const res = await fetch(`/api/lines/${lineId}/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expectedPrice: confirm.askingPrice,
+          expectedSellerId: confirm.sellerId,
+          ...(feeInfo ? { expectedTotal: buyerTotal(confirm.askingPrice) } : {}),
+        }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        if (data.url) {
+          window.location.href = data.url
+          return
+        }
+        addToast("Position purchased!", "success")
+        onRefresh()
+      } else {
+        addToast(data.error || "Failed to buy position", "error")
+        if (res.status === 409) onRefresh()
+      }
+    } finally {
+      setLoadingAction(null)
+    }
+  }
+
+  /** Withdraw a pending offer, or back out of one that was accepted but not yet paid. */
+  async function handleWithdrawOffer(offerId: string) {
+    setLoadingAction(`withdraw-${offerId}`)
+    try {
+      const res = await fetch(`/api/lines/${lineId}/offer/${offerId}`, { method: "DELETE" })
+      const data = await res.json()
+      if (res.ok) {
+        addToast("Offer withdrawn", "info")
+        fetchOffers()
+        onRefresh()
+      } else {
+        addToast(data.error || "Failed to withdraw offer", "error")
+      }
+    } finally {
+      setLoadingAction(null)
+    }
+  }
+
+  /** Once the person in front has accepted your offer, fetch the payment link that's actually yours to use. */
+  async function handleCompletePayment(offerId: string) {
+    setLoadingAction(`pay-${offerId}`)
+    try {
+      const res = await fetch(`/api/lines/${lineId}/offer/${offerId}/checkout`)
+      const data = await res.json()
+      if (res.ok && data.checkoutUrl) {
+        window.location.href = data.checkoutUrl
+        return
+      }
+      addToast(data.error || "Could not start payment", "error")
+    } finally {
+      setLoadingAction(null)
+    }
+  }
+
+  async function handleConnectSetup() {
+    setConnectLoading(true)
+    try {
+      const res = await fetch("/api/stripe/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ returnTo: window.location.pathname }),
+      })
+      const data = await res.json()
+      if (res.ok && data.url) {
+        window.location.href = data.url
+      } else {
+        addToast(data.error || "Failed to start payout setup", "error")
+        setConnectLoading(false)
+      }
+    } catch {
+      addToast("Failed to start payout setup", "error")
+      setConnectLoading(false)
+    }
+  }
+
+  /** List, re-price, or un-list the current user's own position. */
+  async function handleSetPrice(price: number | null) {
+    if (price !== null && (!price || price < 1)) {
+      addToast("Price must be at least $1.00", "error")
+      return
+    }
+    if (price !== null && maxAskingPrice != null && price > maxAskingPrice) {
+      addToast(`Price exceeds max price of ${formatCurrency(maxAskingPrice)}`, "error")
+      return
+    }
+    setPriceLoading(true)
+    try {
+      const res = await fetch(`/api/lines/${lineId}/price`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ price }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        addToast(
+          price === null ? "Removed from sale" : `Listed for ${formatCurrency(price)}`,
+          "success"
+        )
+        setListPriceFormOpen(false)
+        setListPriceAmount("")
+        onRefresh()
+      } else {
+        addToast(data.error || "Failed to update listing", "error")
+      }
+    } finally {
+      setPriceLoading(false)
+    }
+  }
+
   async function handleLeave() {
     setShowLeaveConfirm(false)
     setLoadingAction("leave")
@@ -216,6 +386,10 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
       })
       if (res.ok) {
         addToast("You left the line", "info")
+        onRefresh()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        addToast(data.error || "Couldn't leave the line. Please try again.", "error")
         onRefresh()
       }
     } finally {
@@ -290,6 +464,12 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
           ? ` (${data.payoutsReleased} payout${data.payoutsReleased === 1 ? "" : "s"} released)`
           : ""
         addToast(`Marked as fulfilled${payoutMsg}`, "success")
+        if (data.payoutsFailed > 0) {
+          addToast(
+            `${data.payoutsFailed} payment${data.payoutsFailed === 1 ? "" : "s"} couldn't be collected -- review on the settlement page.`,
+            "error"
+          )
+        }
         onRefresh()
       } else {
         const data = await res.json()
@@ -439,11 +619,59 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
         </div>
       )}
 
+      {/* Buy confirmation: exactly who, which spot, and where the money goes */}
+      {buyConfirm && (() => {
+        const breakdown = feeBreakdown(buyConfirm.askingPrice)
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white border border-ink p-6 max-w-sm w-full mx-4" role="dialog" aria-label="Confirm purchase">
+              <h3 className="text-lg font-semibold tracking-tight text-ink mb-2">
+                Buy spot #{buyConfirm.position}?
+              </h3>
+              <p className="text-sm text-ink/60 mb-4">
+                You&apos;ll swap places with {buyConfirm.sellerName || "the person in front of you"}.
+                {stripeEnabled && " Your card is only charged once you're served -- if you're removed before then, the hold is released."}
+              </p>
+              <dl className="text-sm border border-rule divide-y divide-rule mb-4">
+                <div className="flex justify-between px-3 py-1.5">
+                  <dt className="text-ink/60">To {buyConfirm.sellerName || "seller"}</dt>
+                  <dd className="font-mono tabular-nums">{formatCurrency(buyConfirm.askingPrice)}</dd>
+                </div>
+                {breakdown.ownerFee > 0 && (
+                  <div className="flex justify-between px-3 py-1.5">
+                    <dt className="text-ink/60">Line owner fee</dt>
+                    <dd className="font-mono tabular-nums">{formatCurrency(breakdown.ownerFee)}</dd>
+                  </div>
+                )}
+                {breakdown.platformFee > 0 && (
+                  <div className="flex justify-between px-3 py-1.5">
+                    <dt className="text-ink/60">Platform fee</dt>
+                    <dd className="font-mono tabular-nums">{formatCurrency(breakdown.platformFee)}</dd>
+                  </div>
+                )}
+                <div className="flex justify-between px-3 py-1.5 font-medium text-ink">
+                  <dt>You pay</dt>
+                  <dd className="font-mono tabular-nums">{formatCurrency(breakdown.total)}</dd>
+                </div>
+              </dl>
+              <div className="flex flex-col space-y-2">
+                <Button onClick={() => handleBuyPosition(buyConfirm)} className="w-full">
+                  {stripeEnabled ? "Continue to Payment" : "Confirm Swap"}
+                </Button>
+                <Button variant="ghost" onClick={() => setBuyConfirm(null)} className="w-full">
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Leave Confirmation */}
       <ConfirmModal
         open={showLeaveConfirm}
         title="Leave Line"
-        message="Are you sure you want to leave this line? You'll lose your position and any unsettled transactions."
+        message="Are you sure you want to leave this line? You'll lose your place. Spots you bought stay paid for -- leaving doesn't refund them."
         confirmLabel="Leave Line"
         variant="danger"
         isLoading={loadingAction === "leave"}
@@ -552,7 +780,10 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
           {positions.map((pos) => {
             const isCurrentUser = pos.user.id === session?.user?.id
             const isLocked = pos.lockedUntil && new Date(pos.lockedUntil) > new Date()
-            const isFront = pos.position === 1
+            // Served people stay listed until cleared, so the front of the
+            // queue is the first unserved person, not position 1.
+            const unservedAhead = positions.filter((p) => p.position < pos.position && !p.fulfilled).length
+            const isFront = !pos.fulfilled && unservedAhead === 0
             const isSelected = selectedIds.has(pos.id)
             const canSelect = selectMode && isCreator && !isCurrentUser
             const isDirectlyInFront = positionInFront?.id === pos.id
@@ -612,6 +843,20 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                         {isFront && !pos.fulfilled && (
                           <span className="ml-2 text-sm text-green-700">(Next up)</span>
                         )}
+                        {pos.askingPrice != null && !isCurrentUser && (
+                          <span className="ml-2 font-mono text-xs uppercase tracking-widest text-accent">
+                            Listed {formatCurrency(pos.askingPrice)}
+                          </span>
+                        )}
+                        {pos.askingPrice != null &&
+                          !isCurrentUser &&
+                          !isDirectlyInFront &&
+                          currentUserPosition &&
+                          pos.position < currentUserPosition.position && (
+                            <span className="ml-2 text-xs text-ink/40 normal-case">
+                              (only the person directly behind can buy this)
+                            </span>
+                          )}
                         {pos.fulfilled && (
                           <span className="ml-2 inline-flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-green-700">
                             <span className="w-1.5 h-1.5 bg-green-600" aria-hidden />
@@ -625,9 +870,9 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                           Swap pending
                         </p>
                       )}
-                      {!isFront && waitTimeData?.estimatedMinutesPerPerson != null && (
+                      {!isFront && !pos.fulfilled && waitTimeData?.estimatedMinutesPerPerson != null && (
                         <p className="text-xs text-ink/40">
-                          Est. wait: {formatWaitTime(waitTimeData.estimatedMinutesPerPerson * (pos.position - 1))}
+                          Est. wait: {formatWaitTime(waitTimeData.estimatedMinutesPerPerson * unservedAhead)}
                         </p>
                       )}
                     </div>
@@ -680,6 +925,10 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                       <p className="text-sm font-medium text-ink">
                         Swap offer: {formatCurrency(offer.amount)} from {offerer?.user.name || "someone behind you"}
                       </p>
+                      <p className="text-xs text-ink/50 mt-0.5">
+                        You&apos;d receive {formatCurrency(offer.amount)} and move back one spot.
+                        {offer.expiresAt && ` Expires in ${formatTimeLeft(offer.expiresAt)}.`}
+                      </p>
                       <div className="flex items-center gap-2 mt-2">
                         <Button
                           size="sm"
@@ -701,24 +950,200 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                   )
                 })}
 
-                {/* Offer to swap -- shown on the position directly in front */}
-                {isDirectlyInFront && !isCurrentUser && allowResale && !isPaused && !isLocked && !selectMode && (
+                {/* Offers this user accepted that the buyer hasn't paid for yet */}
+                {isCurrentUser && receivedOffers.filter((o) => o.status === "ACCEPTED" && o.awaitingPayment).map((offer) => {
+                  const offerer = positions.find((p) => p.user.id === offer.fromUserId)
+                  return (
+                    <div key={offer.id} className="mt-3 bg-paper border border-rule border-l-2 border-l-amber-600 p-3">
+                      <p className="text-sm text-ink">
+                        You accepted {offerer?.user.name || "their"}&apos;s {formatCurrency(offer.amount)} offer -- waiting for them to pay.
+                      </p>
+                      <p className="text-xs text-ink/50 mt-0.5">
+                        Both spots are held until they pay or the payment window closes. If they don&apos;t, the offer comes back to you.
+                      </p>
+                    </div>
+                  )
+                })}
+
+                {/* List / re-price / un-list the current user's own position */}
+                {isCurrentUser && allowResale && !isPaused && !selectMode && !offMarket(pos) && (
                   <div className="mt-3">
-                    {sentOfferToFront?.status === "PENDING" ? (
+                    {isLocked ? (
                       <p className="text-sm text-ink/50">
-                        Offer sent: {formatCurrency(sentOfferToFront.amount)} -- Waiting for response
+                        Your position is locked while a swap is in progress.
                       </p>
-                    ) : sentOfferToFront?.status === "DECLINED" ? (
-                      <p className="text-sm text-ink/40">
-                        Offer declined
-                      </p>
+                    ) : pos.askingPrice != null ? (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm text-ink/70">
+                          Listed for{" "}
+                          <span className="font-mono tabular-nums">{formatCurrency(pos.askingPrice)}</span>
+                          {feeInfo && (
+                            <span className="text-ink/40"> (buyer pays {formatCurrency(buyerTotal(pos.askingPrice))})</span>
+                          )}
+                        </p>
+                        <button
+                          onClick={() => handleSetPrice(null)}
+                          disabled={priceLoading}
+                          className="font-mono text-xs uppercase tracking-widest text-ink/50 hover:text-ink underline underline-offset-4 disabled:opacity-50"
+                        >
+                          Remove from sale
+                        </button>
+                      </div>
+                    ) : listPriceFormOpen ? (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className="relative flex-1 sm:flex-none">
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-ink/40">$</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max={maxAskingPrice ?? undefined}
+                            step="0.01"
+                            placeholder="0.00"
+                            value={listPriceAmount}
+                            onChange={(e) => setListPriceAmount(e.target.value)}
+                            className={`w-full sm:w-28 pl-6 pr-2 py-1 border bg-white font-mono tabular-nums text-sm focus:outline-none focus:border-ink ${
+                              maxAskingPrice != null && listPriceAmount && parseFloat(listPriceAmount) > maxAskingPrice
+                                ? "border-accent"
+                                : "border-rule"
+                            }`}
+                          />
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => handleSetPrice(parseFloat(listPriceAmount))}
+                          isLoading={priceLoading}
+                          disabled={maxAskingPrice != null && !!listPriceAmount && parseFloat(listPriceAmount) > maxAskingPrice}
+                        >
+                          List for Sale
+                        </Button>
+                        <button
+                          onClick={() => { setListPriceFormOpen(false); setListPriceAmount("") }}
+                          className="text-sm text-ink/50 hover:text-ink"
+                        >
+                          Cancel
+                        </button>
+                        {maxAskingPrice != null && (
+                          <span className={`text-xs font-mono tabular-nums ${
+                            listPriceAmount && parseFloat(listPriceAmount) > maxAskingPrice
+                              ? "text-accent"
+                              : "text-ink/40"
+                          }`}>
+                            Max: {formatCurrency(maxAskingPrice)}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setListPriceFormOpen(true)}
+                        className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"
+                      >
+                        List Your Spot For Sale
+                      </button>
+                    )}
+                    {stripeEnabled && !hasPayoutSetup && (pos.askingPrice != null || listPriceFormOpen) && (
+                      <div className="mt-2 flex items-center justify-between gap-3 bg-accent/5 border border-accent/30 px-3 py-2">
+                        <p className="text-xs text-ink/70">
+                          You haven&apos;t connected a payout account yet -- without one, a sale here has nowhere to pay you.
+                        </p>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={handleConnectSetup}
+                          isLoading={connectLoading}
+                          className="flex-shrink-0"
+                        >
+                          Connect Now
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Offer to swap -- shown on the position directly in front */}
+                {/* Shown even while the spot is locked: once the person in front
+                    accepts, both spots lock, and the buyer still has to be able
+                    to reach their payment link. */}
+                {isDirectlyInFront && !isCurrentUser && allowResale && !isPaused && !selectMode &&
+                  !offMarket(pos) && !(currentUserPosition && offMarket(currentUserPosition)) && (
+                  <div className="mt-3 space-y-2">
+                    {pos.askingPrice != null && !isLocked && (
+                      <div>
+                        <Button
+                          size="sm"
+                          onClick={() => setBuyConfirm({
+                            positionId: pos.id,
+                            sellerId: pos.user.id,
+                            sellerName: pos.user.name,
+                            position: pos.position,
+                            askingPrice: pos.askingPrice!,
+                          })}
+                          isLoading={loadingAction === `buy-${pos.id}`}
+                        >
+                          Buy for {formatCurrency(buyerTotal(pos.askingPrice))}
+                        </Button>
+                      </div>
+                    )}
+                    {sentOfferToFront?.status === "ACCEPTED" && sentOfferToFront.awaitingPayment ? (
+                      <div className="bg-paper border border-rule border-l-2 border-l-accent p-3">
+                        <p className="text-sm font-medium text-ink">
+                          {pos.user.name || "They"} accepted your {formatCurrency(sentOfferToFront.amount)} offer.
+                        </p>
+                        <p className="text-xs text-ink/50 mt-0.5">
+                          Pay {formatCurrency(buyerTotal(sentOfferToFront.amount))} (incl. fees) to take their spot. Both spots are held for you for up to 30 minutes.
+                        </p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handleCompletePayment(sentOfferToFront.id)}
+                            isLoading={loadingAction === `pay-${sentOfferToFront.id}`}
+                          >
+                            Complete Payment
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleWithdrawOffer(sentOfferToFront.id)}
+                            isLoading={loadingAction === `withdraw-${sentOfferToFront.id}`}
+                          >
+                            Back Out
+                          </Button>
+                        </div>
+                      </div>
+                    ) : isLocked ? null : sentOfferToFront?.status === "PENDING" ? (
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <p className="text-sm text-ink/50">
+                          Offer sent: {formatCurrency(sentOfferToFront.amount)} -- waiting for response
+                          {sentOfferToFront.expiresAt && ` (expires in ${formatTimeLeft(sentOfferToFront.expiresAt)})`}
+                        </p>
+                        <button
+                          onClick={() => handleWithdrawOffer(sentOfferToFront.id)}
+                          disabled={loadingAction === `withdraw-${sentOfferToFront.id}`}
+                          className="font-mono text-xs uppercase tracking-widest text-ink/50 hover:text-ink underline underline-offset-4 disabled:opacity-50"
+                        >
+                          Withdraw
+                        </button>
+                      </div>
+                    ) : sentOfferToFront && ["DECLINED", "EXPIRED", "WITHDRAWN"].includes(sentOfferToFront.status) && offerFormOpen !== pos.user.id ? (
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <p className="text-sm text-ink/40">
+                          {sentOfferToFront.status === "WITHDRAWN"
+                            ? `You withdrew your ${formatCurrency(sentOfferToFront.amount)} offer.`
+                            : `Your ${formatCurrency(sentOfferToFront.amount)} offer ${sentOfferToFront.status === "DECLINED" ? "was declined" : "expired"}.`}
+                        </p>
+                        <button
+                          onClick={() => setOfferFormOpen(pos.user.id)}
+                          className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"
+                        >
+                          Make a New Offer
+                        </button>
+                      </div>
                     ) : offerFormOpen === pos.user.id ? (
                       <div className="flex items-center gap-2 flex-wrap">
                         <div className="relative flex-1 sm:flex-none">
                           <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-ink/40">$</span>
                           <input
                             type="number"
-                            min="0.01"
+                            min="1"
                             max={maxAskingPrice ?? undefined}
                             step="0.01"
                             placeholder="0.00"
@@ -752,6 +1177,11 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                               : "text-ink/40"
                           }`}>
                             Max: {formatCurrency(maxAskingPrice)}
+                          </span>
+                        )}
+                        {parseFloat(offerAmount) >= 1 && (
+                          <span className="w-full text-xs text-ink/50">
+                            They receive {formatCurrency(parseFloat(offerAmount))}; you&apos;d pay {formatCurrency(buyerTotal(parseFloat(offerAmount)))} incl. fees if they accept.
                           </span>
                         )}
                       </div>

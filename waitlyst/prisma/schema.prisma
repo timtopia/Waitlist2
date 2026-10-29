@@ -36,19 +36,20 @@ model Session {
 }
 
 model User {
-  id                      String         @id @default(cuid())
-  name                    String?
-  email                   String?        @unique
-  emailVerified           DateTime?
-  image                   String?
-  stripeConnectId         String?
-  stripeConnectOnboarded  Boolean        @default(false)
-  emailNotifications      Boolean        @default(true)
-  accounts                Account[]
-  sessions                Session[]
-  createdLines            Line[]         @relation("LineCreator")
-  positions               LinePosition[]
-  createdAt               DateTime       @default(now())
+  id                     String         @id @default(cuid())
+  name                   String?
+  email                  String?        @unique
+  emailVerified          DateTime?
+  image                  String?
+  stripeConnectId        String?
+  stripeConnectOnboarded Boolean        @default(false)
+  emailNotifications     Boolean        @default(true)
+  accounts               Account[]
+  sessions               Session[]
+  createdLines           Line[]         @relation("LineCreator")
+  positions              LinePosition[]
+  queueVisits            QueueVisit[]
+  createdAt              DateTime       @default(now())
 }
 
 model VerificationToken {
@@ -62,31 +63,33 @@ model VerificationToken {
 
 // Waitlyst app models
 model Line {
-  id              String         @id @default(cuid())
-  name            String
-  description     String?
-  createdById     String
-  createdBy       User           @relation("LineCreator", fields: [createdById], references: [id])
-  positions       LinePosition[]
-  isActive        Boolean        @default(true)
-  isPublic        Boolean        @default(true)
-  opensAt         DateTime?      // When the line opens for joining (null = open immediately)
-  closesAt        DateTime?      // When the line stops accepting new joins (null = never closes)
-  maxCapacity     Int?           // Maximum number of positions allowed (null = unlimited)
-  ownerFeePercent Float          @default(0) // Percentage the line owner earns on each sale (e.g. 10 = 10%)
-  announcement    String?        // Owner announcement shown as banner (max ~280 chars)
-  announcementAt  DateTime?      // When the announcement was last set
-  productName     String?        // Product name (e.g. "Nike Dunk Low Travis Scott")
-  productImage    String?        // URL to product image
-  productPrice    Float?         // Retail / MSRP price in dollars
-  productUrl      String?        // Link to official product page
-  allowResale     Boolean        @default(true)  // Whether position trading is enabled
-  maxAskingPrice  Float?         // Maximum resale price cap (null = no limit)
-  nowServing      String?        // Name of the person currently being served
-  nowServingAt    DateTime?      // When the current person was called
-  hideCapacity    Boolean        @default(false) // When true, don't show exact capacity to non-owners
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  id               String         @id @default(cuid())
+  name             String
+  description      String?
+  createdById      String
+  createdBy        User           @relation("LineCreator", fields: [createdById], references: [id])
+  positions        LinePosition[]
+  visits           QueueVisit[]
+  isActive         Boolean        @default(true)
+  isPublic         Boolean        @default(true)
+  opensAt          DateTime? // When the line opens for joining (null = open immediately)
+  closesAt         DateTime? // When the line stops accepting new joins (null = never closes)
+  maxCapacity      Int? // Maximum number of positions allowed (null = unlimited)
+  ownerFeePercent  Float          @default(0) // Percentage the line owner earns on each sale (e.g. 10 = 10%)
+  announcement     String? // Owner announcement shown as banner (max ~280 chars)
+  announcementAt   DateTime? // When the announcement was last set
+  productName      String? // Product name (e.g. "Nike Dunk Low Travis Scott")
+  productImage     String? // URL to product image
+  productPrice     Float? // Retail / MSRP price in dollars
+  productUrl       String? // Link to official product page
+  allowResale      Boolean        @default(true) // Whether position trading is enabled
+  maxAskingPrice   Float? // Maximum resale price cap (null = no limit)
+  nowServing       String? // Name of the person currently being served (display only)
+  nowServingUserId String? // Who was called -- compare this, not the name
+  nowServingAt     DateTime? // When the current person was called
+  hideCapacity     Boolean        @default(false) // When true, don't show exact capacity to non-owners
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
   @@index([createdById])
 }
@@ -97,37 +100,45 @@ model LinePosition {
   line        Line      @relation(fields: [lineId], references: [id], onDelete: Cascade)
   userId      String
   user        User      @relation(fields: [userId], references: [id])
-  position    Int       // 1 = first in line
-  askingPrice Float?    // null = not for sale
+  position    Int // 1 = first in line
+  askingPrice Float? // null = not for sale
   lockedUntil DateTime? // Position is locked for swap until this time
-  lockedBy    String?   // Transaction ID that locked this position
+  lockedBy    String? // Transaction ID that locked this position
   fulfilled   Boolean   @default(false) // Creator marks this when the person has purchased/received the item
+  calledAt    DateTime? // When the organizer last called them up
   fulfilledAt DateTime? // When they were fulfilled
   joinedAt    DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  @@unique([lineId, userId])    // User can only be in a line once
-  @@unique([lineId, position])  // Each position is unique per line
+  @@unique([lineId, userId]) // User can only be in a line once
+  @@unique([lineId, position]) // Each position is unique per line
   @@index([lineId])
   @@index([userId])
 }
 
 model Transaction {
-  id              String            @id @default(cuid())
-  buyerId         String
-  sellerId        String
-  lineId          String
-  amount          Float             // Seller's asking price (what seller receives)
-  ownerFee        Float             @default(0) // Fee paid to line owner
-  platformFee     Float             @default(0) // Fee paid to platform
-  stripePaymentId String?
-  status          TransactionStatus @default(PENDING)
-  settledAt       DateTime?         // Set when both buyer and seller have left the line
-  createdAt       DateTime          @default(now())
+  id                    String            @id @default(cuid())
+  buyerId               String
+  sellerId              String
+  lineId                String
+  amount                Float // Seller's asking price (what seller receives)
+  ownerFee              Float             @default(0) // Fee paid to line owner
+  platformFee           Float             @default(0) // Fee paid to platform
+  stripePaymentId       String? // Checkout session ID
+  stripePaymentIntentId String? // Set once checkout completes; refund events arrive keyed by it
+  status                TransactionStatus @default(PENDING)
+  settledAt             DateTime? // Closed out: money collected and released, or returned to the buyer
+  capturedAt            DateTime? // Buyer's payment actually collected
+  sellerPaidAt          DateTime? // Seller's take sent to their payout account
+  ownerPaidAt           DateTime? // Owner's fee sent to their payout account
+  captureBefore         DateTime? // The card hold lapses after this unless the payment is collected
+  holdExpiredAt         DateTime? // The hold lapsed before it was collected
+  createdAt             DateTime          @default(now())
 
   @@index([lineId])
   @@index([buyerId])
   @@index([sellerId])
+  @@index([stripePaymentIntentId])
 }
 
 enum TransactionStatus {
@@ -138,13 +149,15 @@ enum TransactionStatus {
 }
 
 model SwapOffer {
-  id         String      @id @default(cuid())
-  lineId     String
-  fromUserId String      // person behind (offering to swap)
-  toUserId   String      // person in front (receiving offer)
-  amount     Float       // offered price
-  status     OfferStatus @default(PENDING)
-  createdAt  DateTime    @default(now())
+  id            String      @id @default(cuid())
+  lineId        String
+  fromUserId    String // person behind (offering to swap)
+  toUserId      String // person in front (receiving offer)
+  amount        Float // offered price
+  status        OfferStatus @default(PENDING)
+  expiresAt     DateTime // PENDING offers stop being acceptable after this
+  transactionId String? // The checkout started when it was accepted
+  createdAt     DateTime    @default(now())
 
   @@unique([lineId, fromUserId, toUserId]) // 1 offer per pair
   @@index([lineId])
@@ -155,4 +168,32 @@ enum OfferStatus {
   PENDING
   ACCEPTED
   DECLINED
+  EXPIRED // Timed out, or the queue moved so the two are no longer adjacent
+  WITHDRAWN // The offerer took it back
+}
+
+// One row per time someone left a line, however they left. Positions are
+// deleted on exit, so this is the only lasting record of who was served and
+// how fast the line moved.
+model QueueVisit {
+  id       String       @id @default(cuid())
+  lineId   String
+  line     Line         @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  outcome  VisitOutcome
+  position Int // Place in line when they left
+  joinedAt DateTime
+  calledAt DateTime?
+  servedAt DateTime?
+  exitedAt DateTime     @default(now())
+
+  @@index([lineId, servedAt])
+  @@index([userId])
+}
+
+enum VisitOutcome {
+  SERVED // Marked served before leaving the line
+  LEFT // Left on their own
+  REMOVED // Removed by the organizer without being served
 }

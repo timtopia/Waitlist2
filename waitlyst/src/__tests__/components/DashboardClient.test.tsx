@@ -35,6 +35,7 @@ const mockCreatedLines = [
     _count: { positions: 5 },
     frontPerson: {
       id: "pos-1",
+      position: 1,
       user: { id: "user-1", name: "Alice" },
     },
   },
@@ -57,8 +58,11 @@ const mockPositions = [
     position: 2,
     askingPrice: "15.00",
     joinedAt: "2025-01-01T00:00:00.000Z",
+    ahead: 1,
+    phase: "waiting" as const,
     line: {
       name: "Another Line",
+      isActive: true,
       createdAt: "2025-01-01T00:00:00.000Z",
       _count: { positions: 10 },
     },
@@ -104,6 +108,34 @@ describe("DashboardClient", () => {
     expect(screen.getByText("Another Line")).toBeInTheDocument()
     expect(screen.getByText("#2")).toBeInTheDocument()
     expect(screen.getByText("Open to swap: $15.00")).toBeInTheDocument()
+    expect(screen.getByText("1 ahead of you")).toBeInTheDocument()
+  })
+
+  it("surfaces a line that is calling you above the others, with a clear label", () => {
+    const positions = [
+      { ...mockPositions[0], id: "pos-a", lineId: "line-a", joinedAt: "2025-02-01T00:00:00.000Z", line: { ...mockPositions[0].line, name: "Newest Line" } },
+      {
+        ...mockPositions[0],
+        id: "pos-b",
+        lineId: "line-b",
+        position: 1,
+        ahead: 0,
+        phase: "called" as const,
+        joinedAt: "2024-12-01T00:00:00.000Z",
+        line: { ...mockPositions[0].line, name: "Calling Line", isActive: false },
+      },
+    ]
+    render(<DashboardClient createdLines={[]} positions={positions} />)
+    const names = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)
+    expect(names.indexOf("Calling Line")).toBeLessThan(names.indexOf("Newest Line"))
+    expect(screen.getByText("Your turn. Head to the front")).toBeInTheDocument()
+    expect(screen.getByText(/Paused/)).toBeInTheDocument()
+  })
+
+  it("points the empty positions state at the browse page", () => {
+    render(<DashboardClient createdLines={[]} positions={[]} />)
+    const browse = screen.getAllByRole("link").find((a) => a.textContent?.includes("Browse Lines"))
+    expect(browse).toHaveAttribute("href", "/browse")
   })
 
   it("renders created lines", () => {
@@ -161,7 +193,7 @@ describe("DashboardClient", () => {
       fireEvent.click(screen.getByText("View Stats"))
 
       await waitFor(() => {
-        expect(screen.getByText("Test Line 1 - Transaction Stats")).toBeInTheDocument()
+        expect(screen.getByText("Test Line 1 - Line Stats")).toBeInTheDocument()
       })
     })
 
@@ -240,7 +272,7 @@ describe("DashboardClient", () => {
       await waitFor(() => {
         expect(screen.getByText("$75.00")).toBeInTheDocument()
         expect(screen.getByText("Pending Settlement (3)")).toBeInTheDocument()
-        expect(screen.getByText("Settles automatically when both buyer and seller leave the line")).toBeInTheDocument()
+        expect(screen.getByText("Collected when each buyer is served")).toBeInTheDocument()
       })
     })
 
@@ -293,7 +325,36 @@ describe("DashboardClient", () => {
 
       await waitFor(() => {
         expect(screen.getByText("$100.00")).toBeInTheDocument()
-        expect(screen.getByText("Net Revenue (Settled)")).toBeInTheDocument()
+        expect(screen.getByText("Net Swap Volume (Settled)")).toBeInTheDocument()
+      })
+    })
+
+    it("leads with the owner's own fee earnings, separate from swap volume", async () => {
+      ;(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          ownerFeeEarned: 12.5,
+          ownerFeePending: 4,
+          totalTransactions: 3,
+          completedCount: 2,
+          refundedCount: 0,
+          pendingSettlementCount: 1,
+          totalCompleted: 125,
+          totalRefunded: 0,
+          pendingSettlement: 40,
+          netRevenue: 125,
+        }),
+      })
+
+      render(<DashboardClient createdLines={mockCreatedLines} positions={[]} />)
+
+      openMenuForLine1()
+      fireEvent.click(screen.getByText("View Stats"))
+
+      await waitFor(() => {
+        expect(screen.getByText("Your Fee Earnings")).toBeInTheDocument()
+        expect(screen.getByText("$12.50")).toBeInTheDocument()
+        expect(screen.getByText("+ $4.00 pending settlement")).toBeInTheDocument()
       })
     })
 
@@ -377,7 +438,7 @@ describe("DashboardClient", () => {
       fireEvent.click(screen.getByText("View Stats"))
 
       await waitFor(() => {
-        expect(screen.getByText("Test Line 1 - Transaction Stats")).toBeInTheDocument()
+        expect(screen.getByText("Test Line 1 - Line Stats")).toBeInTheDocument()
       })
 
       // Find and click the Close button in the modal
@@ -385,7 +446,7 @@ describe("DashboardClient", () => {
       fireEvent.click(closeButton)
 
       await waitFor(() => {
-        expect(screen.queryByText("Test Line 1 - Transaction Stats")).not.toBeInTheDocument()
+        expect(screen.queryByText("Test Line 1 - Line Stats")).not.toBeInTheDocument()
       })
     })
 
@@ -460,6 +521,15 @@ describe("DashboardClient", () => {
   })
 
   describe("Call Next (Remove Front)", () => {
+    it("hides the quick Remove when served people are still ahead of the next person", () => {
+      const lines = [{ ...mockCreatedLines[0], frontPerson: { id: "pos-3", position: 3, user: { id: "user-3", name: "Cara" } } }]
+      render(<DashboardClient createdLines={lines} positions={[]} />)
+
+      expect(screen.getByText(/Next: Cara/)).toBeInTheDocument()
+      expect(screen.getByText("Call Next")).toBeInTheDocument()
+      expect(screen.queryByText("Remove")).not.toBeInTheDocument()
+    })
+
     it("calls call-next API when Call Next is clicked", async () => {
       ;(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
         ok: true,

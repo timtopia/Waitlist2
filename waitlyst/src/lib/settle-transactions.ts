@@ -3,23 +3,24 @@ import { PrismaClient } from "@prisma/client"
 type PrismaTransaction = Omit<PrismaClient, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">
 
 /**
- * Settle transactions for a user who just left a line.
- * A transaction is settled when both buyer and seller have left the line.
+ * Close out refunded transactions once both buyer and seller have left a line.
  *
- * Both COMPLETED and REFUNDED transactions can be settled — settlement just means
- * "both parties are done with this line." The status (COMPLETED vs REFUNDED) tracks
- * whether money was kept or returned; settledAt tracks when the transaction is finalized.
+ * COMPLETED transactions are deliberately left alone: for them settledAt
+ * means "the buyer's payment was captured and paid out" (set by fulfill or
+ * the owner's settlement action). A buyer who leaves before being served
+ * still holds an uncaptured authorization, and stamping settledAt here would
+ * hide it from the owner's capture/release decision and report money as
+ * paid out that was never collected.
  */
 export async function settleTransactionsForUser(
   tx: PrismaTransaction,
   lineId: string,
   userId: string
 ) {
-  // Find all unsettled COMPLETED or REFUNDED transactions involving this user
   const transactions = await tx.transaction.findMany({
     where: {
       lineId,
-      status: { in: ["COMPLETED", "REFUNDED"] },
+      status: "REFUNDED",
       settledAt: null,
       OR: [
         { buyerId: userId },
@@ -28,30 +29,25 @@ export async function settleTransactionsForUser(
     },
   })
 
-  const now = new Date()
-  const settledIds: string[] = []
+  if (transactions.length === 0) return 0
 
-  for (const transaction of transactions) {
-    // Explicitly check if BOTH parties are no longer in the line
-    const buyerPosition = await tx.linePosition.findUnique({
-      where: { lineId_userId: { lineId, userId: transaction.buyerId } },
-    })
-
-    const sellerPosition = await tx.linePosition.findUnique({
-      where: { lineId_userId: { lineId, userId: transaction.sellerId } },
-    })
-
-    // If neither party is in the line, settle the transaction
-    if (!buyerPosition && !sellerPosition) {
-      settledIds.push(transaction.id)
-    }
-  }
+  // A transaction settles once neither party is in the line any more
+  const parties = [...new Set(transactions.flatMap((t) => [t.buyerId, t.sellerId]))]
+  const stillInLine = new Set(
+    (await tx.linePosition.findMany({
+      where: { lineId, userId: { in: parties } },
+      select: { userId: true },
+    })).map((p) => p.userId)
+  )
+  const settledIds = transactions
+    .filter((t) => !stillInLine.has(t.buyerId) && !stillInLine.has(t.sellerId))
+    .map((t) => t.id)
 
   // Update all settleable transactions
   if (settledIds.length > 0) {
     await tx.transaction.updateMany({
       where: { id: { in: settledIds } },
-      data: { settledAt: now },
+      data: { settledAt: new Date() },
     })
   }
 

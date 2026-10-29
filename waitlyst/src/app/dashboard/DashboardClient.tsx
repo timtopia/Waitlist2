@@ -10,6 +10,8 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal"
 import { DropdownMenu, DropdownMenuItem } from "@/components/ui/DropdownMenu"
 import { useToast } from "@/components/ui/Toast"
 import { timeAgo, formatCurrency } from "@/lib/format"
+import { formatWaitTime } from "@/lib/wait-time"
+import type { MemberPhase } from "@/lib/member-status"
 
 interface CreatedLine {
   id: string
@@ -21,6 +23,7 @@ interface CreatedLine {
   _count: { positions: number }
   frontPerson: {
     id: string
+    position: number
     user: { id: string; name: string | null }
   } | null
 }
@@ -31,17 +34,29 @@ interface Position {
   position: number
   askingPrice: string | null
   joinedAt: string
+  ahead: number
+  phase: MemberPhase
   line: {
     name: string
+    isActive: boolean
     createdAt: string
     _count: { positions: number }
   }
+}
+
+const phaseLabel: Record<MemberPhase, { text: (ahead: number) => string; className: string }> = {
+  called: { text: () => "Your turn. Head to the front", className: "text-accent font-semibold" },
+  next: { text: () => "You're next", className: "text-green-700" },
+  served: { text: () => "Served", className: "text-green-700" },
+  waiting: { text: (ahead) => `${ahead} ahead of you`, className: "text-ink/60" },
 }
 
 type StatusFilter = "all" | "active" | "paused"
 type SortOption = "newest" | "oldest" | "most-members"
 
 interface LineStats {
+  ownerFeeEarned?: number
+  ownerFeePending?: number
   totalTransactions: number
   completedCount: number
   refundedCount: number
@@ -50,6 +65,14 @@ interface LineStats {
   totalRefunded: number
   pendingSettlement: number
   netRevenue: number
+  service?: {
+    served: number
+    left: number
+    removed: number
+    waiting: number
+    medianWaitMinutes: number | null
+    servedLastHour: number
+  }
 }
 
 interface StatsModal {
@@ -155,8 +178,10 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
       result = result.filter(p => p.line.name.toLowerCase().includes(searchLower))
     }
 
-    // Sort
+    // Sort, but always surface a line that's calling you right now
     result = [...result].sort((a, b) => {
+      const calledFirst = Number(b.phase === "called") - Number(a.phase === "called")
+      if (calledFirst !== 0) return calledFirst
       if (positionsSort === "newest") return new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime()
       if (positionsSort === "oldest") return new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime()
       return b.line._count.positions - a.line._count.positions // most-members
@@ -452,7 +477,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white border border-ink p-6 max-w-md w-full mx-4">
             <h3 className="text-lg font-semibold tracking-tight mb-4">
-              {statsModal.lineName} - Transaction Stats
+              {statsModal.lineName} - Line Stats
             </h3>
 
             {statsModal.loading ? (
@@ -462,6 +487,47 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
               </div>
             ) : statsModal.stats ? (
               <div className="space-y-4">
+                {statsModal.stats.service && (() => {
+                  const s = statsModal.stats.service
+                  return (
+                    <>
+                      <p className="font-mono text-xs uppercase tracking-widest text-ink/40">Service</p>
+                      <div className="grid grid-cols-3 divide-x divide-rule border border-rule">
+                        <div className="p-3 text-center">
+                          <p className="font-mono text-2xl tabular-nums">{s.served}</p>
+                          <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mt-1">Served</p>
+                        </div>
+                        <div className="p-3 text-center">
+                          <p className="font-mono text-2xl tabular-nums">{s.waiting}</p>
+                          <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mt-1">Waiting</p>
+                        </div>
+                        <div className="p-3 text-center">
+                          <p className="font-mono text-2xl tabular-nums">
+                            {s.medianWaitMinutes === null ? "--" : formatWaitTime(s.medianWaitMinutes)}
+                          </p>
+                          <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mt-1">Typical wait</p>
+                        </div>
+                      </div>
+                      <p className="text-xs text-ink/50 text-center">
+                        {s.servedLastHour} served in the last hour · {s.left} left on their own · {s.removed} removed
+                      </p>
+                    </>
+                  )
+                })()}
+
+                <div className="border border-ink p-4 text-center">
+                  <p className="font-mono text-3xl tabular-nums text-green-700">
+                    {formatCurrency(statsModal.stats.ownerFeeEarned ?? 0)}
+                  </p>
+                  <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mt-1">Your Fee Earnings</p>
+                  {(statsModal.stats.ownerFeePending ?? 0) > 0 && (
+                    <p className="text-xs text-amber-600 mt-1">
+                      + {formatCurrency(statsModal.stats.ownerFeePending ?? 0)} pending settlement
+                    </p>
+                  )}
+                </div>
+
+                <p className="font-mono text-xs uppercase tracking-widest text-ink/40 pt-2">Swap volume (paid to sellers)</p>
                 <div className="grid grid-cols-2 divide-x divide-rule border border-rule">
                   <div className="p-4 text-center">
                     <p className="font-mono text-2xl tabular-nums text-green-700">
@@ -490,16 +556,16 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                       Pending Settlement ({statsModal.stats.pendingSettlementCount})
                     </p>
                     <p className="text-xs text-ink/40 mt-1">
-                      Settles automatically when both buyer and seller leave the line
+                      Collected when each buyer is served
                     </p>
                   </div>
                 )}
 
-                <div className="border border-ink p-4 text-center">
-                  <p className="font-mono text-3xl tabular-nums">
+                <div className="border border-rule p-4 text-center">
+                  <p className="font-mono text-2xl tabular-nums">
                     {formatCurrency(statsModal.stats.netRevenue)}
                   </p>
-                  <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mt-1">Net Revenue (Settled)</p>
+                  <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mt-1">Net Swap Volume (Settled)</p>
                 </div>
 
                 <p className="text-sm text-ink/50 text-center">
@@ -584,7 +650,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
           {positions.length === 0 ? (
             <div className="text-center py-6">
               <p className="text-ink/60 mb-4">You haven&apos;t joined any lines yet.</p>
-              <Link href="/">
+              <Link href="/browse">
                 <Button variant="secondary">Browse Lines</Button>
               </Link>
             </div>
@@ -600,11 +666,19 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                   href={`/lines/${pos.lineId}`}
                   className="block"
                 >
-                  <div className="flex items-center justify-between p-4 bg-paper hover:bg-ink/5 transition-colors">
-                    <div>
+                  <div className={`flex items-center justify-between p-4 bg-paper hover:bg-ink/5 transition-colors ${
+                    pos.phase === "called" ? "border-l-2 border-l-accent" : ""
+                  }`}>
+                    <div className="min-w-0">
                       <h3 className="font-semibold tracking-tight">{pos.line.name}</h3>
-                      <p className="text-sm text-ink/60">
-                        {pos.line._count.positions} people in line
+                      <p className="text-sm">
+                        <span className={phaseLabel[pos.phase].className}>
+                          {phaseLabel[pos.phase].text(pos.ahead)}
+                        </span>
+                        <span className="text-ink/40">
+                          {" · "}{pos.line._count.positions} in line
+                          {!pos.line.isActive && " · Paused"}
+                        </span>
                       </p>
                     </div>
                     <div className="text-right">
@@ -736,16 +810,20 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                           >
                             Call Next
                           </Button>
-                          <button
-                            onClick={(e) => {
-                              e.preventDefault()
-                              setRemoveConfirm({ lineId: line.id })
-                            }}
-                            disabled={loadingAction === `remove-${line.id}`}
-                            className="text-xs text-accent hover:underline underline-offset-4 px-1 py-0.5 disabled:opacity-50"
-                          >
-                            Remove
-                          </button>
+                          {/* remove-front removes position #1; when served people are still
+                              ahead of the next person, that would remove the wrong one. */}
+                          {line.frontPerson.position === 1 && (
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault()
+                                setRemoveConfirm({ lineId: line.id })
+                              }}
+                              disabled={loadingAction === `remove-${line.id}`}
+                              className="text-xs text-accent hover:underline underline-offset-4 px-1 py-0.5 disabled:opacity-50"
+                            >
+                              Remove
+                            </button>
+                          )}
                         </div>
                       )}
                       {!line.isActive && (

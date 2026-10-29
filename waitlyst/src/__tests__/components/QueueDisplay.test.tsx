@@ -123,6 +123,19 @@ describe("QueueDisplay", () => {
     expect(screen.getByText("(Next up)")).toBeInTheDocument()
   })
 
+  it("moves (Next up) past people who have already been served", () => {
+    ;(useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      data: { user: { id: "viewer" } },
+      status: "authenticated",
+    })
+
+    const positions = mockPositions.map((p) => (p.id === "pos-1" ? { ...p, fulfilled: true } : p))
+    render(<QueueDisplay lineId="line-1" positions={positions} onRefresh={mockOnRefresh} />)
+
+    const nextUp = screen.getByText("(Next up)")
+    expect(nextUp.closest("p")).toHaveTextContent("Bob")
+  })
+
   it("shows Offer to Swap button for position directly in front", () => {
     ;(useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       data: { user: { id: "user-2" } },
@@ -251,7 +264,103 @@ describe("QueueDisplay", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Offer sent: \$20\.00/)).toBeInTheDocument()
-      expect(screen.getByText(/Waiting for response/)).toBeInTheDocument()
+      expect(screen.getByText(/waiting for response/i)).toBeInTheDocument()
+      expect(screen.getByText("Withdraw")).toBeInTheDocument()
+    })
+  })
+
+  function mockOffers(sent: unknown[], received: unknown[] = []) {
+    ;(fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (typeof url === "string" && url.includes("/offer")) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ sent, received }) })
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+    })
+  }
+
+  it("still shows Complete Payment once the seller accepted and both spots locked", async () => {
+    // Regression: accepting locks both spots, and the whole buy/offer block
+    // was hidden for locked spots -- so the buyer could never reach payment.
+    ;(useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      data: { user: { id: "user-2" } },
+      status: "authenticated",
+    })
+    mockOffers([{
+      id: "offer-1", lineId: "line-1", fromUserId: "user-2", toUserId: "user-1",
+      amount: 20, status: "ACCEPTED", createdAt: new Date().toISOString(), awaitingPayment: true,
+    }])
+    const locked = new Date(Date.now() + 20 * 60000).toISOString()
+    const positions = mockPositions.map((p) =>
+      p.id === "pos-1" || p.id === "pos-2" ? { ...p, lockedUntil: locked } : p
+    )
+
+    render(<QueueDisplay lineId="line-1" positions={positions} onRefresh={mockOnRefresh} />)
+
+    await waitFor(() => {
+      expect(screen.getByText("Complete Payment")).toBeInTheDocument()
+      expect(screen.getByText("Back Out")).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/^Buy for/)).not.toBeInTheDocument()
+  })
+
+  it("lets the buyer make a new offer after one was declined (no dead end)", async () => {
+    ;(useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      data: { user: { id: "user-2" } },
+      status: "authenticated",
+    })
+    mockOffers([{
+      id: "offer-1", lineId: "line-1", fromUserId: "user-2", toUserId: "user-1",
+      amount: 5, status: "DECLINED", createdAt: new Date().toISOString(),
+    }])
+
+    render(<QueueDisplay lineId="line-1" positions={mockPositions} onRefresh={mockOnRefresh} />)
+
+    const button = await screen.findByText("Make a New Offer")
+    fireEvent.click(button)
+    expect(screen.getByText("Send Offer")).toBeInTheDocument()
+  })
+
+  it("shows the seller that an accepted offer is waiting on the buyer's payment", async () => {
+    ;(useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      data: { user: { id: "user-1" } },
+      status: "authenticated",
+    })
+    mockOffers([], [{
+      id: "offer-1", lineId: "line-1", fromUserId: "user-2", toUserId: "user-1",
+      amount: 20, status: "ACCEPTED", createdAt: new Date().toISOString(), awaitingPayment: true,
+    }])
+
+    render(<QueueDisplay lineId="line-1" positions={mockPositions} onRefresh={mockOnRefresh} />)
+
+    expect(await screen.findByText(/waiting for them to pay/)).toBeInTheDocument()
+  })
+
+  it("confirms a direct buy with the fee breakdown and sends the price the buyer saw", async () => {
+    ;(useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      data: { user: { id: "user-2" } },
+      status: "authenticated",
+    })
+
+    render(
+      <QueueDisplay
+        lineId="line-1"
+        positions={mockPositions}
+        onRefresh={mockOnRefresh}
+        feeInfo={{ ownerFeePercent: 10, platformFeePercent: 10 }}
+      />
+    )
+
+    fireEvent.click(screen.getByText("Buy for $30.00"))
+    expect(screen.getByText("Buy spot #1?")).toBeInTheDocument()
+    expect(screen.getByText("Line owner fee")).toBeInTheDocument()
+    expect(fetch).not.toHaveBeenCalledWith("/api/lines/line-1/checkout", expect.anything())
+
+    fireEvent.click(screen.getByText("Confirm Swap"))
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith("/api/lines/line-1/checkout", expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ expectedPrice: 25, expectedSellerId: "user-1", expectedTotal: 30 }),
+      }))
     })
   })
 

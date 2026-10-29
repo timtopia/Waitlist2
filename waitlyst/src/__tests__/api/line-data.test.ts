@@ -11,6 +11,9 @@ const mockPrisma = {
   transaction: {
     findMany: vi.fn(),
   },
+  queueVisit: {
+    findMany: vi.fn(),
+  },
   user: {
     findMany: vi.fn(),
   },
@@ -165,6 +168,8 @@ describe("GET /api/lines/[lineId]/export", () => {
 describe("GET /api/lines/[lineId]/wait-time", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockPrisma.queueVisit.findMany.mockResolvedValue([])
+    mockPrisma.linePosition.findMany.mockResolvedValue([])
   })
 
   it("should return 404 if line not found", async () => {
@@ -179,7 +184,7 @@ describe("GET /api/lines/[lineId]/wait-time", () => {
 
   it("should return null estimate when not enough data", async () => {
     mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdAt: new Date() })
-    mockPrisma.transaction.findMany.mockResolvedValue([])
+    mockPrisma.queueVisit.findMany.mockResolvedValue([])
     mockPrisma.linePosition.findMany.mockResolvedValue([])
 
     const { GET } = await import("@/app/api/lines/[lineId]/wait-time/route")
@@ -192,15 +197,15 @@ describe("GET /api/lines/[lineId]/wait-time", () => {
     expect(data.basedOn).toBe(0)
   })
 
-  it("should estimate wait time from settled transactions", async () => {
+  it("should estimate from people served and since cleared from the line", async () => {
     mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdAt: new Date() })
 
-    // Three settled events 10 minutes apart -> avg 10 min per person
+    // Three service events 10 minutes apart -> avg 10 min per person
     const base = new Date("2025-06-01T12:00:00Z")
-    mockPrisma.transaction.findMany.mockResolvedValue([
-      { settledAt: new Date(base.getTime()) },
-      { settledAt: new Date(base.getTime() + 10 * 60000) },
-      { settledAt: new Date(base.getTime() + 20 * 60000) },
+    mockPrisma.queueVisit.findMany.mockResolvedValue([
+      { servedAt: new Date(base.getTime()) },
+      { servedAt: new Date(base.getTime() + 10 * 60000) },
+      { servedAt: new Date(base.getTime() + 20 * 60000) },
     ])
 
     const { GET } = await import("@/app/api/lines/[lineId]/wait-time/route")
@@ -213,15 +218,15 @@ describe("GET /api/lines/[lineId]/wait-time", () => {
     expect(data.basedOn).toBe(3)
   })
 
-  it("should fall back to joinedAt gaps when no settled transactions", async () => {
+  it("should estimate from fulfillments of people still in line", async () => {
     mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdAt: new Date() })
-    mockPrisma.transaction.findMany.mockResolvedValue([])
+    mockPrisma.queueVisit.findMany.mockResolvedValue([])
 
     const base = new Date("2025-06-01T12:00:00Z")
     mockPrisma.linePosition.findMany.mockResolvedValue([
-      { joinedAt: new Date(base.getTime()) },
-      { joinedAt: new Date(base.getTime() + 5 * 60000) },
-      { joinedAt: new Date(base.getTime() + 10 * 60000) },
+      { fulfilledAt: new Date(base.getTime()) },
+      { fulfilledAt: new Date(base.getTime() + 5 * 60000) },
+      { fulfilledAt: new Date(base.getTime() + 10 * 60000) },
     ])
 
     const { GET } = await import("@/app/api/lines/[lineId]/wait-time/route")
@@ -232,18 +237,36 @@ describe("GET /api/lines/[lineId]/wait-time", () => {
     const data = await response.json()
     expect(data.estimatedMinutesPerPerson).toBe(5)
     expect(data.basedOn).toBe(3)
+    expect(mockPrisma.linePosition.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { lineId: "line-1", fulfilledAt: { not: null } } })
+    )
   })
 
-  it("should deduplicate settled timestamps within 5 seconds", async () => {
+  it("should not estimate from join times (a burst of joins says nothing about pace)", async () => {
     mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdAt: new Date() })
+    mockPrisma.queueVisit.findMany.mockResolvedValue([])
+    // No one has been served yet; the route only asks for fulfilled positions.
+    mockPrisma.linePosition.findMany.mockResolvedValue([])
+
+    const { GET } = await import("@/app/api/lines/[lineId]/wait-time/route")
+    const req = new Request("http://localhost/api/lines/line-1/wait-time")
+    const response = await GET(req, { params: Promise.resolve({ lineId: "line-1" }) })
+
+    const data = await response.json()
+    expect(data.estimatedMinutesPerPerson).toBeNull()
+  })
+
+  it("should deduplicate service timestamps within 5 seconds", async () => {
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdAt: new Date() })
+    mockPrisma.linePosition.findMany.mockResolvedValue([])
 
     const base = new Date("2025-06-01T12:00:00Z")
-    // Two transactions settled at the same moment, then one 6 minutes later, then another 6 minutes later
-    mockPrisma.transaction.findMany.mockResolvedValue([
-      { settledAt: new Date(base.getTime()) },
-      { settledAt: new Date(base.getTime() + 2000) }, // within 5s, should be deduped
-      { settledAt: new Date(base.getTime() + 6 * 60000) },
-      { settledAt: new Date(base.getTime() + 12 * 60000) },
+    // Two people served at the same moment, then one 6 minutes later, then another 6 minutes later
+    mockPrisma.queueVisit.findMany.mockResolvedValue([
+      { servedAt: new Date(base.getTime()) },
+      { servedAt: new Date(base.getTime() + 2000) }, // within 5s, should be deduped
+      { servedAt: new Date(base.getTime() + 6 * 60000) },
+      { servedAt: new Date(base.getTime() + 12 * 60000) },
     ])
 
     const { GET } = await import("@/app/api/lines/[lineId]/wait-time/route")
@@ -332,6 +355,39 @@ describe("GET /api/lines/[lineId]/activity", () => {
     expect(data[0].description).toContain("$15.00")
     expect(data[1].type).toBe("join")
     expect(data[1].description).toContain("Alice joined the line")
+  })
+
+  it("shows what the buyer actually paid (including fees), not just the seller's take", async () => {
+    // Regression test: tx.amount is the seller's asking price (what they
+    // receive), not the buyer's total. The line-activity feed used to show
+    // "bought a spot ... for $90.00" when the buyer actually paid $103.50 --
+    // misleading since it looked like the full price paid.
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1" })
+    mockPrisma.transaction.findMany.mockResolvedValue([
+      {
+        id: "txn-1",
+        buyerId: "user-1",
+        sellerId: "user-2",
+        amount: 90,
+        ownerFee: 9,
+        platformFee: 4.5,
+        status: "COMPLETED",
+        createdAt: new Date("2025-06-01T14:00:00Z"),
+      },
+    ])
+    mockPrisma.linePosition.findMany.mockResolvedValue([])
+    mockPrisma.user.findMany.mockResolvedValue([
+      { id: "user-1", name: "Alice" },
+      { id: "user-2", name: "Bob" },
+    ])
+
+    const { GET } = await import("@/app/api/lines/[lineId]/activity/route")
+    const req = new Request("http://localhost/api/lines/line-1/activity")
+    const response = await GET(req, { params: Promise.resolve({ lineId: "line-1" }) })
+
+    const data = await response.json()
+    expect(data[0].description).toContain("$103.50")
+    expect(data[0].description).toContain("$90.00 to Bob")
   })
 
   it("should include refund activities", async () => {
@@ -554,6 +610,47 @@ describe("GET /api/activity", () => {
     expect(purchase).toBeDefined()
     expect(purchase.description).toContain("Bought a position for $25.00")
     expect(purchase.amount).toBe(25)
+  })
+
+  it("shows the buyer's total including fees, but the seller's amount unchanged", async () => {
+    // Same underlying bug as the per-line activity feed: tx.amount is the
+    // seller's take. The buyer's own dashboard history must show what they
+    // actually paid, while the seller's "Sold for $X" line is already correct.
+    mockAuth.mockResolvedValue({ user: { id: "user-1" } })
+    mockPrisma.transaction.findMany.mockResolvedValue([
+      {
+        id: "txn-buy",
+        buyerId: "user-1",
+        sellerId: "user-2",
+        amount: 90,
+        ownerFee: 9,
+        platformFee: 4.5,
+        status: "COMPLETED",
+        createdAt: new Date("2025-06-01T14:00:00Z"),
+      },
+      {
+        id: "txn-sell",
+        buyerId: "user-3",
+        sellerId: "user-1",
+        amount: 50,
+        ownerFee: 5,
+        platformFee: 2.5,
+        status: "COMPLETED",
+        createdAt: new Date("2025-06-01T15:00:00Z"),
+      },
+    ])
+    mockPrisma.linePosition.findMany.mockResolvedValue([])
+
+    const { GET } = await import("@/app/api/activity/route")
+    const response = await GET()
+    const data = await response.json()
+
+    const purchase = data.find((a: { id: string }) => a.id === "tx-txn-buy")
+    const sale = data.find((a: { id: string }) => a.id === "tx-txn-sell")
+    expect(purchase.description).toContain("Bought a position for $103.50")
+    expect(purchase.amount).toBe(103.5)
+    expect(sale.description).toContain("Sold a position for $50.00")
+    expect(sale.amount).toBe(50)
   })
 
   it("should return refund activity", async () => {

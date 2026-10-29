@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
+import { tradeBlocker } from "@/lib/trading"
 
 export async function PATCH(
   req: Request,
@@ -17,8 +18,8 @@ export async function PATCH(
     if (typeof price !== "number" || isNaN(price)) {
       return NextResponse.json({ error: "Price must be a number" }, { status: 400 })
     }
-    if (price < 0) {
-      return NextResponse.json({ error: "Price cannot be negative" }, { status: 400 })
+    if (price < 1) {
+      return NextResponse.json({ error: "Price must be at least $1.00" }, { status: 400 })
     }
     if (price > 10000) {
       return NextResponse.json({ error: "Price must be no more than $10,000" }, { status: 400 })
@@ -29,7 +30,7 @@ export async function PATCH(
   if (price !== null) {
     const line = await prisma.line.findUnique({
       where: { id: lineId },
-      select: { allowResale: true, maxAskingPrice: true },
+      select: { allowResale: true, maxAskingPrice: true, nowServingUserId: true },
     })
     if (line && !line.allowResale) {
       return NextResponse.json(
@@ -43,9 +44,28 @@ export async function PATCH(
         { status: 400 }
       )
     }
+    const mine = await prisma.linePosition.findUnique({
+      where: { lineId_userId: { lineId, userId: result.userId } },
+      select: { userId: true, fulfilled: true },
+    })
+    const blocked = mine && tradeBlocker(mine, line?.nowServingUserId ?? null, "yours")
+    if (blocked) {
+      return NextResponse.json({ error: blocked }, { status: 400 })
+    }
   }
 
   try {
+    const current = await prisma.linePosition.findUnique({
+      where: { lineId_userId: { lineId, userId: result.userId } },
+      select: { lockedUntil: true },
+    })
+    if (current?.lockedUntil && current.lockedUntil > new Date()) {
+      return NextResponse.json(
+        { error: "Someone is paying for a swap with you right now. You can change your listing once it finishes." },
+        { status: 409 }
+      )
+    }
+
     const position = await prisma.linePosition.update({
       where: {
         lineId_userId: {

@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Local-only agent validation harness, not part of the app (see
+    // validation/README.md) — plain Node CJS scripts, not Next/TS code.
+    "validation/**",
   ]),
 ]);
 

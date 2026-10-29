@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireLineOwner } from "@/lib/auth-helpers"
-import { refundTransactions } from "@/lib/stripe"
+import { expireCheckoutSession, getBaseUrl, returnBuyerFunds } from "@/lib/stripe"
 import { getPlatformFeePercent } from "@/lib/fees"
 import { rateLimit } from "@/lib/rate-limit"
+import { capacityView } from "@/lib/capacity"
+import { auth } from "@/auth"
+import { createHash } from "crypto"
+import { sendEmail } from "@/lib/email"
+import { lineDeletedEmail } from "@/lib/email-templates"
 
 const getLimiter = rateLimit({ interval: 60_000, limit: 60 })
 
@@ -25,6 +30,32 @@ export async function GET(
   const { lineId } = await params
 
   try {
+    const session = await auth()
+    const viewerId = session?.user?.id ?? null
+
+    // Pollers send back the ETag they last saw. Anything that changes the
+    // response bumps the line's or a position's updatedAt (or the count, for
+    // the last person leaving), so this cheap check lets an unchanged line
+    // skip loading every position.
+    const [head, positionStats] = await Promise.all([
+      prisma.line.findUnique({ where: { id: lineId }, select: { updatedAt: true, createdById: true } }),
+      prisma.linePosition.aggregate({ where: { lineId }, _max: { updatedAt: true }, _count: true }),
+    ])
+    if (!head) {
+      return NextResponse.json({ error: "Line not found" }, { status: 404 })
+    }
+    const etag = `"${createHash("sha1").update([
+      head.updatedAt.getTime(),
+      positionStats._max.updatedAt?.getTime() ?? 0,
+      positionStats._count,
+      viewerId === head.createdById, // the owner's view differs (hidden capacity)
+      getPlatformFeePercent(),
+    ].join("|")).digest("base64url")}"`
+    const cacheHeaders = { "Cache-Control": "no-store, no-cache, must-revalidate", ETag: etag }
+    if (req.headers.get("if-none-match") === etag) {
+      return new NextResponse(null, { status: 304, headers: cacheHeaders })
+    }
+
     const line = await prisma.line.findUnique({
       where: { id: lineId },
       include: {
@@ -40,10 +71,10 @@ export async function GET(
       return NextResponse.json({ error: "Line not found" }, { status: 404 })
     }
 
-    return NextResponse.json({ ...line, platformFeePercent: getPlatformFeePercent() }, {
-      headers: {
-        "Cache-Control": "no-store, no-cache, must-revalidate",
-      },
+    const capacity = capacityView(line, line.positions.length, viewerId)
+
+    return NextResponse.json({ ...line, ...capacity, platformFeePercent: getPlatformFeePercent() }, {
+      headers: cacheHeaders,
     })
   } catch (error) {
     console.error("Get line error:", error)
@@ -64,22 +95,37 @@ export async function DELETE(
   if (result instanceof NextResponse) return result
 
   try {
+    // Who to tell, read before their positions disappear with the line
+    const members = await prisma.linePosition.findMany({
+      where: { lineId },
+      select: { user: { select: { id: true, name: true, email: true, emailNotifications: true } } },
+    })
+
     // Get unsettled transactions to refund
-    const transactionsToRefund = await prisma.$transaction(async (tx) => {
+    const { transactionsToRefund, abandonedSessions } = await prisma.$transaction(async (tx) => {
       // Fail any pending transactions
+      const pending = await tx.transaction.findMany({
+        where: { lineId, status: "PENDING" },
+        select: { stripePaymentId: true },
+      })
       await tx.transaction.updateMany({
         where: { lineId, status: "PENDING" },
         data: { status: "FAILED" },
       })
 
       // Find unsettled COMPLETED transactions that need refunding
-      return tx.transaction.findMany({
+      const transactionsToRefund = await tx.transaction.findMany({
         where: { lineId, status: "COMPLETED", settledAt: null },
       })
+      return { transactionsToRefund, abandonedSessions: pending.map((t) => t.stripePaymentId) }
     })
 
-    // Refund unsettled transactions (only changes status to REFUNDED, not settledAt)
-    const refundedCount = await refundTransactions(transactionsToRefund)
+    // Someone still on a payment page must not be able to pay for a spot in
+    // a line that no longer exists.
+    await Promise.all(abandonedSessions.map((id) => expireCheckoutSession(id)))
+
+    // Release uncaptured holds (no fees), refund anything already captured.
+    const refundedCount = await returnBuyerFunds(transactionsToRefund)
 
     // Settle ALL unsettled transactions (COMPLETED and REFUNDED) and delete line
     await prisma.$transaction(async (tx) => {
@@ -91,8 +137,18 @@ export async function DELETE(
         },
         data: { settledAt: new Date() },
       })
+      // Offers aren't tied to the line by a foreign key, so clear them here.
+      await tx.swapOffer.deleteMany({ where: { lineId } })
       await tx.line.delete({ where: { id: lineId } })
     })
+
+    const buyers = new Set(transactionsToRefund.map((t) => t.buyerId))
+    const browseUrl = `${getBaseUrl()}/browse`
+    for (const { user } of members) {
+      if (!user.email || !user.emailNotifications) continue
+      const { subject, html } = lineDeletedEmail(user.name || "there", result.line.name, buyers.has(user.id), browseUrl)
+      sendEmail(user.email, subject, html).catch(() => {})
+    }
 
     return NextResponse.json({ success: true, refundedCount })
   } catch (error) {

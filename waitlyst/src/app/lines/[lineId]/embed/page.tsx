@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { prisma } from "@/lib/prisma"
+import { capacityView } from "@/lib/capacity"
 import { EmbedWidgetClient } from "./EmbedWidgetClient"
 
 export const metadata: Metadata = {
@@ -30,6 +31,7 @@ export default async function EmbedPage({ params }: Props) {
   }
 
   const positionCount = line._count.positions
+  const capacity = capacityView(line, positionCount)
 
   return (
     <EmbedWidgetClient
@@ -39,11 +41,12 @@ export default async function EmbedPage({ params }: Props) {
       productImage={line.productImage}
       productPrice={line.productPrice}
       positionCount={positionCount}
-      maxCapacity={line.maxCapacity}
+      maxCapacity={capacity.maxCapacity}
+      isFull={capacity.isFull}
       opensAt={line.opensAt ? line.opensAt.toISOString() : null}
       closesAt={line.closesAt ? line.closesAt.toISOString() : null}
       nowServing={line.nowServing}
-      hideCapacity={line.hideCapacity}
+      hideCapacity={capacity.hasCapacityLimit && capacity.maxCapacity === null}
     />
   )
 }

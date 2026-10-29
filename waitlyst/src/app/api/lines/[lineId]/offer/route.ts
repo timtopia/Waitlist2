@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma"
 import { rateLimit } from "@/lib/rate-limit"
 import { sendEmail } from "@/lib/email"
 import { swapOfferEmail } from "@/lib/email-templates"
+import { MIN_OFFER_AMOUNT, isOfferExpired, newOfferExpiry } from "@/lib/offers"
+import { tradeBlocker } from "@/lib/trading"
 
 const offerLimiter = rateLimit({ interval: 60_000, limit: 10 })
 
@@ -32,8 +34,8 @@ export async function POST(
   if (typeof amount !== "number" || isNaN(amount)) {
     return NextResponse.json({ error: "Amount must be a number" }, { status: 400 })
   }
-  if (amount <= 0) {
-    return NextResponse.json({ error: "Amount must be greater than $0" }, { status: 400 })
+  if (amount < MIN_OFFER_AMOUNT) {
+    return NextResponse.json({ error: "Offers must be at least $1.00" }, { status: 400 })
   }
   if (amount > 10000) {
     return NextResponse.json({ error: "Amount must be no more than $10,000" }, { status: 400 })
@@ -90,6 +92,13 @@ export async function POST(
       )
     }
 
+    const blocked =
+      tradeBlocker(fromPosition, line.nowServingUserId, "yours") ??
+      tradeBlocker(toPosition, line.nowServingUserId, "theirs")
+    if (blocked) {
+      return NextResponse.json({ error: blocked }, { status: 400 })
+    }
+
     // Check for existing PENDING offer from this user to this person in this line
     const existingOffer = await prisma.swapOffer.findUnique({
       where: {
@@ -100,14 +109,28 @@ export async function POST(
         },
       },
     })
-    if (existingOffer && existingOffer.status === "PENDING") {
+    if (existingOffer && existingOffer.status === "PENDING" && !isOfferExpired(existingOffer)) {
       return NextResponse.json(
         { error: "You already have a pending offer to this person" },
         { status: 409 }
       )
     }
+    if (existingOffer?.status === "ACCEPTED" && existingOffer.transactionId) {
+      const awaitingPayment = await prisma.transaction.findFirst({
+        where: { id: existingOffer.transactionId, status: "PENDING" },
+        select: { id: true },
+      })
+      if (awaitingPayment) {
+        return NextResponse.json(
+          { error: "They already accepted your offer -- complete or cancel that payment first." },
+          { status: 409 }
+        )
+      }
+    }
 
-    // If a previous offer exists (DECLINED/ACCEPTED), upsert it back to PENDING with new amount
+    // A previous offer between the two (declined, expired, withdrawn, or an
+    // accepted one that already went through) is reused as the new offer.
+    const now = new Date()
     const offer = await prisma.swapOffer.upsert({
       where: {
         lineId_fromUserId_toUserId: {
@@ -119,7 +142,9 @@ export async function POST(
       update: {
         amount,
         status: "PENDING",
-        createdAt: new Date(),
+        createdAt: now,
+        expiresAt: newOfferExpiry(now),
+        transactionId: null,
       },
       create: {
         lineId,
@@ -127,6 +152,7 @@ export async function POST(
         toUserId,
         amount,
         status: "PENDING",
+        expiresAt: newOfferExpiry(now),
       },
     })
 
@@ -167,19 +193,57 @@ export async function GET(
   const { lineId } = await params
 
   try {
-    // Offers I made (I'm the person behind)
-    const sent = await prisma.swapOffer.findMany({
-      where: { lineId, fromUserId: result.userId },
-      orderBy: { createdAt: "desc" },
+    const userId = result.userId
+    const [offers, positions, pendingPayments] = await Promise.all([
+      prisma.swapOffer.findMany({
+        where: { lineId, OR: [{ fromUserId: userId }, { toUserId: userId }] },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.linePosition.findMany({
+        where: { lineId },
+        select: { userId: true, position: true },
+      }),
+      prisma.transaction.findMany({
+        where: { lineId, status: "PENDING", OR: [{ buyerId: userId }, { sellerId: userId }] },
+        select: { id: true },
+      }),
+    ])
+
+    // Positions move (swaps, leaves, removals) and offers age out, so a
+    // PENDING offer can silently stop meaning anything. Retire those here so
+    // neither side keeps seeing an offer that accept would only reject.
+    const positionOf = new Map(positions.map((p) => [p.userId, p.position]))
+    const now = new Date()
+    const staleIds = offers
+      .filter((o) => {
+        if (o.status !== "PENDING") return false
+        const from = positionOf.get(o.fromUserId)
+        const to = positionOf.get(o.toUserId)
+        return isOfferExpired(o, now) || from === undefined || to === undefined || to !== from - 1
+      })
+      .map((o) => o.id)
+    if (staleIds.length > 0) {
+      await prisma.swapOffer.updateMany({
+        where: { id: { in: staleIds }, status: "PENDING" },
+        data: { status: "EXPIRED" },
+      })
+    }
+
+    const pendingIds = new Set(pendingPayments.map((t) => t.id))
+    const annotated = offers.map((o) => {
+      const status = staleIds.includes(o.id) ? "EXPIRED" as const : o.status
+      return {
+        ...o,
+        status,
+        expiresAt: status === "PENDING" ? o.expiresAt.toISOString() : null,
+        awaitingPayment: status === "ACCEPTED" && !!o.transactionId && pendingIds.has(o.transactionId),
+      }
     })
 
-    // Offers I received (I'm the person in front)
-    const received = await prisma.swapOffer.findMany({
-      where: { lineId, toUserId: result.userId },
-      orderBy: { createdAt: "desc" },
+    return NextResponse.json({
+      sent: annotated.filter((o) => o.fromUserId === userId),
+      received: annotated.filter((o) => o.toUserId === userId),
     })
-
-    return NextResponse.json({ sent, received })
   } catch (error) {
     console.error("Get offers error:", error)
     return NextResponse.json(

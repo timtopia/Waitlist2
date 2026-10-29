@@ -2,10 +2,16 @@ import { NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { getStripe, getBaseUrl } from "@/lib/stripe"
+import { sanitizeReturnPath } from "@/lib/validate"
 
-export async function POST() {
+export async function POST(req: Request) {
   const result = await requireAuth()
   if (result instanceof NextResponse) return result
+
+  // Where to send the owner back to once onboarding finishes -- e.g. the
+  // settlement page they started from, not always /profile.
+  const body = await req.json().catch(() => ({}))
+  const returnTo = sanitizeReturnPath(body?.returnTo, "/profile")
 
   const stripe = getStripe()
   if (!stripe) {
@@ -45,10 +51,11 @@ export async function POST() {
 
     // Create an account link for onboarding (or resuming incomplete onboarding)
     const baseUrl = getBaseUrl()
+    const callbackUrl = `${baseUrl}/api/stripe/connect/callback?account_id=${connectAccountId}&return_to=${encodeURIComponent(returnTo)}`
     const accountLink = await stripe.accountLinks.create({
       account: connectAccountId,
-      refresh_url: `${baseUrl}/api/stripe/connect/callback?account_id=${connectAccountId}`,
-      return_url: `${baseUrl}/api/stripe/connect/callback?account_id=${connectAccountId}`,
+      refresh_url: callbackUrl,
+      return_url: callbackUrl,
       type: "account_onboarding",
     })
 
