@@ -59,6 +59,7 @@ vi.mock("@/lib/stripe", () => ({
   performPositionSwap: vi.fn().mockResolvedValue(true),
   abandonPendingTransaction: vi.fn().mockResolvedValue(true),
   isCheckoutAuthorized: vi.fn(async (s: { payment_status?: string }) => s.payment_status === "paid"),
+  recordPaymentIntent: vi.fn(),
   lockPositionsForTransaction: vi.fn().mockResolvedValue(true),
 }))
 

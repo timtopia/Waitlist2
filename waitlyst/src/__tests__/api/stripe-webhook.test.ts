@@ -18,8 +18,12 @@ vi.mock("@/lib/stripe", () => ({
   getStripe: () => mockGetStripe(),
   performPositionSwap: (...args: unknown[]) => mockPerformPositionSwap(...args),
   abandonPendingTransaction: (...args: unknown[]) => mockAbandon(...args),
+  isCheckoutAuthorized: (...args: unknown[]) => mockIsAuthorized(...args),
+  recordPaymentIntent: (...args: unknown[]) => mockRecordPaymentIntent(...args),
 }))
 const mockAbandon = vi.fn()
+const mockIsAuthorized = vi.fn()
+const mockRecordPaymentIntent = vi.fn()
 
 function makeStripeInstance() {
   return {
@@ -43,6 +47,7 @@ describe("POST /api/webhooks/stripe", () => {
     vi.clearAllMocks()
     vi.stubEnv("STRIPE_WEBHOOK_SECRET", "whsec_test_secret")
     mockGetStripe.mockReturnValue(makeStripeInstance())
+    mockIsAuthorized.mockResolvedValue(true)
   })
 
   it("should return 503 if Stripe is not configured", async () => {
@@ -101,6 +106,21 @@ describe("POST /api/webhooks/stripe", () => {
 
     expect(response.status).toBe(200)
     expect(mockPerformPositionSwap).toHaveBeenCalledWith("txn-1")
+    expect(mockRecordPaymentIntent).toHaveBeenCalledWith("txn-1", expect.objectContaining({ metadata: expect.any(Object) }))
+  })
+
+  it("does not swap when the completed session's payment isn't authorized", async () => {
+    mockConstructEvent.mockReturnValue({
+      type: "checkout.session.completed",
+      data: { object: { id: "cs_unpaid", metadata: { transactionId: "txn-1" } } },
+    })
+    mockIsAuthorized.mockResolvedValue(false)
+
+    const { POST } = await import("@/app/api/webhooks/stripe/route")
+    const response = await POST(makeRequest("{}"))
+
+    expect(response.status).toBe(200)
+    expect(mockPerformPositionSwap).not.toHaveBeenCalled()
   })
 
   it("should handle checkout.session.completed with missing transactionId", async () => {
@@ -153,13 +173,13 @@ describe("POST /api/webhooks/stripe", () => {
     mockConstructEvent.mockReturnValue({
       type: "charge.refunded",
       data: {
-        object: { payment_intent: "pi_123" },
+        object: { payment_intent: "pi_123", refunded: true },
       },
     })
     mockSessionsList.mockResolvedValue({
       data: [{ id: "cs_session_1" }],
     })
-    mockPrisma.transaction.findFirst.mockResolvedValue({
+    mockPrisma.transaction.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({
       id: "txn-3",
       status: "COMPLETED",
       stripePaymentId: "cs_session_1",
@@ -180,17 +200,51 @@ describe("POST /api/webhooks/stripe", () => {
     })
   })
 
+  it("finds the refunded purchase by its recorded PaymentIntent without asking Stripe", async () => {
+    mockConstructEvent.mockReturnValue({
+      type: "charge.refunded",
+      data: { object: { payment_intent: "pi_789", refunded: true } },
+    })
+    mockPrisma.transaction.findFirst.mockResolvedValue({ id: "txn-6", status: "COMPLETED" })
+    mockPrisma.transaction.update.mockResolvedValue({})
+
+    const { POST } = await import("@/app/api/webhooks/stripe/route")
+    const response = await POST(makeRequest("{}"))
+
+    expect(response.status).toBe(200)
+    expect(mockPrisma.transaction.findFirst).toHaveBeenCalledWith({ where: { stripePaymentIntentId: "pi_789" } })
+    expect(mockSessionsList).not.toHaveBeenCalled()
+    expect(mockPrisma.transaction.update).toHaveBeenCalledWith({
+      where: { id: "txn-6" },
+      data: { status: "REFUNDED", settledAt: expect.any(Date) },
+    })
+  })
+
+  it("leaves the purchase alone on a partial refund", async () => {
+    mockConstructEvent.mockReturnValue({
+      type: "charge.refunded",
+      data: { object: { payment_intent: "pi_789", refunded: false } },
+    })
+
+    const { POST } = await import("@/app/api/webhooks/stripe/route")
+    const response = await POST(makeRequest("{}"))
+
+    expect(response.status).toBe(200)
+    expect(mockPrisma.transaction.findFirst).not.toHaveBeenCalled()
+    expect(mockPrisma.transaction.update).not.toHaveBeenCalled()
+  })
+
   it("should not update already-refunded transaction", async () => {
     mockConstructEvent.mockReturnValue({
       type: "charge.refunded",
       data: {
-        object: { payment_intent: "pi_456" },
+        object: { payment_intent: "pi_456", refunded: true },
       },
     })
     mockSessionsList.mockResolvedValue({
       data: [{ id: "cs_session_2" }],
     })
-    mockPrisma.transaction.findFirst.mockResolvedValue({
+    mockPrisma.transaction.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({
       id: "txn-4",
       status: "REFUNDED",
       stripePaymentId: "cs_session_2",
@@ -217,7 +271,7 @@ describe("POST /api/webhooks/stripe", () => {
     expect(data.received).toBe(true)
   })
 
-  it("should return 200 even when handler throws (prevents Stripe retries)", async () => {
+  it("returns 500 when a handler throws so Stripe retries", async () => {
     mockConstructEvent.mockReturnValue({
       type: "checkout.session.completed",
       data: {
@@ -229,7 +283,6 @@ describe("POST /api/webhooks/stripe", () => {
     const { POST } = await import("@/app/api/webhooks/stripe/route")
     const response = await POST(makeRequest("{}"))
 
-    // Should still return 200 to prevent Stripe from retrying
-    expect(response.status).toBe(200)
+    expect(response.status).toBe(500)
   })
 })

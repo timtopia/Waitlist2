@@ -17,6 +17,25 @@ export function getStripe(): Stripe | null {
   return _stripe
 }
 
+/** The PaymentIntent behind a checkout session, whether or not it was expanded. */
+export function paymentIntentIdOf(session: Stripe.Checkout.Session): string | null {
+  const pi = session.payment_intent
+  if (!pi) return null
+  return typeof pi === "string" ? pi : pi.id
+}
+
+/**
+ * Remember which PaymentIntent paid for a transaction, so later events about
+ * the charge (refunds) can find it without asking Stripe.
+ */
+export async function recordPaymentIntent(transactionId: string, session: Stripe.Checkout.Session) {
+  const paymentIntentId = paymentIntentIdOf(session)
+  if (!paymentIntentId) return
+  await prisma.transaction.updateMany({
+    where: { id: transactionId, stripePaymentIntentId: null },
+    data: { stripePaymentIntentId: paymentIntentId },
+  })
+}
 
 /**
  * Get the base URL for redirects.
@@ -51,10 +70,8 @@ export async function refundTransactions(transactions: Transaction[]): Promise<n
           // Retrieve the checkout session to get the payment intent
           const session = await stripe.checkout.sessions.retrieve(txn.stripePaymentId)
 
-          if (session.payment_intent) {
-            const paymentIntentId = typeof session.payment_intent === "string"
-              ? session.payment_intent
-              : session.payment_intent.id
+          const paymentIntentId = paymentIntentIdOf(session)
+          if (paymentIntentId) {
 
             await stripe.refunds.create({
               payment_intent: paymentIntentId,
@@ -94,11 +111,8 @@ export async function cancelAuthorization(sessionId: string): Promise<boolean> {
 
   try {
     const session = await stripe.checkout.sessions.retrieve(sessionId)
-    if (!session.payment_intent) return false
-
-    const paymentIntentId = typeof session.payment_intent === "string"
-      ? session.payment_intent
-      : session.payment_intent.id
+    const paymentIntentId = paymentIntentIdOf(session)
+    if (!paymentIntentId) return false
 
     const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
 
@@ -134,11 +148,8 @@ export async function captureAuthorization(sessionId: string): Promise<number | 
 
   try {
     const session = await stripe.checkout.sessions.retrieve(sessionId)
-    if (!session.payment_intent) return null
-
-    const paymentIntentId = typeof session.payment_intent === "string"
-      ? session.payment_intent
-      : session.payment_intent.id
+    const paymentIntentId = paymentIntentIdOf(session)
+    if (!paymentIntentId) return null
 
     const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
 
@@ -398,12 +409,10 @@ export async function performPositionSwap(transactionId: string): Promise<boolea
  */
 export async function isCheckoutAuthorized(session: Stripe.Checkout.Session): Promise<boolean> {
   if (session.payment_status === "paid") return true
-  if (session.status !== "complete" || !session.payment_intent) return false
+  const paymentIntentId = paymentIntentIdOf(session)
+  if (session.status !== "complete" || !paymentIntentId) return false
   const stripe = getStripe()
   if (!stripe) return false
-  const paymentIntentId = typeof session.payment_intent === "string"
-    ? session.payment_intent
-    : session.payment_intent.id
   const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
   return paymentIntent.status === "requires_capture" || paymentIntent.status === "succeeded"
 }
@@ -478,10 +487,8 @@ export async function releaseAndSettle(txn: ReleasableTransaction): Promise<bool
 
 async function paymentIntentFor(stripe: Stripe, sessionId: string): Promise<Stripe.PaymentIntent | null> {
   const session = await stripe.checkout.sessions.retrieve(sessionId)
-  if (!session.payment_intent) return null
-  const paymentIntentId = typeof session.payment_intent === "string"
-    ? session.payment_intent
-    : session.payment_intent.id
+  const paymentIntentId = paymentIntentIdOf(session)
+  if (!paymentIntentId) return null
   return stripe.paymentIntents.retrieve(paymentIntentId)
 }
 

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getStripe, getBaseUrl, performPositionSwap, isCheckoutAuthorized } from "@/lib/stripe"
+import { getStripe, getBaseUrl, performPositionSwap, isCheckoutAuthorized, recordPaymentIntent } from "@/lib/stripe"
 import { prisma } from "@/lib/prisma"
 
 /**
@@ -55,6 +55,7 @@ export async function GET(
     // Perform the swap (idempotent — won't swap again if already completed by webhook).
     // Note: With auth-then-capture, the payment is authorized but NOT captured yet.
     // Capture happens later when the creator fulfills the position.
+    await recordPaymentIntent(transactionId, checkoutSession)
     await performPositionSwap(transactionId)
 
     // Swapped now or already by the webhook: success. Anything else means the

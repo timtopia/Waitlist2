@@ -117,24 +117,26 @@ model LinePosition {
 }
 
 model Transaction {
-  id              String            @id @default(cuid())
-  buyerId         String
-  sellerId        String
-  lineId          String
-  amount          Float // Seller's asking price (what seller receives)
-  ownerFee        Float             @default(0) // Fee paid to line owner
-  platformFee     Float             @default(0) // Fee paid to platform
-  stripePaymentId String?
-  status          TransactionStatus @default(PENDING)
-  settledAt       DateTime? // Closed out: money collected and released, or returned to the buyer
-  capturedAt      DateTime? // Buyer's payment actually collected
-  sellerPaidAt    DateTime? // Seller's take sent to their payout account
-  ownerPaidAt     DateTime? // Owner's fee sent to their payout account
-  createdAt       DateTime          @default(now())
+  id                    String            @id @default(cuid())
+  buyerId               String
+  sellerId              String
+  lineId                String
+  amount                Float // Seller's asking price (what seller receives)
+  ownerFee              Float             @default(0) // Fee paid to line owner
+  platformFee           Float             @default(0) // Fee paid to platform
+  stripePaymentId       String? // Checkout session ID
+  stripePaymentIntentId String? // Set once checkout completes; refund events arrive keyed by it
+  status                TransactionStatus @default(PENDING)
+  settledAt             DateTime? // Closed out: money collected and released, or returned to the buyer
+  capturedAt            DateTime? // Buyer's payment actually collected
+  sellerPaidAt          DateTime? // Seller's take sent to their payout account
+  ownerPaidAt           DateTime? // Owner's fee sent to their payout account
+  createdAt             DateTime          @default(now())
 
   @@index([lineId])
   @@index([buyerId])
   @@index([sellerId])
+  @@index([stripePaymentIntentId])
 }
 
 enum TransactionStatus {
