@@ -29,30 +29,25 @@ export async function settleTransactionsForUser(
     },
   })
 
-  const now = new Date()
-  const settledIds: string[] = []
+  if (transactions.length === 0) return 0
 
-  for (const transaction of transactions) {
-    // Explicitly check if BOTH parties are no longer in the line
-    const buyerPosition = await tx.linePosition.findUnique({
-      where: { lineId_userId: { lineId, userId: transaction.buyerId } },
-    })
-
-    const sellerPosition = await tx.linePosition.findUnique({
-      where: { lineId_userId: { lineId, userId: transaction.sellerId } },
-    })
-
-    // If neither party is in the line, settle the transaction
-    if (!buyerPosition && !sellerPosition) {
-      settledIds.push(transaction.id)
-    }
-  }
+  // A transaction settles once neither party is in the line any more
+  const parties = [...new Set(transactions.flatMap((t) => [t.buyerId, t.sellerId]))]
+  const stillInLine = new Set(
+    (await tx.linePosition.findMany({
+      where: { lineId, userId: { in: parties } },
+      select: { userId: true },
+    })).map((p) => p.userId)
+  )
+  const settledIds = transactions
+    .filter((t) => !stillInLine.has(t.buyerId) && !stillInLine.has(t.sellerId))
+    .map((t) => t.id)
 
   // Update all settleable transactions
   if (settledIds.length > 0) {
     await tx.transaction.updateMany({
       where: { id: { in: settledIds } },
-      data: { settledAt: now },
+      data: { settledAt: new Date() },
     })
   }
 

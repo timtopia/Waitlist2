@@ -8,9 +8,14 @@ const createMockTx = () => ({
     updateMany: vi.fn(),
   },
   linePosition: {
-    findUnique: vi.fn(),
+    findMany: vi.fn(),
   },
 })
+
+/** Mock which users still hold a position in the line */
+function stillInLine(mockTx: ReturnType<typeof createMockTx>, ...userIds: string[]) {
+  mockTx.linePosition.findMany.mockResolvedValue(userIds.map((userId) => ({ userId })))
+}
 
 describe("settleTransactionsForUser", () => {
   let mockTx: ReturnType<typeof createMockTx>
@@ -34,8 +39,7 @@ describe("settleTransactionsForUser", () => {
       },
     ])
 
-    // Both parties have left (no positions found)
-    mockTx.linePosition.findUnique.mockResolvedValue(null)
+    stillInLine(mockTx)
     mockTx.transaction.updateMany.mockResolvedValue({ count: 1 })
 
     const result = await settleTransactionsForUser(mockTx as any, lineId, userId)
@@ -61,10 +65,7 @@ describe("settleTransactionsForUser", () => {
       },
     ])
 
-    // Buyer still in line, seller not
-    mockTx.linePosition.findUnique
-      .mockResolvedValueOnce({ id: "pos", position: 1 }) // buyer found
-      .mockResolvedValueOnce(null) // seller not found
+    stillInLine(mockTx, "buyer-user")
 
     const result = await settleTransactionsForUser(mockTx as any, lineId, userId)
 
@@ -86,10 +87,7 @@ describe("settleTransactionsForUser", () => {
       },
     ])
 
-    // Buyer not found, seller still in line
-    mockTx.linePosition.findUnique
-      .mockResolvedValueOnce(null) // buyer not found
-      .mockResolvedValueOnce({ id: "pos", position: 2 }) // seller found
+    stillInLine(mockTx, "seller-user")
 
     const result = await settleTransactionsForUser(mockTx as any, lineId, userId)
 
@@ -110,13 +108,7 @@ describe("settleTransactionsForUser", () => {
     // txn-1: buyer (userId) gone, seller-1 gone -> settle
     // txn-2: buyer (userId) gone, seller-2 still in line -> don't settle
     // txn-3: buyer-3 gone, seller (userId) gone -> settle
-    mockTx.linePosition.findUnique
-      .mockResolvedValueOnce(null) // txn-1 buyer (userId)
-      .mockResolvedValueOnce(null) // txn-1 seller-1 gone
-      .mockResolvedValueOnce(null) // txn-2 buyer (userId)
-      .mockResolvedValueOnce({ id: "pos", position: 1 }) // txn-2 seller-2 still in line
-      .mockResolvedValueOnce(null) // txn-3 buyer-3 gone
-      .mockResolvedValueOnce(null) // txn-3 seller (userId)
+    stillInLine(mockTx, "seller-2")
 
     mockTx.transaction.updateMany.mockResolvedValue({ count: 2 })
 
