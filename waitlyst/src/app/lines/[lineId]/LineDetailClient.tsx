@@ -15,8 +15,9 @@ import { DropdownMenu } from "@/components/ui/DropdownMenu"
 import { useToast } from "@/components/ui/Toast"
 import { useLineUpdates, LineUpdateEvent } from "@/hooks/useLineUpdates"
 import { useNotifications } from "@/hooks/useNotifications"
-import { MemberStatusCard } from "@/components/MemberStatusCard"
+import { MemberStatusCard, NotificationState } from "@/components/MemberStatusCard"
 import { timeAgo } from "@/lib/format"
+import { getMemberStatus, diffMemberStatus, describeMemberEvent, memberTabTitle } from "@/lib/member-status"
 
 interface ActivityItem {
   id: string
@@ -73,7 +74,10 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [loading, setLoading] = useState(true)
   const [joining, setJoining] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false)
+  const [notificationPermission, setNotificationPermission] = useState<NotificationState>("unsupported")
+  const notificationsEnabled = notificationPermission === "granted"
+  const [departure, setDeparture] = useState<{ wasServed: boolean } | null>(null)
+  const [, setScheduleTick] = useState(0)
   const [deleting, setDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showAnnouncementEditor, setShowAnnouncementEditor] = useState(false)
@@ -142,9 +146,14 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
 
   useEffect(() => {
     if (typeof window !== "undefined" && "Notification" in window) {
-      setNotificationsEnabled(Notification.permission === "granted")
+      setNotificationPermission(Notification.permission)
     }
   }, [])
+
+  async function enableNotifications() {
+    const result = await requestPermission()
+    setNotificationPermission(result)
+  }
 
   // Fetch current user's payout setup status
   useEffect(() => {
@@ -210,36 +219,52 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     fetchActivity()
   }, [fetchLine, fetchActivity])
 
+  // Diff polls against what's on screen, not the previous poll: the viewer's
+  // own actions already refetched the line, so they never alert themselves.
+  const lineRef = useRef<Line | null>(null)
+  useEffect(() => {
+    lineRef.current = line
+  }, [line])
+
   const handleLineUpdate = useCallback((event: LineUpdateEvent) => {
-    if (event.type === "poll-update" && event.data) {
-      // Poll detected a change — use the fresh data directly (no extra fetch)
-      setLine(event.data as Line)
-      fetchActivity()
-      return
-    }
-
-    // SSE event — refetch and notify
-    fetchLine()
+    if (event.type !== "poll-update" || !event.data) return
+    const next = event.data as Line
+    const prev = lineRef.current
+    setLine(next)
     fetchActivity()
+    if (!prev) return
 
-    const messages: Record<string, string> = {
-      join: `${event.userName || "Someone"} joined the line`,
-      leave: `${event.userName || "Someone"} left the line — you may have moved up!`,
-      swap: "Positions were swapped!",
-      lock: "A position purchase is pending...",
-      "price-change": `${event.userName || "Someone"} changed their price`,
-      delete: "This line has been deleted",
+    for (const change of diffMemberStatus(prev, next, session?.user?.id)) {
+      if (change.kind === "removed") setDeparture({ wasServed: change.wasServed })
+      if (change.kind === "called" || change.kind === "next") setDeparture(null)
+      const alert = describeMemberEvent(change, next.name)
+      if (!alert) continue
+      sendNotification(alert.title, { body: alert.body, tag: `waitlyst-${lineId}` })
+      if (alert.toast && document.visibilityState === "visible") {
+        addToast(`${alert.title}: ${alert.body}`, alert.tone)
+      }
     }
-    const message = messages[event.type]
-    if (message) {
-      sendNotification(`Waitlyst - ${line?.name || "Line Update"}`, { body: message })
+  }, [fetchActivity, sendNotification, addToast, session?.user?.id, lineId])
+
+  const memberStatus = line ? getMemberStatus(line, session?.user?.id) : null
+  const nearFront = !!memberStatus && memberStatus.phase !== "served" && memberStatus.ahead <= 2
+
+  useLineUpdates(lineId, handleLineUpdate, {
+    intervalMs: nearFront ? 10000 : 30000,
+    pollWhenHidden: !!memberStatus && notificationsEnabled,
+  })
+
+  const tabTitle = line ? memberTabTitle(memberStatus, line.name) : null
+  useEffect(() => {
+    if (!tabTitle) return
+    const original = document.title
+    document.title = tabTitle
+    return () => {
+      document.title = original
     }
-  }, [fetchLine, fetchActivity, sendNotification, line?.name])
+  }, [tabTitle])
 
-  // Subscribe to real-time updates
-  useLineUpdates(lineId, handleLineUpdate)
-
-  const isInLine = line?.positions.some((p) => p.user.id === session?.user?.id)
+  const isInLine = !!memberStatus
   const isCreator = line?.createdBy.id === session?.user?.id
 
   const now = new Date()
@@ -250,6 +275,29 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const canJoin = !isInLine && !isCreator && !lineNotYetOpen && !lineClosed && !lineFull && !linePaused
   const userPosition = line?.positions.find((p) => p.user.id === session?.user?.id)
   const hasProductInfo = !!(line?.productName || line?.productImage)
+
+  // canJoin depends on the clock, but nothing re-rendered when opensAt or
+  // closesAt passed, so people waiting on a drop had to refresh to see Join.
+  const opensAtMs = line?.opensAt ? new Date(line.opensAt).getTime() : null
+  const closesAtMs = line?.closesAt ? new Date(line.closesAt).getTime() : null
+  const viewerId = session?.user?.id
+  useEffect(() => {
+    const nowMs = Date.now()
+    const upcoming = [opensAtMs, closesAtMs].filter((t): t is number => t !== null && t > nowMs)
+    if (upcoming.length === 0) return
+    const boundary = Math.min(...upcoming)
+    const delay = boundary - nowMs + 250
+    if (delay > 2_147_000_000) return
+    const timer = setTimeout(() => {
+      setScheduleTick((t) => t + 1)
+      const current = lineRef.current
+      if (boundary !== opensAtMs || !current || current.createdBy.id === viewerId) return
+      if (getMemberStatus(current, viewerId)) return
+      sendNotification("The line is open", { body: `${current.name} is open. Join now.`, tag: `waitlyst-${lineId}` })
+      addToast(`${current.name} is open. Join now!`, "success")
+    }, delay)
+    return () => clearTimeout(timer)
+  }, [opensAtMs, closesAtMs, viewerId, lineId, sendNotification, addToast])
 
   async function handleJoin(): Promise<boolean> {
     if (!session) {
@@ -455,6 +503,11 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                   {session ? "Join Line" : "Sign in to Join"}
                 </Button>
               )}
+              {!session && status !== "loading" && lineNotYetOpen && !linePaused && (
+                <Button variant="secondary" onClick={() => signIn("google", { callbackUrl: `/lines/${lineId}` })}>
+                  Sign in to get ready
+                </Button>
+              )}
               {isCreator && (
                 <>
                   <Link href={`/lines/${lineId}/edit`}>
@@ -512,22 +565,6 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
               {line.createdBy.name || "Anonymous"}
             </span>
           </div>
-          {session && (
-            <button
-              onClick={async () => {
-                const result = await requestPermission()
-                setNotificationsEnabled(result === "granted")
-              }}
-              className={`flex items-center gap-2 px-3 py-1.5 font-mono text-xs uppercase tracking-widest border transition-colors ${
-                notificationsEnabled
-                  ? "border-rule text-green-700"
-                  : "border-rule text-ink/60 hover:text-ink hover:border-ink"
-              }`}
-            >
-              <span className={`w-1.5 h-1.5 flex-shrink-0 ${notificationsEnabled ? "bg-green-600" : "bg-ink/30"}`} aria-hidden />
-              <span>{notificationsEnabled ? "Notifications On" : "Enable Notifications"}</span>
-            </button>
-          )}
           </div>
         </CardContent>
       </Card>
@@ -662,15 +699,51 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       )}
 
       {/* My Status Card — only for authenticated members in the line */}
-      {isInLine && userPosition && (
+      {memberStatus && userPosition && (
         <MemberStatusCard
-          position={userPosition.position}
+          status={memberStatus}
           maxCapacity={line.maxCapacity}
           totalPositions={line.positions.length}
           askingPrice={userPosition.askingPrice}
           lineId={line.id}
           hideCapacity={!isCreator && line.hideCapacity}
+          isPaused={linePaused}
+          calledAt={line.nowServingAt}
+          notificationPermission={notificationPermission}
+          onEnableNotifications={enableNotifications}
         />
+      )}
+
+      {!memberStatus && departure && (
+        <Card className={`mb-6 border-l-2 ${departure.wasServed ? "border-l-green-700" : "border-l-amber-600"}`}>
+          <div className="px-5 py-4 sm:px-6 flex items-start justify-between gap-4" role="status">
+            <div>
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/50">Your place</p>
+              <p className="text-xl font-semibold tracking-tight text-ink mt-1">
+                {departure.wasServed ? "You're all done here" : "You're no longer in this line"}
+              </p>
+              <p className="text-sm text-ink/60 mt-1">
+                {departure.wasServed
+                  ? "The organizer served you and cleared your spot. Thanks for waiting."
+                  : "The organizer removed you from the line."}
+              </p>
+              {canJoin && (
+                <Button size="sm" variant="secondary" className="mt-3" onClick={handleJoin} isLoading={joining}>
+                  Rejoin at the back
+                </Button>
+              )}
+            </div>
+            <button
+              onClick={() => setDeparture(null)}
+              className="text-ink/40 hover:text-ink flex-shrink-0"
+              aria-label="Dismiss"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </Card>
       )}
 
       <Card>

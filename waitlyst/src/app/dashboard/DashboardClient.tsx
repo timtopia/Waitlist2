@@ -10,6 +10,7 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal"
 import { DropdownMenu, DropdownMenuItem } from "@/components/ui/DropdownMenu"
 import { useToast } from "@/components/ui/Toast"
 import { timeAgo, formatCurrency } from "@/lib/format"
+import type { MemberPhase } from "@/lib/member-status"
 
 interface CreatedLine {
   id: string
@@ -31,11 +32,21 @@ interface Position {
   position: number
   askingPrice: string | null
   joinedAt: string
+  ahead: number
+  phase: MemberPhase
   line: {
     name: string
+    isActive: boolean
     createdAt: string
     _count: { positions: number }
   }
+}
+
+const phaseLabel: Record<MemberPhase, { text: (ahead: number) => string; className: string }> = {
+  called: { text: () => "Your turn. Head to the front", className: "text-accent font-semibold" },
+  next: { text: () => "You're next", className: "text-green-700" },
+  served: { text: () => "Served", className: "text-green-700" },
+  waiting: { text: (ahead) => `${ahead} ahead of you`, className: "text-ink/60" },
 }
 
 type StatusFilter = "all" | "active" | "paused"
@@ -155,8 +166,10 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
       result = result.filter(p => p.line.name.toLowerCase().includes(searchLower))
     }
 
-    // Sort
+    // Sort, but always surface a line that's calling you right now
     result = [...result].sort((a, b) => {
+      const calledFirst = Number(b.phase === "called") - Number(a.phase === "called")
+      if (calledFirst !== 0) return calledFirst
       if (positionsSort === "newest") return new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime()
       if (positionsSort === "oldest") return new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime()
       return b.line._count.positions - a.line._count.positions // most-members
@@ -584,7 +597,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
           {positions.length === 0 ? (
             <div className="text-center py-6">
               <p className="text-ink/60 mb-4">You haven&apos;t joined any lines yet.</p>
-              <Link href="/">
+              <Link href="/browse">
                 <Button variant="secondary">Browse Lines</Button>
               </Link>
             </div>
@@ -600,11 +613,19 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                   href={`/lines/${pos.lineId}`}
                   className="block"
                 >
-                  <div className="flex items-center justify-between p-4 bg-paper hover:bg-ink/5 transition-colors">
-                    <div>
+                  <div className={`flex items-center justify-between p-4 bg-paper hover:bg-ink/5 transition-colors ${
+                    pos.phase === "called" ? "border-l-2 border-l-accent" : ""
+                  }`}>
+                    <div className="min-w-0">
                       <h3 className="font-semibold tracking-tight">{pos.line.name}</h3>
-                      <p className="text-sm text-ink/60">
-                        {pos.line._count.positions} people in line
+                      <p className="text-sm">
+                        <span className={phaseLabel[pos.phase].className}>
+                          {phaseLabel[pos.phase].text(pos.ahead)}
+                        </span>
+                        <span className="text-ink/40">
+                          {" · "}{pos.line._count.positions} in line
+                          {!pos.line.isActive && " · Paused"}
+                        </span>
                       </p>
                     </div>
                     <div className="text-right">

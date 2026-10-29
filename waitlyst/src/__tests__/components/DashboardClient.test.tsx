@@ -57,8 +57,11 @@ const mockPositions = [
     position: 2,
     askingPrice: "15.00",
     joinedAt: "2025-01-01T00:00:00.000Z",
+    ahead: 1,
+    phase: "waiting" as const,
     line: {
       name: "Another Line",
+      isActive: true,
       createdAt: "2025-01-01T00:00:00.000Z",
       _count: { positions: 10 },
     },
@@ -104,6 +107,34 @@ describe("DashboardClient", () => {
     expect(screen.getByText("Another Line")).toBeInTheDocument()
     expect(screen.getByText("#2")).toBeInTheDocument()
     expect(screen.getByText("Open to swap: $15.00")).toBeInTheDocument()
+    expect(screen.getByText("1 ahead of you")).toBeInTheDocument()
+  })
+
+  it("surfaces a line that is calling you above the others, with a clear label", () => {
+    const positions = [
+      { ...mockPositions[0], id: "pos-a", lineId: "line-a", joinedAt: "2025-02-01T00:00:00.000Z", line: { ...mockPositions[0].line, name: "Newest Line" } },
+      {
+        ...mockPositions[0],
+        id: "pos-b",
+        lineId: "line-b",
+        position: 1,
+        ahead: 0,
+        phase: "called" as const,
+        joinedAt: "2024-12-01T00:00:00.000Z",
+        line: { ...mockPositions[0].line, name: "Calling Line", isActive: false },
+      },
+    ]
+    render(<DashboardClient createdLines={[]} positions={positions} />)
+    const names = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)
+    expect(names.indexOf("Calling Line")).toBeLessThan(names.indexOf("Newest Line"))
+    expect(screen.getByText("Your turn. Head to the front")).toBeInTheDocument()
+    expect(screen.getByText(/Paused/)).toBeInTheDocument()
+  })
+
+  it("points the empty positions state at the browse page", () => {
+    render(<DashboardClient createdLines={[]} positions={[]} />)
+    const browse = screen.getAllByRole("link").find((a) => a.textContent?.includes("Browse Lines"))
+    expect(browse).toHaveAttribute("href", "/browse")
   })
 
   it("renders created lines", () => {

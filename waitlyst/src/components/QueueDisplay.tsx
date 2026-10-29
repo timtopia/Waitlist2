@@ -329,6 +329,10 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
       if (res.ok) {
         addToast("You left the line", "info")
         onRefresh()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        addToast(data.error || "Couldn't leave the line. Please try again.", "error")
+        onRefresh()
       }
     } finally {
       setLoadingAction(null)

@@ -1,0 +1,63 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { renderHook } from "@testing-library/react"
+import { useLineUpdates } from "@/hooks/useLineUpdates"
+
+const fetchMock = vi.fn()
+global.fetch = fetchMock
+
+let visibility: "visible" | "hidden" = "visible"
+Object.defineProperty(document, "visibilityState", { configurable: true, get: () => visibility })
+
+function respondWith(body: string) {
+  fetchMock.mockResolvedValue({ ok: true, text: () => Promise.resolve(body) })
+}
+
+async function advance(ms: number) {
+  await vi.advanceTimersByTimeAsync(ms)
+}
+
+describe("useLineUpdates", () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    fetchMock.mockReset()
+    visibility = "visible"
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it("emits poll-update only when the line changes", async () => {
+    const onUpdate = vi.fn()
+    respondWith('{"v":1}')
+    renderHook(() => useLineUpdates("line-1", onUpdate, { intervalMs: 1000 }))
+    await advance(2000) // baseline
+    await advance(1000)
+    expect(onUpdate).not.toHaveBeenCalled()
+    respondWith('{"v":2}')
+    await advance(1000)
+    expect(onUpdate).toHaveBeenCalledWith({ type: "poll-update", data: { v: 2 } })
+  })
+
+  it("skips polls while hidden by default", async () => {
+    respondWith('{"v":1}')
+    renderHook(() => useLineUpdates("line-1", vi.fn(), { intervalMs: 1000 }))
+    await advance(2000)
+    const callsBefore = fetchMock.mock.calls.length
+    visibility = "hidden"
+    document.dispatchEvent(new Event("visibilitychange"))
+    await advance(5000)
+    expect(fetchMock.mock.calls.length).toBe(callsBefore)
+  })
+
+  it("keeps polling in the background when asked, so alerts can fire", async () => {
+    const onUpdate = vi.fn()
+    respondWith('{"v":1}')
+    renderHook(() => useLineUpdates("line-1", onUpdate, { intervalMs: 1000, pollWhenHidden: true }))
+    await advance(2000)
+    visibility = "hidden"
+    document.dispatchEvent(new Event("visibilitychange"))
+    respondWith('{"v":2}')
+    await advance(1000)
+    expect(onUpdate).toHaveBeenCalledWith({ type: "poll-update", data: { v: 2 } })
+  })
+})
