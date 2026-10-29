@@ -69,6 +69,22 @@ export function positionCalledEmail(
   return { subject, html: wrapTemplate(subject, body, "Go to Line", lineUrl) }
 }
 
+export function youreNextEmail(
+  userName: string,
+  lineName: string,
+  lineUrl: string
+): { subject: string; html: string } {
+  const safeName = escapeHtml(userName)
+  const safeLine = escapeHtml(lineName)
+  const subject = `You're next in ${lineName}`
+  const body = `
+    <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">You're next, ${safeName}</h2>
+    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">The person ahead of you in <strong>${safeLine}</strong> was just called.</p>
+    <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Head back now so you're ready when it's your turn.</p>
+  `
+  return { subject, html: wrapTemplate(subject, body, "Go to Line", lineUrl) }
+}
+
 export function swapOfferEmail(
   userName: string,
   lineName: string,

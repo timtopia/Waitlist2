@@ -28,7 +28,8 @@ vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }))
 const mockAuth = vi.fn()
 vi.mock("@/auth", () => ({ auth: () => mockAuth() }))
 
-vi.mock("@/lib/email", () => ({ sendEmail: vi.fn().mockResolvedValue(undefined) }))
+const sendEmail = vi.fn().mockResolvedValue(undefined)
+vi.mock("@/lib/email", () => ({ sendEmail: (...a: unknown[]) => sendEmail(...a) }))
 
 const abandonPendingTransaction = vi.fn().mockResolvedValue(true)
 vi.mock("@/lib/stripe", () => ({ abandonPendingTransaction: (...a: unknown[]) => abandonPendingTransaction(...a) }))
@@ -81,6 +82,37 @@ describe("POST /api/lines/[lineId]/call-next", () => {
       data: { status: "EXPIRED" },
     })
     expect(abandonPendingTransaction).not.toHaveBeenCalled()
+  })
+
+  it("emails the person now on deck the first time someone is called, not on a re-call", async () => {
+    asOwner()
+    const front = {
+      id: "pos-1", userId: "ann", position: 1, lockedBy: null, lockedUntil: null, calledAt: null as Date | null,
+      user: { name: "Ann", email: null, emailNotifications: false },
+    }
+    const onDeck = {
+      id: "pos-2", userId: "bob", position: 2,
+      user: { name: "Bob", email: "bob@test", emailNotifications: true },
+    }
+    mockPrisma.linePosition.findFirst.mockResolvedValueOnce(front).mockResolvedValueOnce(onDeck)
+    mockPrisma.line.update.mockResolvedValue({ id: "line-1", name: "Drop" })
+
+    const { POST } = await import("@/app/api/lines/[lineId]/call-next/route")
+    const call = () => POST(new Request("http://localhost/api/lines/line-1/call-next", { method: "POST" }), params)
+
+    await call()
+    expect(mockPrisma.linePosition.findFirst).toHaveBeenLastCalledWith(
+      expect.objectContaining({ where: { lineId: "line-1", fulfilled: false, position: { gt: 1 } } })
+    )
+    expect(sendEmail).toHaveBeenCalledTimes(1)
+    expect(sendEmail.mock.calls[0][0]).toBe("bob@test")
+    expect(sendEmail.mock.calls[0][1]).toBe("You're next in Drop")
+
+    // Ann is called again: Bob already knows
+    sendEmail.mockClear()
+    mockPrisma.linePosition.findFirst.mockResolvedValueOnce({ ...front, calledAt: new Date() })
+    await call()
+    expect(sendEmail).not.toHaveBeenCalled()
   })
 
   it("calls off a swap still on the payment page so the called person isn't pushed back", async () => {

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { sendEmail } from "@/lib/email"
-import { positionCalledEmail } from "@/lib/email-templates"
+import { positionCalledEmail, youreNextEmail } from "@/lib/email-templates"
 import { abandonPendingTransaction } from "@/lib/stripe"
 
 export async function POST(
@@ -66,13 +66,27 @@ export async function POST(
       }),
     ])
 
-    // Send email notification (fire-and-forget)
+    // Send email notifications (fire-and-forget)
+    const baseUrl = process.env.NEXTAUTH_URL || process.env.AUTH_URL || "http://localhost:3000"
+    const lineUrl = `${baseUrl}/lines/${lineId}`
     const calledUser = frontPosition.user
     if (calledUser?.email && calledUser.emailNotifications) {
-      const baseUrl = process.env.NEXTAUTH_URL || process.env.AUTH_URL || "http://localhost:3000"
-      const lineUrl = `${baseUrl}/lines/${lineId}`
       const { subject, html } = positionCalledEmail(userName, line.name, lineUrl)
       sendEmail(calledUser.email, subject, html).catch(() => {})
+    }
+
+    // Give whoever is now on deck a heads-up, but only the first time the
+    // person ahead is called -- re-calling them shouldn't email again.
+    if (!frontPosition.calledAt) {
+      const onDeck = await prisma.linePosition.findFirst({
+        where: { lineId, fulfilled: false, position: { gt: frontPosition.position } },
+        orderBy: { position: "asc" },
+        include: { user: { select: { name: true, email: true, emailNotifications: true } } },
+      })
+      if (onDeck?.user.email && onDeck.user.emailNotifications) {
+        const { subject, html } = youreNextEmail(onDeck.user.name || "there", line.name, lineUrl)
+        sendEmail(onDeck.user.email, subject, html).catch(() => {})
+      }
     }
 
     return NextResponse.json({
