@@ -16,6 +16,7 @@ import { useToast } from "@/components/ui/Toast"
 import { useLineUpdates, LineUpdateEvent } from "@/hooks/useLineUpdates"
 import { useNotifications } from "@/hooks/useNotifications"
 import { MemberStatusCard } from "@/components/MemberStatusCard"
+import { OwnerConsole } from "@/components/OwnerConsole"
 import { timeAgo } from "@/lib/format"
 
 interface ActivityItem {
@@ -92,6 +93,11 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const searchParams = useSearchParams()
   const { requestPermission, sendNotification } = useNotifications()
   const { addToast } = useToast()
+  const [justCreated, setJustCreated] = useState(() => searchParams.get("created") === "1")
+
+  useEffect(() => {
+    if (searchParams.get("created") === "1") router.replace(`/lines/${lineId}`, { scroll: false })
+  }, [searchParams, lineId, router])
 
   // Derive fee info from line data — updates automatically when line data changes via polling
   const feeInfo = line ? {
@@ -531,6 +537,21 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
           </div>
         </CardContent>
       </Card>
+
+      {isCreator && (
+        <OwnerConsole
+          lineId={line.id}
+          isActive={line.isActive}
+          nowServing={line.nowServing}
+          ownerFeePercent={line.ownerFeePercent}
+          positions={line.positions}
+          stripeEnabled={stripeEnabled}
+          hasPayoutSetup={hasPayoutSetup}
+          justCreated={justCreated}
+          onDismissCreated={() => setJustCreated(false)}
+          onChanged={refreshAll}
+        />
+      )}
 
       {/* Paused Banner */}
       {linePaused && (

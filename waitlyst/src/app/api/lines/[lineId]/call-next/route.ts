@@ -14,15 +14,18 @@ export async function POST(
   if (result instanceof NextResponse) return result
 
   try {
-    // Find the front person (position 1)
+    // Served (fulfilled) people stay in the line until cleared, so "next" is
+    // the first person who hasn't been served yet -- not simply position 1.
     const frontPosition = await prisma.linePosition.findFirst({
-      where: { lineId, position: 1 },
+      where: { lineId, fulfilled: false },
+      orderBy: { position: "asc" },
       include: { user: { select: { name: true, email: true, emailNotifications: true } } },
     })
 
     if (!frontPosition) {
+      const inLine = await prisma.linePosition.count({ where: { lineId } })
       return NextResponse.json(
-        { error: "No one in line to call" },
+        { error: inLine > 0 ? "Everyone in line has already been served" : "No one in line to call" },
         { status: 400 }
       )
     }
@@ -51,7 +54,8 @@ export async function POST(
 
     return NextResponse.json({
       calledUser: userName,
-      position: 1,
+      position: frontPosition.position,
+      positionId: frontPosition.id,
     })
   } catch (error) {
     console.error("Call next error:", error)

@@ -34,7 +34,14 @@ export async function GET(
     const totalCompleted = settledCompleted.reduce((sum, t) => sum + t.amount, 0)
     const pendingSettlement = unsettledCompleted.reduce((sum, t) => sum + t.amount, 0)
 
+    // The owner's own cut, as opposed to the swap volume above (which is
+    // money that goes to sellers).
+    const ownerFeeEarned = settledCompleted.reduce((sum, t) => sum + t.ownerFee, 0)
+    const ownerFeePending = unsettledCompleted.reduce((sum, t) => sum + t.ownerFee, 0)
+
     return NextResponse.json({
+      ownerFeeEarned,
+      ownerFeePending,
       totalTransactions: transactions.length,
       completedCount: settledCompleted.length,
       refundedCount: refunded.length,
