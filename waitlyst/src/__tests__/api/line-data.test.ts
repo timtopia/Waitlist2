@@ -213,15 +213,15 @@ describe("GET /api/lines/[lineId]/wait-time", () => {
     expect(data.basedOn).toBe(3)
   })
 
-  it("should fall back to joinedAt gaps when no settled transactions", async () => {
+  it("should estimate from fulfillments when there are no settled swaps", async () => {
     mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdAt: new Date() })
     mockPrisma.transaction.findMany.mockResolvedValue([])
 
     const base = new Date("2025-06-01T12:00:00Z")
     mockPrisma.linePosition.findMany.mockResolvedValue([
-      { joinedAt: new Date(base.getTime()) },
-      { joinedAt: new Date(base.getTime() + 5 * 60000) },
-      { joinedAt: new Date(base.getTime() + 10 * 60000) },
+      { fulfilledAt: new Date(base.getTime()) },
+      { fulfilledAt: new Date(base.getTime() + 5 * 60000) },
+      { fulfilledAt: new Date(base.getTime() + 10 * 60000) },
     ])
 
     const { GET } = await import("@/app/api/lines/[lineId]/wait-time/route")
@@ -232,10 +232,28 @@ describe("GET /api/lines/[lineId]/wait-time", () => {
     const data = await response.json()
     expect(data.estimatedMinutesPerPerson).toBe(5)
     expect(data.basedOn).toBe(3)
+    expect(mockPrisma.linePosition.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { lineId: "line-1", fulfilledAt: { not: null } } })
+    )
+  })
+
+  it("should not estimate from join times (a burst of joins says nothing about pace)", async () => {
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdAt: new Date() })
+    mockPrisma.transaction.findMany.mockResolvedValue([])
+    // No one has been served yet; the route only asks for fulfilled positions.
+    mockPrisma.linePosition.findMany.mockResolvedValue([])
+
+    const { GET } = await import("@/app/api/lines/[lineId]/wait-time/route")
+    const req = new Request("http://localhost/api/lines/line-1/wait-time")
+    const response = await GET(req, { params: Promise.resolve({ lineId: "line-1" }) })
+
+    const data = await response.json()
+    expect(data.estimatedMinutesPerPerson).toBeNull()
   })
 
   it("should deduplicate settled timestamps within 5 seconds", async () => {
     mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdAt: new Date() })
+    mockPrisma.linePosition.findMany.mockResolvedValue([])
 
     const base = new Date("2025-06-01T12:00:00Z")
     // Two transactions settled at the same moment, then one 6 minutes later, then another 6 minutes later

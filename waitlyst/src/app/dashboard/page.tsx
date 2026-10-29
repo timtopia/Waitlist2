@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { DashboardClient } from "./DashboardClient"
+import { getMemberPhase } from "@/lib/member-status"
 
 export const metadata: Metadata = {
   title: "Dashboard",
@@ -48,6 +49,14 @@ export default async function DashboardPage() {
 
   const isNewUser = createdLines.length === 0 && positions.length === 0
 
+  const aheadCounts = await Promise.all(
+    positions.map((pos) =>
+      prisma.linePosition.count({
+        where: { lineId: pos.lineId, position: { lt: pos.position }, fulfilled: false },
+      })
+    )
+  )
+
   return (
     <DashboardClient
       createdLines={createdLines.map((line) => ({
@@ -56,8 +65,15 @@ export default async function DashboardPage() {
         updatedAt: line.updatedAt.toISOString(),
         frontPerson: line.positions[0] || null,
       }))}
-      positions={positions.map((pos) => ({
+      positions={positions.map((pos, i) => ({
         ...pos,
+        ahead: aheadCounts[i],
+        phase: getMemberPhase({
+          fulfilled: pos.fulfilled,
+          ahead: aheadCounts[i],
+          nowServing: pos.line.nowServing,
+          userName: session.user.name ?? null,
+        }),
         askingPrice: pos.askingPrice?.toString() || null,
         joinedAt: pos.joinedAt.toISOString(),
         updatedAt: pos.updatedAt.toISOString(),
