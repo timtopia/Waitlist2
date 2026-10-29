@@ -26,14 +26,30 @@ export function paymentIntentIdOf(session: Stripe.Checkout.Session): string | nu
 
 /**
  * Remember which PaymentIntent paid for a transaction, so later events about
- * the charge (refunds) can find it without asking Stripe.
+ * the charge (refunds, the hold lapsing) can find it without asking Stripe,
+ * along with the deadline for collecting the held payment.
  */
 export async function recordPaymentIntent(transactionId: string, session: Stripe.Checkout.Session) {
   const paymentIntentId = paymentIntentIdOf(session)
   if (!paymentIntentId) return
-  await prisma.transaction.updateMany({
-    where: { id: transactionId, stripePaymentIntentId: null },
-    data: { stripePaymentIntentId: paymentIntentId },
+
+  let captureBefore: Date | null = null
+  const stripe = getStripe()
+  if (stripe) {
+    try {
+      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ["latest_charge"] })
+      const charge = paymentIntent.latest_charge
+      const deadline = typeof charge === "object" ? charge?.payment_method_details?.card?.capture_before : undefined
+      if (deadline) captureBefore = new Date(deadline * 1000)
+    } catch (error) {
+      // The deadline is only shown to the owner; don't fail the checkout over it
+      console.error(`recordPaymentIntent: couldn't read capture deadline for ${paymentIntentId}:`, error)
+    }
+  }
+
+  await prisma.transaction.update({
+    where: { id: transactionId },
+    data: { stripePaymentIntentId: paymentIntentId, ...(captureBefore && { captureBefore }) },
   })
 }
 

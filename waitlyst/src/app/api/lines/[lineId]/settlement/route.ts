@@ -2,6 +2,9 @@ import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 
+/** Warn the owner when a hold lapses within this long */
+const HOLD_WARNING_MS = 48 * 60 * 60 * 1000
+
 // Get settlement summary for a line (owner only)
 export async function GET(
   req: Request,
@@ -60,6 +63,8 @@ export async function GET(
         sellerUnpaid: !!txn.capturedAt && !txn.sellerPaidAt,
         ownerFeeUnpaid: !!txn.capturedAt && !txn.ownerPaidAt && txn.ownerFee > 0,
         stripePaymentId: txn.stripePaymentId,
+        captureBefore: txn.captureBefore?.toISOString() || null,
+        holdExpired: !!txn.holdExpiredAt,
         buyerFulfilled: buyerPos?.fulfilled ?? false,
         buyerPosition: buyerPos?.position ?? null,
         createdAt: txn.createdAt.toISOString(),
@@ -79,6 +84,12 @@ export async function GET(
     const totalAmount = completedTxns.reduce((sum, t) => sum + t.amount, 0)
     const capturedAmount = completedTxns.filter((t) => t.settledAt !== null).reduce((sum, t) => sum + t.amount, 0)
     const pendingAmount = completedTxns.filter((t) => t.settledAt === null).reduce((sum, t) => sum + t.amount, 0)
+
+    const now = Date.now()
+    const expiringTxns = completedTxns.filter(
+      (t) => t.settledAt === null && t.captureBefore && new Date(t.captureBefore).getTime() - now < HOLD_WARNING_MS
+    )
+    const expiredTxns = enrichedTransactions.filter((t) => t.holdExpired)
 
     const stuckTxns = enrichedTransactions.filter((t) => t.status === "PENDING")
     const stuckAmount = stuckTxns.reduce((sum, t) => sum + t.amount, 0)
@@ -105,6 +116,9 @@ export async function GET(
         pendingAmount,
         stuckCount: stuckTxns.length,
         stuckAmount,
+        expiringCount: expiringTxns.length,
+        expiredCount: expiredTxns.length,
+        expiredAmount: expiredTxns.reduce((sum, t) => sum + t.amount, 0),
         ownerFeeCaptured,
         ownerFeePending,
       },

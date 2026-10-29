@@ -257,6 +257,49 @@ describe("POST /api/webhooks/stripe", () => {
     expect(mockPrisma.transaction.update).not.toHaveBeenCalled()
   })
 
+  it("marks an uncollected purchase when Stripe lets its hold lapse", async () => {
+    mockConstructEvent.mockReturnValue({
+      type: "payment_intent.canceled",
+      data: { object: { id: "pi_exp", cancellation_reason: "automatic" } },
+    })
+    mockPrisma.transaction.findFirst.mockResolvedValue({ id: "txn-7", status: "COMPLETED", capturedAt: null })
+
+    const { POST } = await import("@/app/api/webhooks/stripe/route")
+    const response = await POST(makeRequest("{}"))
+
+    expect(response.status).toBe(200)
+    expect(mockPrisma.transaction.update).toHaveBeenCalledWith({
+      where: { id: "txn-7" },
+      data: { status: "FAILED", holdExpiredAt: expect.any(Date), settledAt: expect.any(Date) },
+    })
+  })
+
+  it("ignores cancellations the app made itself", async () => {
+    mockConstructEvent.mockReturnValue({
+      type: "payment_intent.canceled",
+      data: { object: { id: "pi_rel", cancellation_reason: "requested_by_customer" } },
+    })
+
+    const { POST } = await import("@/app/api/webhooks/stripe/route")
+    await POST(makeRequest("{}"))
+
+    expect(mockPrisma.transaction.findFirst).not.toHaveBeenCalled()
+    expect(mockPrisma.transaction.update).not.toHaveBeenCalled()
+  })
+
+  it("leaves an already-collected purchase alone when a hold event arrives", async () => {
+    mockConstructEvent.mockReturnValue({
+      type: "payment_intent.canceled",
+      data: { object: { id: "pi_cap", cancellation_reason: "automatic" } },
+    })
+    mockPrisma.transaction.findFirst.mockResolvedValue({ id: "txn-8", status: "COMPLETED", capturedAt: new Date() })
+
+    const { POST } = await import("@/app/api/webhooks/stripe/route")
+    await POST(makeRequest("{}"))
+
+    expect(mockPrisma.transaction.update).not.toHaveBeenCalled()
+  })
+
   it("should return 200 for unhandled event types", async () => {
     mockConstructEvent.mockReturnValue({
       type: "some.unknown.event",

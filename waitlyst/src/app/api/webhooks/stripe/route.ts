@@ -7,6 +7,25 @@ import {
   recordPaymentIntent,
 } from "@/lib/stripe"
 import { prisma } from "@/lib/prisma"
+import type Stripe from "stripe"
+
+/** The purchase a PaymentIntent paid for. */
+async function transactionForPaymentIntent(stripe: Stripe, paymentIntentId: string) {
+  const transaction = await prisma.transaction.findFirst({
+    where: { stripePaymentIntentId: paymentIntentId },
+  })
+  if (transaction) return transaction
+
+  // Purchases made before the PaymentIntent was recorded
+  const sessions = await stripe.checkout.sessions.list({
+    payment_intent: paymentIntentId,
+    limit: 1,
+  })
+  if (sessions.data.length === 0) return null
+  return prisma.transaction.findFirst({
+    where: { stripePaymentId: sessions.data[0].id },
+  })
+}
 
 export async function POST(req: Request) {
   const stripe = getStripe()
@@ -114,27 +133,31 @@ export async function POST(req: Request) {
           : charge.payment_intent?.id
         if (!paymentIntentId) break
 
-        let transaction = await prisma.transaction.findFirst({
-          where: { stripePaymentIntentId: paymentIntentId },
-        })
-        if (!transaction) {
-          // Purchases made before the PaymentIntent was recorded
-          const sessions = await stripe.checkout.sessions.list({
-            payment_intent: paymentIntentId,
-            limit: 1,
-          })
-          if (sessions.data.length > 0) {
-            transaction = await prisma.transaction.findFirst({
-              where: { stripePaymentId: sessions.data[0].id },
-            })
-          }
-        }
-
+        const transaction = await transactionForPaymentIntent(stripe, paymentIntentId)
         if (transaction && transaction.status !== "REFUNDED") {
           await prisma.transaction.update({
             where: { id: transaction.id },
             data: { status: "REFUNDED", settledAt: new Date() },
           })
+        }
+
+        break
+      }
+
+      case "payment_intent.canceled": {
+        // "automatic" is Stripe letting an uncollected hold lapse. Our own
+        // releases cancel with other reasons and are already recorded.
+        const paymentIntent = event.data.object
+        if (paymentIntent.cancellation_reason !== "automatic") break
+
+        const transaction = await transactionForPaymentIntent(stripe, paymentIntent.id)
+        if (transaction && transaction.status === "COMPLETED" && !transaction.capturedAt) {
+          const now = new Date()
+          await prisma.transaction.update({
+            where: { id: transaction.id },
+            data: { status: "FAILED", holdExpiredAt: now, settledAt: now },
+          })
+          console.warn(`Webhook: hold lapsed before collection for transaction ${transaction.id}`)
         }
 
         break

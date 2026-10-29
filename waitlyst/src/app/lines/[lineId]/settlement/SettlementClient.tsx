@@ -22,6 +22,9 @@ interface Transaction {
   sellerUnpaid?: boolean
   ownerFeeUnpaid?: boolean
   stripePaymentId: string | null
+  /** The buyer's card hold lapses after this unless collected */
+  captureBefore?: string | null
+  holdExpired?: boolean
   buyerFulfilled: boolean
   buyerPosition: number | null
   createdAt: string
@@ -36,6 +39,9 @@ interface Summary {
   pendingAmount: number
   stuckCount: number
   stuckAmount: number
+  expiringCount?: number
+  expiredCount?: number
+  expiredAmount?: number
   ownerFeeCaptured: number
   ownerFeePending: number
 }
@@ -43,6 +49,10 @@ interface Summary {
 interface SettlementData {
   transactions: Transaction[]
   summary: Summary
+}
+
+function formatDeadline(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
 }
 
 interface SettlementClientProps {
@@ -280,6 +290,14 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
         </span>
       )
     }
+    if (txn.holdExpired) {
+      return (
+        <span className="inline-flex flex-col items-center">
+          <span className="font-mono text-xs uppercase tracking-widest text-accent">Hold expired</span>
+          <span className="text-xs text-ink/50 mt-0.5">Not collected in time</span>
+        </span>
+      )
+    }
     if (txn.status === "FAILED") {
       return (
         <span className="inline-flex items-center font-mono text-xs uppercase tracking-widest text-ink/50">
@@ -311,16 +329,23 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
         </span>
       )
     }
+    const deadline = txn.captureBefore && (
+      <span className="text-xs text-amber-600 mt-0.5" title="The buyer's card hold lapses after this and the payment can no longer be collected">
+        Collect by {formatDeadline(txn.captureBefore)}
+      </span>
+    )
     if (txn.buyerFulfilled) {
       return (
-        <span className="inline-flex items-center font-mono text-xs uppercase tracking-widest text-green-700">
-          Fulfilled
+        <span className="inline-flex flex-col items-center">
+          <span className="font-mono text-xs uppercase tracking-widest text-green-700">Fulfilled</span>
+          {deadline}
         </span>
       )
     }
     return (
-      <span className="inline-flex items-center font-mono text-xs uppercase tracking-widest text-amber-600">
-        Not fulfilled
+      <span className="inline-flex flex-col items-center">
+        <span className="font-mono text-xs uppercase tracking-widest text-amber-600">Not fulfilled</span>
+        {deadline}
       </span>
     )
   }
@@ -536,6 +561,26 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
               >
                 View Payout Dashboard &rarr;
               </Link>
+            </div>
+          )}
+          {(summary.expiringCount ?? 0) > 0 && (
+            <div className="mt-4 pt-4 border-t border-rule">
+              <p className="font-mono text-sm tabular-nums text-amber-600">
+                {summary.expiringCount} payment hold{summary.expiringCount === 1 ? "" : "s"} expire{summary.expiringCount === 1 ? "s" : ""} within 48 hours
+              </p>
+              <p className="text-xs text-ink/50 mt-0.5">
+                Card holds only last about a week. Capture or release these before their deadline, or the money can&apos;t be collected.
+              </p>
+            </div>
+          )}
+          {(summary.expiredCount ?? 0) > 0 && (
+            <div className="mt-4 pt-4 border-t border-rule">
+              <p className="font-mono text-sm tabular-nums text-accent">
+                {summary.expiredCount} hold{summary.expiredCount === 1 ? "" : "s"} expired before collection ({formatCurrency(summary.expiredAmount ?? 0)})
+              </p>
+              <p className="text-xs text-ink/50 mt-0.5">
+                The buyer kept the spot but wasn&apos;t charged, and the seller won&apos;t be paid for it.
+              </p>
             </div>
           )}
           {summary.stuckCount > 0 && (
