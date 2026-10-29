@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { prisma } from "@/lib/prisma"
+import { capacityView } from "@/lib/capacity"
 import { LineDetailClient } from "./LineDetailClient"
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || "https://waitlyst.app"
@@ -20,8 +21,9 @@ async function getLine(lineId: string) {
 
 function buildDescription(line: NonNullable<Awaited<ReturnType<typeof getLine>>>) {
   const positionCount = line._count.positions
-  const capacityText = line.maxCapacity
-    ? `${positionCount}/${line.maxCapacity} spots filled`
+  const { maxCapacity, isFull } = capacityView(line, positionCount)
+  const capacityText = maxCapacity
+    ? `${positionCount}/${maxCapacity} spots filled`
     : `${positionCount} ${positionCount === 1 ? "person" : "people"} in line`
 
   let statusText = ""
@@ -35,7 +37,7 @@ function buildDescription(line: NonNullable<Awaited<ReturnType<typeof getLine>>>
     })}`
   } else if (line.closesAt && now > new Date(line.closesAt)) {
     statusText = "Closed"
-  } else if (line.maxCapacity && positionCount >= line.maxCapacity) {
+  } else if (isFull) {
     statusText = "Full"
   } else {
     statusText = "Open now"
@@ -99,7 +101,7 @@ export default async function LineDetailPage({ params }: Props) {
             "@type": "Offer",
             price: line.productPrice,
             priceCurrency: "USD",
-            availability: line.maxCapacity && line._count.positions >= line.maxCapacity
+            availability: capacityView(line, line._count.positions).isFull
               ? "https://schema.org/SoldOut"
               : "https://schema.org/InStock",
           },
@@ -124,7 +126,7 @@ export default async function LineDetailPage({ params }: Props) {
         eventAttendanceMode: "https://schema.org/OnlineEventAttendanceMode",
         ...(line.opensAt && { startDate: new Date(line.opensAt).toISOString() }),
         ...(line.closesAt && { endDate: new Date(line.closesAt).toISOString() }),
-        ...(line.maxCapacity && {
+        ...(!line.hideCapacity && line.maxCapacity && {
           maximumAttendeeCapacity: line.maxCapacity,
         }),
       }

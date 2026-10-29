@@ -4,6 +4,8 @@ interface LineWithSchedule {
   opensAt?: string | null
   closesAt?: string | null
   maxCapacity?: number | null
+  /** Sent by the server, which knows the limit even when it's hidden */
+  isFull?: boolean
   _count: { positions: number }
 }
 
@@ -11,7 +13,7 @@ export function getLineStatus(line: LineWithSchedule): LineStatus {
   const now = new Date()
   if (line.opensAt && now < new Date(line.opensAt)) return "upcoming"
   if (line.closesAt && now > new Date(line.closesAt)) return "closed"
-  if (line.maxCapacity && line._count.positions >= line.maxCapacity) return "full"
+  if (line.isFull ?? (line.maxCapacity && line._count.positions >= line.maxCapacity)) return "full"
   return "open"
 }
 

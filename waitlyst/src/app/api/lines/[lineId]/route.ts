@@ -4,6 +4,8 @@ import { requireLineOwner } from "@/lib/auth-helpers"
 import { expireCheckoutSession, returnBuyerFunds } from "@/lib/stripe"
 import { getPlatformFeePercent } from "@/lib/fees"
 import { rateLimit } from "@/lib/rate-limit"
+import { capacityView } from "@/lib/capacity"
+import { auth } from "@/auth"
 
 const getLimiter = rateLimit({ interval: 60_000, limit: 60 })
 
@@ -40,7 +42,10 @@ export async function GET(
       return NextResponse.json({ error: "Line not found" }, { status: 404 })
     }
 
-    return NextResponse.json({ ...line, platformFeePercent: getPlatformFeePercent() }, {
+    const session = await auth()
+    const capacity = capacityView(line, line.positions.length, session?.user?.id)
+
+    return NextResponse.json({ ...line, ...capacity, platformFeePercent: getPlatformFeePercent() }, {
       headers: {
         "Cache-Control": "no-store, no-cache, must-revalidate",
       },

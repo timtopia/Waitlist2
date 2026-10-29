@@ -34,7 +34,9 @@ interface Line {
   isActive: boolean
   opensAt: string | null
   closesAt: string | null
-  maxCapacity: number | null
+  maxCapacity: number | null // null when hidden from this viewer
+  hasCapacityLimit: boolean
+  isFull: boolean
   ownerFeePercent: number
   platformFeePercent: number
   announcement: string | null
@@ -279,7 +281,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const linePaused = line ? !line.isActive : false
   const lineNotYetOpen = line?.opensAt && now < new Date(line.opensAt)
   const lineClosed = line?.closesAt && now > new Date(line.closesAt)
-  const lineFull = line?.maxCapacity ? line.positions.length >= line.maxCapacity : false
+  const lineFull = line?.isFull ?? false
   const canJoin = !isInLine && !isCreator && !lineNotYetOpen && !lineClosed && !lineFull && !linePaused
   const userPosition = line?.positions.find((p) => p.user.id === session?.user?.id)
   const hasProductInfo = !!(line?.productName || line?.productImage)
@@ -709,14 +711,15 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       )}
 
       {/* Status Banner */}
-      {(line.opensAt || line.closesAt || line.maxCapacity) && (
+      {(line.opensAt || line.closesAt || line.hasCapacityLimit) && (
         <div className="mb-6">
           <LineStatusBanner
             opensAt={line.opensAt}
             closesAt={line.closesAt}
             maxCapacity={line.maxCapacity}
             currentCount={line.positions.length}
-            hideCapacity={!isCreator && line.hideCapacity}
+            isFull={line.isFull}
+            hideCapacity={line.hasCapacityLimit && line.maxCapacity === null}
           />
         </div>
       )}
@@ -775,9 +778,9 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             <h2 className="text-lg font-semibold tracking-tight text-ink">
               Queue ({line.positions.length} {line.positions.length === 1 ? "person" : "people"})
             </h2>
-            {line.maxCapacity != null && (
+            {line.hasCapacityLimit && (
               <div className="flex items-center gap-3">
-                {(!line.hideCapacity || isCreator) ? (
+                {line.maxCapacity !== null ? (
                   <span className="font-mono text-xs uppercase tracking-widest text-ink/40 tabular-nums">
                     {line.positions.length} of {line.maxCapacity} spots filled
                   </span>
@@ -786,7 +789,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                     Limited spots available
                   </span>
                 )}
-                {userPosition && (
+                {userPosition && line.maxCapacity !== null && (
                   userPosition.position <= line.maxCapacity ? (
                     <span className="inline-flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-green-700">
                       <span className="w-1.5 h-1.5 bg-green-600" aria-hidden />

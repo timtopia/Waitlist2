@@ -127,7 +127,7 @@ describe("Lines API", () => {
   describe("GET /api/lines", () => {
     it("should return only public active lines", async () => {
       mockPrisma.line.findMany.mockResolvedValue([
-        { id: "line-1", name: "Public Line", isPublic: true, isActive: true, positions: [] },
+        { id: "line-1", name: "Public Line", isPublic: true, isActive: true, maxCapacity: null, hideCapacity: false, createdById: "creator-1", _count: { positions: 0 } },
       ])
 
       const { GET } = await import("@/app/api/lines/route")
@@ -140,6 +140,19 @@ describe("Lines API", () => {
           where: { isActive: true, isPublic: true },
         })
       )
+    })
+
+    it("hides a hidden capacity but still says whether the line is full", async () => {
+      mockPrisma.line.findMany.mockResolvedValue([
+        { id: "line-1", maxCapacity: 3, hideCapacity: true, createdById: "creator-1", _count: { positions: 3 } },
+        { id: "line-2", maxCapacity: 50, hideCapacity: false, createdById: "creator-1", _count: { positions: 3 } },
+      ])
+
+      const { GET } = await import("@/app/api/lines/route")
+      const data = await (await GET(new Request("http://localhost/api/lines"))).json()
+
+      expect(data[0]).toMatchObject({ maxCapacity: null, hasCapacityLimit: true, isFull: true })
+      expect(data[1]).toMatchObject({ maxCapacity: 50, hasCapacityLimit: true, isFull: false })
     })
   })
 })
@@ -162,6 +175,29 @@ describe("GET /api/lines/[lineId]", () => {
     const response = await GET(req, { params: Promise.resolve({ lineId: "line-1" }) })
 
     expect(response.status).toBe(200)
+  })
+
+  it("hides a hidden capacity from everyone but the owner", async () => {
+    mockPrisma.line.findUnique.mockResolvedValue({
+      id: "line-1",
+      createdById: "owner-1",
+      maxCapacity: 10,
+      hideCapacity: true,
+      createdBy: { id: "owner-1", name: "Creator", image: null },
+      positions: [{ id: "p1" }],
+    })
+    const { GET } = await import("@/app/api/lines/[lineId]/route")
+    const get = async () =>
+      (await GET(new Request("http://localhost/api/lines/line-1"), { params: Promise.resolve({ lineId: "line-1" }) })).json()
+
+    mockAuth.mockResolvedValue({ user: { id: "member-1" } })
+    expect(await get()).toMatchObject({ maxCapacity: null, hasCapacityLimit: true, isFull: false })
+
+    mockAuth.mockResolvedValue(null)
+    expect(await get()).toMatchObject({ maxCapacity: null })
+
+    mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
+    expect(await get()).toMatchObject({ maxCapacity: 10 })
   })
 
   it("should return 404 if line not found", async () => {

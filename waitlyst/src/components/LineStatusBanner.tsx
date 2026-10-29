@@ -6,8 +6,11 @@ import { formatTimeLeft } from "@/lib/format"
 interface LineStatusBannerProps {
   opensAt: string | null
   closesAt: string | null
+  /** null when there's no limit or it's hidden from this viewer */
   maxCapacity: number | null
   currentCount: number
+  isFull: boolean
+  /** The line has a limit this viewer isn't shown */
   hideCapacity?: boolean
 }
 
@@ -20,8 +23,7 @@ type LineStatus =
 function getLineStatus(
   opensAt: string | null,
   closesAt: string | null,
-  maxCapacity: number | null,
-  currentCount: number
+  isFull: boolean
 ): LineStatus {
   const now = new Date()
 
@@ -33,14 +35,14 @@ function getLineStatus(
     return { state: "closed" }
   }
 
-  if (maxCapacity && currentCount >= maxCapacity) {
+  if (isFull) {
     return { state: "full" }
   }
 
   return { state: "open", closesAt: closesAt ? new Date(closesAt) : null }
 }
 
-export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount, hideCapacity = false }: LineStatusBannerProps) {
+export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount, isFull, hideCapacity = false }: LineStatusBannerProps) {
   const [now, setNow] = useState(new Date())
 
   useEffect(() => {
@@ -48,7 +50,7 @@ export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount,
     return () => clearInterval(interval)
   }, [])
 
-  const status = getLineStatus(opensAt, closesAt, maxCapacity, currentCount)
+  const status = getLineStatus(opensAt, closesAt, isFull)
 
   return (
     <div className="space-y-3">
@@ -141,13 +143,13 @@ export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount,
         <div className="border border-rule border-l-2 border-l-accent bg-white px-4 py-3">
           <p className="font-mono text-xs uppercase tracking-widest text-accent">Line is Full</p>
           <p className="text-sm text-ink/60 mt-1">
-            {hideCapacity ? "All spots have been taken." : `All ${maxCapacity} spots have been taken.`}
+            {maxCapacity === null ? "All spots have been taken." : `All ${maxCapacity} spots have been taken.`}
           </p>
         </div>
       )}
 
       {/* Capacity Bar */}
-      {maxCapacity && status.state !== "closed" && !hideCapacity && (
+      {maxCapacity !== null && status.state !== "closed" && (
         <div className="bg-white border border-rule px-4 py-3">
           <div className="flex items-center justify-between mb-2">
             <p className="font-mono text-xs uppercase tracking-widest text-ink/50">Spots Filled</p>
@@ -176,7 +178,7 @@ export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount,
       )}
 
       {/* Hidden capacity indicator */}
-      {maxCapacity && status.state !== "closed" && status.state !== "full" && hideCapacity && (
+      {status.state !== "closed" && status.state !== "full" && hideCapacity && (
         <div className="bg-white border border-rule px-4 py-3">
           <p className="font-mono text-xs uppercase tracking-widest text-ink/50">Limited capacity</p>
         </div>
