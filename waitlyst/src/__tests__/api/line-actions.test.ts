@@ -29,6 +29,7 @@ const mockPrisma = {
   user: {
     update: vi.fn(),
   },
+  $queryRaw: vi.fn(),
   $transaction: vi.fn((fn) => fn(mockPrisma)),
 }
 

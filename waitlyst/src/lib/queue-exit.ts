@@ -43,6 +43,16 @@ export async function removeByOrganizer(
 }
 
 /**
+ * Serialize changes to a line's queue. Joins compute the next position from
+ * the current maximum and exits shift everyone behind up a place; without a
+ * shared lock two of these running at once can hand out the same position or
+ * leave a gap.
+ */
+export async function lockLine(tx: Prisma.TransactionClient, lineId: string) {
+  await tx.$queryRaw`SELECT id FROM "Line" WHERE id = ${lineId} FOR UPDATE`
+}
+
+/**
  * Take someone out of a line, however they're leaving. Every exit path
  * (leaving, the organizer removing them, clearing the front) goes through
  * here so they all record the visit, release any checkout the spot was
@@ -57,6 +67,7 @@ export async function exitQueue(
   reason: "LEFT" | "REMOVED"
 ): Promise<{ abandonedSessionId: string | null }> {
   const { lineId, userId } = position
+  await lockLine(tx, lineId)
 
   let abandonedSessionId: string | null = null
   let abandonedTransactionId: string | null = null

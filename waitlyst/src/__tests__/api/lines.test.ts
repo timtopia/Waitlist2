@@ -35,6 +35,7 @@ const mockPrisma = {
   user: {
     findMany: vi.fn(),
   },
+  $queryRaw: vi.fn(),
   $transaction: vi.fn((fn) => fn(mockPrisma)),
 }
 
@@ -294,11 +295,8 @@ describe("Join Line API", () => {
 
   it("should not allow joining an inactive line", async () => {
     mockAuth.mockResolvedValue({ user: { id: "user-1" } })
-    mockPrisma.line.findUnique.mockResolvedValue({
-      id: "line-1",
-      createdById: "creator-1",
-      isActive: false,
-    })
+    // The route queries with isActive: true, so an inactive line isn't found
+    mockPrisma.line.findUnique.mockResolvedValue(null)
 
     const { POST } = await import("@/app/api/lines/[lineId]/join/route")
     const req = new Request("http://localhost/api/lines/line-1/join", {
@@ -337,6 +335,25 @@ describe("Join Line API", () => {
 
     const response = await POST(req, { params: Promise.resolve({ lineId: "line-1" }) })
     expect(response.status).toBe(200)
+    // The line row is locked before the next position is read
+    const lockOrder = mockPrisma.$queryRaw.mock.invocationCallOrder[0]
+    const readOrder = mockPrisma.linePosition.findFirst.mock.invocationCallOrder[0]
+    expect(lockOrder).toBeLessThan(readOrder)
+    expect(mockPrisma.$queryRaw.mock.calls[0][0].join("")).toContain("FOR UPDATE")
+  })
+
+  it("returns 500 without leaking the database error when the join fails unexpectedly", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "user-2" } })
+    mockPrisma.$transaction.mockRejectedValueOnce(new Error("Unique constraint failed on the fields: (`lineId`,`position`)"))
+
+    vi.resetModules()
+    const { POST } = await import("@/app/api/lines/[lineId]/join/route")
+    const req = new Request("http://localhost/api/lines/line-1/join", { method: "POST" })
+
+    const response = await POST(req, { params: Promise.resolve({ lineId: "line-1" }) })
+    expect(response.status).toBe(500)
+    const data = await response.json()
+    expect(data.error).not.toContain("constraint")
   })
 })
 

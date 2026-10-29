@@ -2,6 +2,10 @@ import { NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { rateLimit } from "@/lib/rate-limit"
+import { lockLine } from "@/lib/queue-exit"
+
+/** A reason the join was refused, safe to show the user. */
+class JoinRefusedError extends Error {}
 
 const limiter = rateLimit({ interval: 60_000, limit: 5 })
 
@@ -24,27 +28,31 @@ export async function POST(
 
   try {
     const position = await prisma.$transaction(async (tx) => {
+      // Hold the line until this join commits so concurrent joins can't take
+      // the same position or slip past the capacity check together.
+      await lockLine(tx, lineId)
+
       // Check if line exists and is active
       const line = await tx.line.findUnique({
         where: { id: lineId, isActive: true },
       })
       if (!line) {
-        throw new Error("Line not found or inactive")
+        throw new JoinRefusedError("Line not found or inactive")
       }
 
       // Check if line has opened yet
       if (line.opensAt && new Date() < new Date(line.opensAt)) {
-        throw new Error("This line hasn't opened yet")
+        throw new JoinRefusedError("This line hasn't opened yet")
       }
 
       // Check if line has closed
       if (line.closesAt && new Date() > new Date(line.closesAt)) {
-        throw new Error("This line is closed")
+        throw new JoinRefusedError("This line is closed")
       }
 
       // Creator cannot join their own line
       if (line.createdById === result.userId) {
-        throw new Error("You cannot join your own line")
+        throw new JoinRefusedError("You cannot join your own line")
       }
 
       // Check if already in line
@@ -52,7 +60,7 @@ export async function POST(
         where: { lineId_userId: { lineId, userId: result.userId } },
       })
       if (existing) {
-        throw new Error("Already in this line")
+        throw new JoinRefusedError("Already in this line")
       }
 
       // Check capacity
@@ -61,7 +69,7 @@ export async function POST(
           where: { lineId },
         })
         if (currentCount >= line.maxCapacity) {
-          throw new Error("This line is full")
+          throw new JoinRefusedError("This line is full")
         }
       }
 
@@ -87,8 +95,13 @@ export async function POST(
 
     return NextResponse.json(position)
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Could not join this line. Please try again."
+    if (error instanceof JoinRefusedError) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
     console.error("Join line error:", error)
-    return NextResponse.json({ error: message }, { status: 400 })
+    return NextResponse.json(
+      { error: "Could not join this line. Please try again." },
+      { status: 500 }
+    )
   }
 }
