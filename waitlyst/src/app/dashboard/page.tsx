@@ -24,7 +24,8 @@ export default async function DashboardPage() {
       include: {
         _count: { select: { positions: true } },
         positions: {
-          where: { position: 1 },
+          where: { fulfilled: false },
+          orderBy: { position: "asc" },
           include: {
             user: { select: { id: true, name: true } },
           },

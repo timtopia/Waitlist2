@@ -123,6 +123,19 @@ describe("QueueDisplay", () => {
     expect(screen.getByText("(Next up)")).toBeInTheDocument()
   })
 
+  it("moves (Next up) past people who have already been served", () => {
+    ;(useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      data: { user: { id: "viewer" } },
+      status: "authenticated",
+    })
+
+    const positions = mockPositions.map((p) => (p.id === "pos-1" ? { ...p, fulfilled: true } : p))
+    render(<QueueDisplay lineId="line-1" positions={positions} onRefresh={mockOnRefresh} />)
+
+    const nextUp = screen.getByText("(Next up)")
+    expect(nextUp.closest("p")).toHaveTextContent("Bob")
+  })
+
   it("shows Offer to Swap button for position directly in front", () => {
     ;(useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       data: { user: { id: "user-2" } },

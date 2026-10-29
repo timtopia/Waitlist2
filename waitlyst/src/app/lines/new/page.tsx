@@ -215,7 +215,7 @@ function CreateLineForm() {
 
       if (res.ok) {
         const line = await res.json()
-        router.push(`/lines/${line.id}`)
+        router.push(`/lines/${line.id}?created=1`)
       } else {
         const data = await res.json()
         setError(data.error || "Failed to create line")

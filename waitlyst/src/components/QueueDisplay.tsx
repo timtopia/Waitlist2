@@ -668,7 +668,10 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
           {positions.map((pos) => {
             const isCurrentUser = pos.user.id === session?.user?.id
             const isLocked = pos.lockedUntil && new Date(pos.lockedUntil) > new Date()
-            const isFront = pos.position === 1
+            // Served people stay listed until cleared, so the front of the
+            // queue is the first unserved person, not position 1.
+            const unservedAhead = positions.filter((p) => p.position < pos.position && !p.fulfilled).length
+            const isFront = !pos.fulfilled && unservedAhead === 0
             const isSelected = selectedIds.has(pos.id)
             const canSelect = selectMode && isCreator && !isCurrentUser
             const isDirectlyInFront = positionInFront?.id === pos.id
@@ -755,9 +758,9 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                           Swap pending
                         </p>
                       )}
-                      {!isFront && waitTimeData?.estimatedMinutesPerPerson != null && (
+                      {!isFront && !pos.fulfilled && waitTimeData?.estimatedMinutesPerPerson != null && (
                         <p className="text-xs text-ink/40">
-                          Est. wait: {formatWaitTime(waitTimeData.estimatedMinutesPerPerson * (pos.position - 1))}
+                          Est. wait: {formatWaitTime(waitTimeData.estimatedMinutesPerPerson * unservedAhead)}
                         </p>
                       )}
                     </div>

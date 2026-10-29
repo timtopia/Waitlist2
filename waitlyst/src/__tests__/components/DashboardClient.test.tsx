@@ -35,6 +35,7 @@ const mockCreatedLines = [
     _count: { positions: 5 },
     frontPerson: {
       id: "pos-1",
+      position: 1,
       user: { id: "user-1", name: "Alice" },
     },
   },
@@ -324,7 +325,36 @@ describe("DashboardClient", () => {
 
       await waitFor(() => {
         expect(screen.getByText("$100.00")).toBeInTheDocument()
-        expect(screen.getByText("Net Revenue (Settled)")).toBeInTheDocument()
+        expect(screen.getByText("Net Swap Volume (Settled)")).toBeInTheDocument()
+      })
+    })
+
+    it("leads with the owner's own fee earnings, separate from swap volume", async () => {
+      ;(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          ownerFeeEarned: 12.5,
+          ownerFeePending: 4,
+          totalTransactions: 3,
+          completedCount: 2,
+          refundedCount: 0,
+          pendingSettlementCount: 1,
+          totalCompleted: 125,
+          totalRefunded: 0,
+          pendingSettlement: 40,
+          netRevenue: 125,
+        }),
+      })
+
+      render(<DashboardClient createdLines={mockCreatedLines} positions={[]} />)
+
+      openMenuForLine1()
+      fireEvent.click(screen.getByText("View Stats"))
+
+      await waitFor(() => {
+        expect(screen.getByText("Your Fee Earnings")).toBeInTheDocument()
+        expect(screen.getByText("$12.50")).toBeInTheDocument()
+        expect(screen.getByText("+ $4.00 pending settlement")).toBeInTheDocument()
       })
     })
 
@@ -491,6 +521,15 @@ describe("DashboardClient", () => {
   })
 
   describe("Call Next (Remove Front)", () => {
+    it("hides the quick Remove when served people are still ahead of the next person", () => {
+      const lines = [{ ...mockCreatedLines[0], frontPerson: { id: "pos-3", position: 3, user: { id: "user-3", name: "Cara" } } }]
+      render(<DashboardClient createdLines={lines} positions={[]} />)
+
+      expect(screen.getByText(/Next: Cara/)).toBeInTheDocument()
+      expect(screen.getByText("Call Next")).toBeInTheDocument()
+      expect(screen.queryByText("Remove")).not.toBeInTheDocument()
+    })
+
     it("calls call-next API when Call Next is clicked", async () => {
       ;(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
         ok: true,

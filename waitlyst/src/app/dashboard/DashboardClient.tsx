@@ -22,6 +22,7 @@ interface CreatedLine {
   _count: { positions: number }
   frontPerson: {
     id: string
+    position: number
     user: { id: string; name: string | null }
   } | null
 }
@@ -53,6 +54,8 @@ type StatusFilter = "all" | "active" | "paused"
 type SortOption = "newest" | "oldest" | "most-members"
 
 interface LineStats {
+  ownerFeeEarned?: number
+  ownerFeePending?: number
   totalTransactions: number
   completedCount: number
   refundedCount: number
@@ -475,6 +478,19 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
               </div>
             ) : statsModal.stats ? (
               <div className="space-y-4">
+                <div className="border border-ink p-4 text-center">
+                  <p className="font-mono text-3xl tabular-nums text-green-700">
+                    {formatCurrency(statsModal.stats.ownerFeeEarned ?? 0)}
+                  </p>
+                  <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mt-1">Your Fee Earnings</p>
+                  {(statsModal.stats.ownerFeePending ?? 0) > 0 && (
+                    <p className="text-xs text-amber-600 mt-1">
+                      + {formatCurrency(statsModal.stats.ownerFeePending ?? 0)} pending settlement
+                    </p>
+                  )}
+                </div>
+
+                <p className="font-mono text-xs uppercase tracking-widest text-ink/40 pt-2">Swap volume (paid to sellers)</p>
                 <div className="grid grid-cols-2 divide-x divide-rule border border-rule">
                   <div className="p-4 text-center">
                     <p className="font-mono text-2xl tabular-nums text-green-700">
@@ -508,11 +524,11 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                   </div>
                 )}
 
-                <div className="border border-ink p-4 text-center">
-                  <p className="font-mono text-3xl tabular-nums">
+                <div className="border border-rule p-4 text-center">
+                  <p className="font-mono text-2xl tabular-nums">
                     {formatCurrency(statsModal.stats.netRevenue)}
                   </p>
-                  <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mt-1">Net Revenue (Settled)</p>
+                  <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mt-1">Net Swap Volume (Settled)</p>
                 </div>
 
                 <p className="text-sm text-ink/50 text-center">
@@ -757,16 +773,20 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                           >
                             Call Next
                           </Button>
-                          <button
-                            onClick={(e) => {
-                              e.preventDefault()
-                              setRemoveConfirm({ lineId: line.id })
-                            }}
-                            disabled={loadingAction === `remove-${line.id}`}
-                            className="text-xs text-accent hover:underline underline-offset-4 px-1 py-0.5 disabled:opacity-50"
-                          >
-                            Remove
-                          </button>
+                          {/* remove-front removes position #1; when served people are still
+                              ahead of the next person, that would remove the wrong one. */}
+                          {line.frontPerson.position === 1 && (
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault()
+                                setRemoveConfirm({ lineId: line.id })
+                              }}
+                              disabled={loadingAction === `remove-${line.id}`}
+                              className="text-xs text-accent hover:underline underline-offset-4 px-1 py-0.5 disabled:opacity-50"
+                            >
+                              Remove
+                            </button>
+                          )}
                         </div>
                       )}
                       {!line.isActive && (
