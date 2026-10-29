@@ -154,3 +154,22 @@ export function positionSoldEmail(
   `
   return { subject, html: wrapTemplate(subject, body, "View Line", lineUrl) }
 }
+
+export function lineDeletedEmail(
+  userName: string,
+  lineName: string,
+  hadPurchase: boolean,
+  browseUrl: string
+): { subject: string; html: string } {
+  const safeName = escapeHtml(userName)
+  const safeLine = escapeHtml(lineName)
+  const subject = `${lineName} has been closed`
+  const body = `
+    <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">This line has closed, ${safeName}</h2>
+    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">The organizer deleted <strong>${safeLine}</strong>, so your place in it is gone.</p>
+    ${hadPurchase
+      ? `<p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Any payment you made to move up in this line has been returned to you. A hold on your card is released right away; a completed charge is refunded and can take a few days to appear.</p>`
+      : ""}
+  `
+  return { subject, html: wrapTemplate(subject, body, "Browse Other Lines", browseUrl) }
+}

@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireLineOwner } from "@/lib/auth-helpers"
-import { expireCheckoutSession, returnBuyerFunds } from "@/lib/stripe"
+import { expireCheckoutSession, getBaseUrl, returnBuyerFunds } from "@/lib/stripe"
 import { getPlatformFeePercent } from "@/lib/fees"
 import { rateLimit } from "@/lib/rate-limit"
 import { capacityView } from "@/lib/capacity"
 import { auth } from "@/auth"
 import { createHash } from "crypto"
+import { sendEmail } from "@/lib/email"
+import { lineDeletedEmail } from "@/lib/email-templates"
 
 const getLimiter = rateLimit({ interval: 60_000, limit: 60 })
 
@@ -93,6 +95,12 @@ export async function DELETE(
   if (result instanceof NextResponse) return result
 
   try {
+    // Who to tell, read before their positions disappear with the line
+    const members = await prisma.linePosition.findMany({
+      where: { lineId },
+      select: { user: { select: { id: true, name: true, email: true, emailNotifications: true } } },
+    })
+
     // Get unsettled transactions to refund
     const { transactionsToRefund, abandonedSessions } = await prisma.$transaction(async (tx) => {
       // Fail any pending transactions
@@ -133,6 +141,14 @@ export async function DELETE(
       await tx.swapOffer.deleteMany({ where: { lineId } })
       await tx.line.delete({ where: { id: lineId } })
     })
+
+    const buyers = new Set(transactionsToRefund.map((t) => t.buyerId))
+    const browseUrl = `${getBaseUrl()}/browse`
+    for (const { user } of members) {
+      if (!user.email || !user.emailNotifications) continue
+      const { subject, html } = lineDeletedEmail(user.name || "there", result.line.name, buyers.has(user.id), browseUrl)
+      sendEmail(user.email, subject, html).catch(() => {})
+    }
 
     return NextResponse.json({ success: true, refundedCount })
   } catch (error) {
