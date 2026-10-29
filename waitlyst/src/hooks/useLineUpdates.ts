@@ -37,6 +37,7 @@ export function useLineUpdates(
   { intervalMs = POLL_INTERVAL_MS, pollWhenHidden = false }: LineUpdateOptions = {}
 ) {
   const lastSnapshotRef = useRef<string | null>(null)
+  const etagRef = useRef<string | null>(null)
   const onUpdateRef = useRef(onUpdate)
   useEffect(() => {
     onUpdateRef.current = onUpdate
@@ -55,8 +56,12 @@ export function useLineUpdates(
       try {
         const res = await fetch(`/api/lines/${lineId}`, {
           cache: "no-store",
+          // Unchanged since the last poll: the server answers 304 with no body
+          headers: etagRef.current ? { "If-None-Match": etagRef.current } : undefined,
         })
+        if (res.status === 304) return
         if (res.ok) {
+          etagRef.current = res.headers.get("ETag")
           const text = await res.text()
           if (lastSnapshotRef.current !== null && lastSnapshotRef.current !== text) {
             const parsed = JSON.parse(text)
@@ -104,4 +109,10 @@ export function useLineUpdates(
       stopPolling()
     }
   }, [lineId, stableOnUpdate, intervalMs, pollWhenHidden])
+
+  // A different line's ETag means nothing here
+  useEffect(() => {
+    etagRef.current = null
+    lastSnapshotRef.current = null
+  }, [lineId])
 }

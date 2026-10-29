@@ -18,6 +18,7 @@ const mockPrisma = {
     update: vi.fn(),
     updateMany: vi.fn(),
     count: vi.fn(),
+    aggregate: vi.fn().mockResolvedValue({ _max: { updatedAt: null }, _count: 0 }),
   },
   transaction: {
     findMany: vi.fn(),
@@ -166,6 +167,7 @@ describe("GET /api/lines/[lineId]", () => {
     mockPrisma.line.findUnique.mockResolvedValue({
       id: "line-1",
       name: "Test Line",
+      updatedAt: new Date(),
       createdBy: { id: "user-1", name: "Creator", image: null },
       positions: [],
     })
@@ -183,6 +185,7 @@ describe("GET /api/lines/[lineId]", () => {
       createdById: "owner-1",
       maxCapacity: 10,
       hideCapacity: true,
+      updatedAt: new Date(),
       createdBy: { id: "owner-1", name: "Creator", image: null },
       positions: [{ id: "p1" }],
     })
@@ -198,6 +201,35 @@ describe("GET /api/lines/[lineId]", () => {
 
     mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
     expect(await get()).toMatchObject({ maxCapacity: 10 })
+  })
+
+  it("answers 304 without loading positions when the poller's ETag still matches", async () => {
+    mockAuth.mockResolvedValue(null)
+    mockPrisma.line.findUnique.mockResolvedValue({
+      id: "line-1",
+      createdById: "owner-1",
+      maxCapacity: null,
+      hideCapacity: false,
+      updatedAt: new Date("2026-10-29T00:00:00Z"),
+      createdBy: { id: "owner-1", name: "Creator", image: null },
+      positions: [],
+    })
+    const { GET } = await import("@/app/api/lines/[lineId]/route")
+    const ctx = { params: Promise.resolve({ lineId: "line-1" }) }
+
+    const first = await GET(new Request("http://localhost/api/lines/line-1"), ctx)
+    const etag = first.headers.get("ETag")!
+    expect(etag).toBeTruthy()
+
+    mockPrisma.line.findUnique.mockClear()
+    const again = await GET(new Request("http://localhost/api/lines/line-1", { headers: { "If-None-Match": etag } }), ctx)
+    expect(again.status).toBe(304)
+    expect(mockPrisma.line.findUnique).toHaveBeenCalledTimes(1) // just the cheap check
+
+    // Someone joins: the count changes, so the ETag no longer matches
+    mockPrisma.linePosition.aggregate.mockResolvedValueOnce({ _max: { updatedAt: new Date() }, _count: 1 })
+    const changed = await GET(new Request("http://localhost/api/lines/line-1", { headers: { "If-None-Match": etag } }), ctx)
+    expect(changed.status).toBe(200)
   })
 
   it("should return 404 if line not found", async () => {

@@ -6,6 +6,7 @@ import { getPlatformFeePercent } from "@/lib/fees"
 import { rateLimit } from "@/lib/rate-limit"
 import { capacityView } from "@/lib/capacity"
 import { auth } from "@/auth"
+import { createHash } from "crypto"
 
 const getLimiter = rateLimit({ interval: 60_000, limit: 60 })
 
@@ -27,6 +28,32 @@ export async function GET(
   const { lineId } = await params
 
   try {
+    const session = await auth()
+    const viewerId = session?.user?.id ?? null
+
+    // Pollers send back the ETag they last saw. Anything that changes the
+    // response bumps the line's or a position's updatedAt (or the count, for
+    // the last person leaving), so this cheap check lets an unchanged line
+    // skip loading every position.
+    const [head, positionStats] = await Promise.all([
+      prisma.line.findUnique({ where: { id: lineId }, select: { updatedAt: true, createdById: true } }),
+      prisma.linePosition.aggregate({ where: { lineId }, _max: { updatedAt: true }, _count: true }),
+    ])
+    if (!head) {
+      return NextResponse.json({ error: "Line not found" }, { status: 404 })
+    }
+    const etag = `"${createHash("sha1").update([
+      head.updatedAt.getTime(),
+      positionStats._max.updatedAt?.getTime() ?? 0,
+      positionStats._count,
+      viewerId === head.createdById, // the owner's view differs (hidden capacity)
+      getPlatformFeePercent(),
+    ].join("|")).digest("base64url")}"`
+    const cacheHeaders = { "Cache-Control": "no-store, no-cache, must-revalidate", ETag: etag }
+    if (req.headers.get("if-none-match") === etag) {
+      return new NextResponse(null, { status: 304, headers: cacheHeaders })
+    }
+
     const line = await prisma.line.findUnique({
       where: { id: lineId },
       include: {
@@ -42,13 +69,10 @@ export async function GET(
       return NextResponse.json({ error: "Line not found" }, { status: 404 })
     }
 
-    const session = await auth()
-    const capacity = capacityView(line, line.positions.length, session?.user?.id)
+    const capacity = capacityView(line, line.positions.length, viewerId)
 
     return NextResponse.json({ ...line, ...capacity, platformFeePercent: getPlatformFeePercent() }, {
-      headers: {
-        "Cache-Control": "no-store, no-cache, must-revalidate",
-      },
+      headers: cacheHeaders,
     })
   } catch (error) {
     console.error("Get line error:", error)
