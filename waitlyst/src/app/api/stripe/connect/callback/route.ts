@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
-import { getStripe, getBaseUrl } from "@/lib/stripe"
+import { getStripe, getBaseUrl, payOutstandingPayouts } from "@/lib/stripe"
 import { sanitizeReturnPath } from "@/lib/validate"
 
 export async function GET(req: Request) {
@@ -38,7 +38,7 @@ export async function GET(req: Request) {
     // Verify the account belongs to this user
     const user = await prisma.user.findUnique({
       where: { id: result.userId },
-      select: { stripeConnectId: true },
+      select: { stripeConnectId: true, stripeConnectOnboarded: true },
     })
 
     if (!user || user.stripeConnectId !== accountId) {
@@ -53,6 +53,14 @@ export async function GET(req: Request) {
         where: { id: result.userId },
         data: { stripeConnectOnboarded: true },
       })
+      // Sales and owner fees captured before they could be paid are sitting
+      // in the platform balance; only on first onboarding, so a revisit
+      // can't re-send transfers made before transfer_group tagging existed.
+      if (!user.stripeConnectOnboarded) {
+        await payOutstandingPayouts(result.userId).catch((err) =>
+          console.error("Catch-up payouts failed:", err)
+        )
+      }
       return NextResponse.redirect(`${baseUrl}${redirectWith("success")}`)
     }
 

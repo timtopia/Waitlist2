@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
-import { getStripe, getBaseUrl, performPositionSwap } from "@/lib/stripe"
+import { getStripe, getBaseUrl, performPositionSwap, lockPositionsForTransaction } from "@/lib/stripe"
 import { calculateFees } from "@/lib/fees"
 import { rateLimit } from "@/lib/rate-limit"
 
@@ -25,6 +25,9 @@ export async function POST(
   }
 
   const { lineId } = await params
+  const body = await req.json().catch(() => ({}))
+  const expectedPrice: unknown = body?.expectedPrice
+  const expectedSellerId: unknown = body?.expectedSellerId
 
   try {
     // Check if line is active (not paused)
@@ -89,6 +92,22 @@ export async function POST(
       )
     }
 
+    // The buyer agreed to a specific price from a specific person. If the
+    // seller re-priced, or the person in front changed (a swap or leave
+    // landed first), don't silently charge them for a different deal.
+    if (typeof expectedSellerId === "string" && expectedSellerId !== targetPosition.userId) {
+      return NextResponse.json(
+        { error: "The person in front of you changed. Review the new listing before buying.", code: "STALE_LISTING" },
+        { status: 409 }
+      )
+    }
+    if (typeof expectedPrice === "number" && Math.abs(expectedPrice - targetPosition.askingPrice) > 0.001) {
+      return NextResponse.json(
+        { error: `The asking price changed to $${targetPosition.askingPrice.toFixed(2)}. Review it before buying.`, code: "STALE_LISTING" },
+        { status: 409 }
+      )
+    }
+
     // Check if either position is locked
     const now = new Date()
     if (buyerPosition.lockedUntil && now < buyerPosition.lockedUntil) {
@@ -113,42 +132,44 @@ export async function POST(
       const lockUntil = new Date(Date.now() + LOCK_DURATION_MS)
 
       // Create the pending transaction and lock positions atomically
-      const transaction = await prisma.$transaction(async (tx) => {
-        const txn = await tx.transaction.create({
-          data: {
-            buyerId: result.userId,
-            sellerId: targetPosition.userId,
-            lineId,
-            amount: askingPrice,
-            ownerFee: fees.ownerFee,
-            platformFee: fees.platformFee,
-            status: "PENDING",
-          },
-        })
+      let transaction
+      try {
+        transaction = await prisma.$transaction(async (tx) => {
+          const txn = await tx.transaction.create({
+            data: {
+              buyerId: result.userId,
+              sellerId: targetPosition.userId,
+              lineId,
+              amount: askingPrice,
+              ownerFee: fees.ownerFee,
+              platformFee: fees.platformFee,
+              status: "PENDING",
+            },
+          })
 
-        // Lock both positions to prevent concurrent swaps
-        await tx.linePosition.update({
-          where: { id: buyerPosition.id },
-          data: { lockedUntil: lockUntil, lockedBy: txn.id },
-        })
+          const locked = await lockPositionsForTransaction(
+            tx,
+            [buyerPosition.id, targetPosition.id],
+            txn.id,
+            lockUntil
+          )
+          if (!locked) throw new Error("POSITIONS_LOCKED")
 
-        await tx.linePosition.update({
-          where: { id: targetPosition.id },
-          data: { lockedUntil: lockUntil, lockedBy: txn.id },
+          return txn
         })
-
-        return txn
-      })
+      } catch (error) {
+        if (error instanceof Error && error.message === "POSITIONS_LOCKED") {
+          return NextResponse.json(
+            { error: "This position is currently involved in another transaction. Please wait." },
+            { status: 409 }
+          )
+        }
+        throw error
+      }
 
       // Look up seller's Stripe Connect account for payment splitting
       const seller = await prisma.user.findUnique({
         where: { id: targetPosition.userId },
-        select: { stripeConnectId: true, stripeConnectOnboarded: true },
-      })
-
-      // Look up line owner's Stripe Connect account for owner fee transfer
-      const lineOwner = await prisma.user.findUnique({
-        where: { id: line.createdById },
         select: { stripeConnectId: true, stripeConnectOnboarded: true },
       })
 
@@ -159,11 +180,11 @@ export async function POST(
       // Build payment_intent_data for Connect splits
       // If seller has a connected account, send seller's amount via transfer_data
       // and keep platform fee + owner fee as application_fee_amount.
-      // If seller has no connected account, all money goes to platform (transferred later).
+      // If seller has no connected account, all money goes to platform and
+      // releaseFunds() transfers it once they are fulfilled (or onboard).
+      // The owner fee is always transferred at release time, to whatever
+      // account the owner has by then.
       const sellerConnected = seller?.stripeConnectId && seller?.stripeConnectOnboarded
-      const ownerConnected = lineOwner?.stripeConnectId && lineOwner?.stripeConnectOnboarded
-      // Owner fee transfer is only needed if the owner is different from the seller
-      const ownerIsNotSeller = line.createdById !== targetPosition.userId
 
       const paymentIntentData: Record<string, unknown> = {
         capture_method: "manual", // Authorize only — capture happens on fulfillment
@@ -174,13 +195,6 @@ export async function POST(
         paymentIntentData.application_fee_amount = Math.round((fees.platformFee + fees.ownerFee) * 100)
         paymentIntentData.transfer_data = {
           destination: seller.stripeConnectId,
-        }
-        // Store owner transfer info in metadata for webhook handling
-        if (ownerConnected && ownerIsNotSeller && fees.ownerFee > 0) {
-          paymentIntentData.metadata = {
-            ownerConnectId: lineOwner.stripeConnectId,
-            ownerFeeAmountCents: String(Math.round(fees.ownerFee * 100)),
-          }
         }
       }
 
@@ -206,10 +220,6 @@ export async function POST(
             lineId,
             buyerId: result.userId,
             sellerId: targetPosition.userId,
-            ...(ownerConnected && ownerIsNotSeller && fees.ownerFee > 0 ? {
-              ownerConnectId: lineOwner.stripeConnectId,
-              ownerFeeAmountCents: String(Math.round(fees.ownerFee * 100)),
-            } : {}),
           },
           success_url: `${baseUrl}/api/lines/${lineId}/complete-payment?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${baseUrl}/api/lines/${lineId}/cancel-payment?transaction_id=${transaction.id}`,
@@ -268,11 +278,10 @@ export async function POST(
 
     if (!swapped) {
       return NextResponse.json(
-        { error: "Failed to complete position swap" },
-        { status: 500 }
+        { error: "The queue changed before the swap could finish. Please refresh and try again." },
+        { status: 409 }
       )
     }
-
 
     return NextResponse.json({
       success: true,

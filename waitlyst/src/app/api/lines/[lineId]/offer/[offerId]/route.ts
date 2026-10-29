@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
-import { getStripe, getBaseUrl, performPositionSwap } from "@/lib/stripe"
+import {
+  getStripe,
+  getBaseUrl,
+  performPositionSwap,
+  lockPositionsForTransaction,
+  abandonPendingTransaction,
+} from "@/lib/stripe"
 import { calculateFees } from "@/lib/fees"
 import { sendEmail } from "@/lib/email"
 import { swapAcceptedEmail } from "@/lib/email-templates"
 import { rateLimit } from "@/lib/rate-limit"
+import { isOfferExpired } from "@/lib/offers"
 
 const LOCK_DURATION_MS = 30 * 60 * 1000 // 30 minutes
 const offerRespondLimiter = rateLimit({ interval: 60000, limit: 10 })
@@ -68,6 +75,17 @@ export async function PATCH(
         data: { status: "DECLINED" },
       })
       return NextResponse.json(updated)
+    }
+
+    if (isOfferExpired(offer.createdAt)) {
+      await prisma.swapOffer.updateMany({
+        where: { id: offerId, status: "PENDING" },
+        data: { status: "DECLINED" },
+      })
+      return NextResponse.json(
+        { error: "This offer has expired. They can send you a new one." },
+        { status: 410 }
+      )
     }
 
     // Handle accept — initiate swap checkout
@@ -136,72 +154,72 @@ export async function PATCH(
     const askingPrice = offer.amount
     const fees = calculateFees(askingPrice, line.ownerFeePercent)
 
-    // Mark offer as accepted
-    await prisma.swapOffer.update({
-      where: { id: offerId },
+    // Claim the offer atomically so a double-click (or two tabs) can't start
+    // two checkouts for the same offer.
+    const claimed = await prisma.swapOffer.updateMany({
+      where: { id: offerId, status: "PENDING" },
       data: { status: "ACCEPTED" },
     })
-
-    // Send email notification to the offerer (fire-and-forget)
-    const offerer = await prisma.user.findUnique({
-      where: { id: offer.fromUserId },
-      select: { name: true, email: true, emailNotifications: true },
-    })
-    if (offerer?.email && offerer.emailNotifications) {
-      const baseUrl = getBaseUrl()
-      const lineUrl = `${baseUrl}/lines/${lineId}`
-      const { subject, html } = swapAcceptedEmail(
-        offerer.name || "there",
-        line.name,
-        lineUrl
+    if (claimed.count === 0) {
+      return NextResponse.json(
+        { error: "This offer was already responded to" },
+        { status: 409 }
       )
-      sendEmail(offerer.email, subject, html).catch(() => {})
     }
+    const revertOffer = () =>
+      prisma.swapOffer.updateMany({
+        where: { id: offerId, status: "ACCEPTED" },
+        data: { status: "PENDING" },
+      })
 
     // --- STRIPE MODE ---
     const stripe = getStripe()
     if (stripe) {
       const lockUntil = new Date(Date.now() + LOCK_DURATION_MS)
 
-      const transaction = await prisma.$transaction(async (tx) => {
-        const txn = await tx.transaction.create({
-          data: {
-            buyerId: offer.fromUserId,
-            sellerId: offer.toUserId,
-            lineId,
-            amount: askingPrice,
-            ownerFee: fees.ownerFee,
-            platformFee: fees.platformFee,
-            status: "PENDING",
-          },
-        })
+      let transaction
+      try {
+        transaction = await prisma.$transaction(async (tx) => {
+          const txn = await tx.transaction.create({
+            data: {
+              buyerId: offer.fromUserId,
+              sellerId: offer.toUserId,
+              lineId,
+              amount: askingPrice,
+              ownerFee: fees.ownerFee,
+              platformFee: fees.platformFee,
+              status: "PENDING",
+            },
+          })
 
-        // Lock both positions
-        await tx.linePosition.update({
-          where: { id: buyerPosition.id },
-          data: { lockedUntil: lockUntil, lockedBy: txn.id },
-        })
-        await tx.linePosition.update({
-          where: { id: sellerPosition.id },
-          data: { lockedUntil: lockUntil, lockedBy: txn.id },
-        })
+          const locked = await lockPositionsForTransaction(
+            tx,
+            [buyerPosition.id, sellerPosition.id],
+            txn.id,
+            lockUntil
+          )
+          if (!locked) throw new Error("POSITIONS_LOCKED")
 
-        return txn
-      })
+          return txn
+        })
+      } catch (error) {
+        await revertOffer()
+        if (error instanceof Error && error.message === "POSITIONS_LOCKED") {
+          return NextResponse.json(
+            { error: "One of these spots just got pulled into another swap. Try again in a moment." },
+            { status: 409 }
+          )
+        }
+        throw error
+      }
 
       // Look up seller's and owner's Stripe Connect accounts
       const seller = await prisma.user.findUnique({
         where: { id: offer.toUserId },
         select: { stripeConnectId: true, stripeConnectOnboarded: true },
       })
-      const lineOwner = await prisma.user.findUnique({
-        where: { id: line.createdById },
-        select: { stripeConnectId: true, stripeConnectOnboarded: true },
-      })
 
       const sellerConnected = seller?.stripeConnectId && seller?.stripeConnectOnboarded
-      const ownerConnected = lineOwner?.stripeConnectId && lineOwner?.stripeConnectOnboarded
-      const ownerIsNotSeller = line.createdById !== offer.toUserId
 
       const paymentIntentData: Record<string, unknown> = {
         capture_method: "manual", // Authorize only — capture happens on fulfillment
@@ -210,12 +228,6 @@ export async function PATCH(
         paymentIntentData.application_fee_amount = Math.round((fees.platformFee + fees.ownerFee) * 100)
         paymentIntentData.transfer_data = {
           destination: seller.stripeConnectId,
-        }
-        if (ownerConnected && ownerIsNotSeller && fees.ownerFee > 0) {
-          paymentIntentData.metadata = {
-            ownerConnectId: lineOwner.stripeConnectId,
-            ownerFeeAmountCents: String(Math.round(fees.ownerFee * 100)),
-          }
         }
       }
 
@@ -241,10 +253,7 @@ export async function PATCH(
             lineId,
             buyerId: offer.fromUserId,
             sellerId: offer.toUserId,
-            ...(ownerConnected && ownerIsNotSeller && fees.ownerFee > 0 ? {
-              ownerConnectId: lineOwner.stripeConnectId,
-              ownerFeeAmountCents: String(Math.round(fees.ownerFee * 100)),
-            } : {}),
+            offerId,
           },
           success_url: `${baseUrl}/api/lines/${lineId}/complete-payment?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${baseUrl}/api/lines/${lineId}/cancel-payment?transaction_id=${transaction.id}`,
@@ -260,6 +269,8 @@ export async function PATCH(
           where: { id: transaction.id },
           data: { stripePaymentId: checkoutSession.id },
         })
+
+        notifyOffererAccepted(offer.fromUserId, line.name, lineId)
 
         // IMPORTANT: this response goes to the SELLER (only the offer's
         // recipient can call accept), but it's the BUYER who owes money.
@@ -281,11 +292,7 @@ export async function PATCH(
             data: { status: "FAILED" },
           })
         })
-        // Revert offer status
-        await prisma.swapOffer.update({
-          where: { id: offerId },
-          data: { status: "PENDING" },
-        })
+        await revertOffer()
         const msg = stripeError instanceof Error ? stripeError.message : "Payment service error"
         return NextResponse.json({ error: msg }, { status: 502 })
       }
@@ -307,16 +314,14 @@ export async function PATCH(
     const swapped = await performPositionSwap(transaction.id)
 
     if (!swapped) {
-      // Revert offer status on failure
-      await prisma.swapOffer.update({
-        where: { id: offerId },
-        data: { status: "PENDING" },
-      })
+      await revertOffer()
       return NextResponse.json(
-        { error: "Failed to complete position swap" },
-        { status: 500 }
+        { error: "The queue changed before the swap could finish. Please refresh and try again." },
+        { status: 409 }
       )
     }
+
+    notifyOffererAccepted(offer.fromUserId, line.name, lineId)
 
     return NextResponse.json({
       offer: { ...offer, status: "ACCEPTED" },
@@ -330,4 +335,83 @@ export async function PATCH(
       { status: 500 }
     )
   }
+}
+
+/**
+ * The offerer withdraws their offer. Works while it's still PENDING, and also
+ * after it was accepted but before they paid -- that abandons the checkout
+ * and frees both spots instead of leaving them locked for 30 minutes.
+ */
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ lineId: string; offerId: string }> }
+) {
+  const result = await requireAuth()
+  if (result instanceof NextResponse) return result
+
+  const { success } = offerRespondLimiter.check(result.userId)
+  if (!success) {
+    return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429, headers: { "Retry-After": "60" } })
+  }
+
+  const { lineId, offerId } = await params
+
+  try {
+    const offer = await prisma.swapOffer.findUnique({ where: { id: offerId } })
+    if (!offer || offer.lineId !== lineId) {
+      return NextResponse.json({ error: "Offer not found" }, { status: 404 })
+    }
+    if (offer.fromUserId !== result.userId) {
+      return NextResponse.json(
+        { error: "Only the person who made the offer can withdraw it" },
+        { status: 403 }
+      )
+    }
+
+    if (offer.status === "ACCEPTED") {
+      const pending = await prisma.transaction.findFirst({
+        where: { lineId, buyerId: offer.fromUserId, sellerId: offer.toUserId, status: "PENDING" },
+        orderBy: { createdAt: "desc" },
+      })
+      if (!pending) {
+        return NextResponse.json(
+          { error: "This swap already went through and can't be withdrawn" },
+          { status: 400 }
+        )
+      }
+      await abandonPendingTransaction(pending.id, { offerId: null })
+    } else if (offer.status !== "PENDING") {
+      return NextResponse.json(
+        { error: `This offer was already ${offer.status.toLowerCase()}` },
+        { status: 400 }
+      )
+    }
+
+    await prisma.swapOffer.delete({ where: { id: offerId } })
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("Withdraw offer error:", error)
+    return NextResponse.json(
+      { error: "Something went wrong while withdrawing the offer. Please try again." },
+      { status: 500 }
+    )
+  }
+}
+
+function notifyOffererAccepted(offererId: string, lineName: string, lineId: string) {
+  prisma.user
+    .findUnique({
+      where: { id: offererId },
+      select: { name: true, email: true, emailNotifications: true },
+    })
+    .then((offerer) => {
+      if (!offerer?.email || !offerer.emailNotifications) return
+      const { subject, html } = swapAcceptedEmail(
+        offerer.name || "there",
+        lineName,
+        `${getBaseUrl()}/lines/${lineId}`
+      )
+      return sendEmail(offerer.email, subject, html)
+    })
+    .catch(() => {})
 }

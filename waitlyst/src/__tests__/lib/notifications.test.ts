@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const mockPrisma = {
-  transaction: { findUnique: vi.fn(), update: vi.fn() },
+  transaction: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
   linePosition: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+  swapOffer: { updateMany: vi.fn() },
   user: { findUnique: vi.fn() },
   line: { findUnique: vi.fn() },
+  $queryRaw: vi.fn().mockResolvedValue([]),
   $transaction: vi.fn((fn: (tx: unknown) => unknown) => fn(mockPrisma)),
 }
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }))

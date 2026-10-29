@@ -17,7 +17,9 @@ const mockGetStripe = vi.fn()
 vi.mock("@/lib/stripe", () => ({
   getStripe: () => mockGetStripe(),
   performPositionSwap: (...args: unknown[]) => mockPerformPositionSwap(...args),
+  abandonPendingTransaction: (...args: unknown[]) => mockAbandon(...args),
 }))
+const mockAbandon = vi.fn()
 
 function makeStripeInstance() {
   return {
@@ -120,25 +122,16 @@ describe("POST /api/webhooks/stripe", () => {
     mockConstructEvent.mockReturnValue({
       type: "checkout.session.expired",
       data: {
-        object: { metadata: { transactionId: "txn-2" } },
+        object: { metadata: { transactionId: "txn-2", offerId: "offer-9" } },
       },
-    })
-    mockPrisma.$transaction.mockImplementation(async (fn: (tx: typeof mockPrisma) => Promise<void>) => {
-      await fn(mockPrisma)
     })
 
     const { POST } = await import("@/app/api/webhooks/stripe/route")
     const response = await POST(makeRequest("{}"))
 
     expect(response.status).toBe(200)
-    expect(mockPrisma.linePosition.updateMany).toHaveBeenCalledWith({
-      where: { lockedBy: "txn-2" },
-      data: { lockedUntil: null, lockedBy: null },
-    })
-    expect(mockPrisma.transaction.update).toHaveBeenCalledWith({
-      where: { id: "txn-2" },
-      data: { status: "FAILED" },
-    })
+    // Abandons only-if-PENDING, unlocks, and hands the accepted offer back.
+    expect(mockAbandon).toHaveBeenCalledWith("txn-2", { offerId: "offer-9", expireSession: false })
   })
 
   it("should handle checkout.session.expired with no transactionId gracefully", async () => {

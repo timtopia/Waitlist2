@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getStripe, performPositionSwap } from "@/lib/stripe"
+import { getStripe, performPositionSwap, abandonPendingTransaction } from "@/lib/stripe"
 import { prisma } from "@/lib/prisma"
 
 export async function POST(req: Request) {
@@ -49,7 +49,6 @@ export async function POST(req: Request) {
       case "checkout.session.completed": {
         const session = event.data.object
         const transactionId = session.metadata?.transactionId
-        const lineId = session.metadata?.lineId
 
         if (!transactionId) {
           console.error("Webhook: checkout.session.completed missing transactionId in metadata")
@@ -59,7 +58,8 @@ export async function POST(req: Request) {
         // Perform the position swap (idempotent — won't swap if already done).
         // With auth-then-capture, this fires on authorization (not capture).
         // The payment is held but not charged yet — capture happens on fulfillment.
-        const swapped = await performPositionSwap(transactionId)
+        // If the swap can no longer happen, performPositionSwap releases the hold.
+        await performPositionSwap(transactionId)
 
         // Note: Owner fee transfers are deferred until fulfillment (capture).
         // With auth-then-capture, the payment is not yet captured at this point,
@@ -76,18 +76,9 @@ export async function POST(req: Request) {
 
         if (transactionId) {
           try {
-            await prisma.$transaction(async (tx) => {
-              // Unlock positions
-              await tx.linePosition.updateMany({
-                where: { lockedBy: transactionId },
-                data: { lockedUntil: null, lockedBy: null },
-              })
-
-              // Mark transaction as failed
-              await tx.transaction.update({
-                where: { id: transactionId },
-                data: { status: "FAILED" },
-              })
+            await abandonPendingTransaction(transactionId, {
+              offerId: session.metadata?.offerId ?? null,
+              expireSession: false,
             })
           } catch (error) {
             console.error(`Webhook: Failed to clean up expired session for transaction ${transactionId}:`, error)

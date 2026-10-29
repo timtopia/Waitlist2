@@ -57,6 +57,9 @@ vi.mock("@/lib/stripe", () => ({
   getStripe: vi.fn(() => null), // default: dev mode (no Stripe)
   getBaseUrl: vi.fn(() => "http://localhost:3000"),
   performPositionSwap: vi.fn().mockResolvedValue(true),
+  abandonPendingTransaction: vi.fn().mockResolvedValue(true),
+  isCheckoutAuthorized: vi.fn(async (s: { payment_status?: string }) => s.payment_status === "paid"),
+  lockPositionsForTransaction: vi.fn().mockResolvedValue(true),
 }))
 
 // Mock qrcode
@@ -252,36 +255,42 @@ describe("GET /api/lines/[lineId]/cancel-payment", () => {
     })
   })
 
-  it("should unlock positions and mark transaction as FAILED, then redirect", async () => {
-    mockPrisma.linePosition.updateMany.mockResolvedValue({ count: 2 })
-    mockPrisma.transaction.update.mockResolvedValue({ id: "txn-1", status: "FAILED" })
+  it("abandons the buyer's own pending checkout, then redirects", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "buyer-1" } })
+    mockPrisma.transaction.findUnique.mockResolvedValue({ buyerId: "buyer-1", lineId: "line-1" })
 
     const { GET } = await import("@/app/api/lines/[lineId]/cancel-payment/route")
+    const { abandonPendingTransaction } = await import("@/lib/stripe")
     const req = new Request(
       "http://localhost/api/lines/line-1/cancel-payment?transaction_id=txn-1"
     )
 
     const response = await GET(req, { params: Promise.resolve({ lineId: "line-1" }) })
 
-    // Should redirect (3xx)
     expect(response.status).toBeGreaterThanOrEqual(300)
     expect(response.status).toBeLessThan(400)
-
     const location = response.headers.get("Location")
     expect(location).toContain("/lines/line-1")
     expect(location).toContain("payment=cancelled")
 
-    // Verify positions were unlocked
-    expect(mockPrisma.linePosition.updateMany).toHaveBeenCalledWith({
-      where: { lockedBy: "txn-1" },
-      data: { lockedUntil: null, lockedBy: null },
-    })
+    expect(abandonPendingTransaction).toHaveBeenCalledWith("txn-1")
+  })
 
-    // Verify transaction was marked as FAILED
-    expect(mockPrisma.transaction.update).toHaveBeenCalledWith({
-      where: { id: "txn-1" },
-      data: { status: "FAILED" },
-    })
+  it("ignores the cancel link for anyone but the buyer (it's a bare GET URL)", async () => {
+    // Regression: anyone holding the URL could FAIL someone else's checkout,
+    // or a stale tab could FAIL an already-completed swap.
+    mockAuth.mockResolvedValue({ user: { id: "someone-else" } })
+    mockPrisma.transaction.findUnique.mockResolvedValue({ buyerId: "buyer-1", lineId: "line-1" })
+
+    const { GET } = await import("@/app/api/lines/[lineId]/cancel-payment/route")
+    const { abandonPendingTransaction } = await import("@/lib/stripe")
+    const req = new Request(
+      "http://localhost/api/lines/line-1/cancel-payment?transaction_id=txn-1"
+    )
+
+    const response = await GET(req, { params: Promise.resolve({ lineId: "line-1" }) })
+    expect(response.headers.get("Location")).toContain("payment=cancelled")
+    expect(abandonPendingTransaction).not.toHaveBeenCalled()
   })
 
   it("should redirect even without transaction_id", async () => {
@@ -303,7 +312,8 @@ describe("GET /api/lines/[lineId]/cancel-payment", () => {
   })
 
   it("should redirect even if DB cleanup fails", async () => {
-    mockPrisma.$transaction.mockRejectedValue(new Error("DB error"))
+    mockAuth.mockResolvedValue({ user: { id: "buyer-1" } })
+    mockPrisma.transaction.findUnique.mockRejectedValue(new Error("DB error"))
 
     const { GET } = await import("@/app/api/lines/[lineId]/cancel-payment/route")
     const req = new Request(
@@ -652,10 +662,57 @@ describe("POST /api/lines/[lineId]/checkout", () => {
     })
 
     const response = await POST(req, { params: Promise.resolve({ lineId: "line-1" }) })
-    expect(response.status).toBe(500)
+    expect(response.status).toBe(409)
 
     const data = await response.json()
     expect(data.error).toContain("swap")
+  })
+
+  it("rejects the buy if the seller re-priced after the buyer saw the listing", async () => {
+    // Regression: the buyer clicked "Buy for $X" but the server charged
+    // whatever the price was at request time (instantly, in dev mode).
+    mockAuth.mockResolvedValue({ user: { id: "buyer-stale-price" } })
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", isActive: true, allowResale: true })
+    mockPrisma.linePosition.findUnique.mockResolvedValue({
+      id: "pos-buyer", lineId: "line-1", userId: "buyer-stale-price", position: 2, lockedUntil: null,
+    })
+    mockPrisma.linePosition.findFirst.mockResolvedValue({
+      id: "pos-seller", lineId: "line-1", userId: "seller-1", position: 1, askingPrice: 80,
+      lockedUntil: null, user: { name: "Seller" }, line: { name: "Test Line", ownerFeePercent: 5 },
+    })
+
+    const { POST } = await import("@/app/api/lines/[lineId]/checkout/route")
+    const req = new Request("http://localhost/api/lines/line-1/checkout", {
+      method: "POST",
+      body: JSON.stringify({ expectedPrice: 25, expectedSellerId: "seller-1" }),
+    })
+
+    const response = await POST(req, { params: Promise.resolve({ lineId: "line-1" }) })
+    expect(response.status).toBe(409)
+    expect((await response.json()).code).toBe("STALE_LISTING")
+    expect(mockPrisma.transaction.create).not.toHaveBeenCalled()
+  })
+
+  it("rejects the buy if a different person is now in front (queue shifted)", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "buyer-stale-seller" } })
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", isActive: true, allowResale: true })
+    mockPrisma.linePosition.findUnique.mockResolvedValue({
+      id: "pos-buyer", lineId: "line-1", userId: "buyer-stale-seller", position: 2, lockedUntil: null,
+    })
+    mockPrisma.linePosition.findFirst.mockResolvedValue({
+      id: "pos-other", lineId: "line-1", userId: "someone-else", position: 1, askingPrice: 25,
+      lockedUntil: null, user: { name: "Other" }, line: { name: "Test Line", ownerFeePercent: 5 },
+    })
+
+    const { POST } = await import("@/app/api/lines/[lineId]/checkout/route")
+    const req = new Request("http://localhost/api/lines/line-1/checkout", {
+      method: "POST",
+      body: JSON.stringify({ expectedPrice: 25, expectedSellerId: "seller-1" }),
+    })
+
+    const response = await POST(req, { params: Promise.resolve({ lineId: "line-1" }) })
+    expect(response.status).toBe(409)
+    expect(mockPrisma.transaction.create).not.toHaveBeenCalled()
   })
 })
 
@@ -806,6 +863,7 @@ describe("GET /api/lines/[lineId]/complete-payment", () => {
     mockPrisma.transaction.findUnique.mockResolvedValue({
       id: "txn-1",
       lineId: "line-1",
+      status: "COMPLETED",
     })
     vi.mocked(stripeModule.performPositionSwap).mockResolvedValueOnce(true)
 
@@ -824,6 +882,31 @@ describe("GET /api/lines/[lineId]/complete-payment", () => {
     expect(location).toContain("payment=success")
 
     expect(stripeModule.performPositionSwap).toHaveBeenCalledWith("txn-1")
+  })
+
+  it("does not tell the buyer 'success' when the swap was cancelled under them", async () => {
+    // Regression: the owner removed the seller mid-checkout; the buyer still
+    // paid, the swap was refused, and the return URL said "success".
+    const stripeModule = await import("@/lib/stripe")
+    vi.mocked(stripeModule.getStripe).mockReturnValueOnce(mockStripe as never)
+    mockStripe.checkout.sessions.retrieve.mockResolvedValue({
+      payment_status: "paid",
+      metadata: { transactionId: "txn-1" },
+    })
+    mockPrisma.transaction.findUnique
+      .mockResolvedValueOnce({ id: "txn-1", lineId: "line-1", status: "FAILED" })
+      .mockResolvedValueOnce({ status: "FAILED" })
+    vi.mocked(stripeModule.performPositionSwap).mockResolvedValueOnce(false)
+
+    const { GET } = await import("@/app/api/lines/[lineId]/complete-payment/route")
+    const req = new Request(
+      "http://localhost/api/lines/line-1/complete-payment?session_id=cs_test_123"
+    )
+    const response = await GET(req, { params: Promise.resolve({ lineId: "line-1" }) })
+
+    const location = response.headers.get("Location")
+    expect(location).toContain("payment=error")
+    expect(location).toContain("swap_failed")
   })
 
   it("should redirect with generic error when Stripe retrieve throws", async () => {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
-import { captureAuthorization, cancelAuthorization, getStripe } from "@/lib/stripe"
+import { releaseFunds, cancelAuthorization, abandonPendingTransaction } from "@/lib/stripe"
 import { rateLimit } from "@/lib/rate-limit"
 
 const settlementLimiter = rateLimit({ interval: 60000, limit: 20 })
@@ -81,9 +81,11 @@ export async function POST(
 
       // capture-all
       let capturedCount = 0
+      let failedCount = 0
       for (const txn of transactions) {
-        if (txn.stripePaymentId) {
-          await captureAuthorization(txn.stripePaymentId)
+        if (!(await releaseFunds(txn))) {
+          failedCount++
+          continue
         }
         await prisma.transaction.update({
           where: { id: txn.id },
@@ -96,6 +98,7 @@ export async function POST(
         success: true,
         action: "capture-all",
         count: capturedCount,
+        failedCount,
       })
     }
 
@@ -130,29 +133,9 @@ export async function POST(
         )
       }
 
-      await prisma.$transaction(async (tx) => {
-        await tx.linePosition.updateMany({
-          where: { lockedBy: transaction.id },
-          data: { lockedUntil: null, lockedBy: null },
-        })
-        await tx.transaction.update({
-          where: { id: transactionId },
-          data: { status: "FAILED" },
-        })
-      })
-
-      // Best-effort: kill the Stripe Checkout Session too, so a stale link
-      // the buyer still has lying around can't be used after the fact.
-      if (transaction.stripePaymentId) {
-        const stripe = getStripe()
-        if (stripe) {
-          try {
-            await stripe.checkout.sessions.expire(transaction.stripePaymentId)
-          } catch {
-            // Already expired, completed, or gone — nothing to do.
-          }
-        }
-      }
+      // Also kills the Stripe session so a stale link the buyer still has
+      // can't be used, and puts an accepted offer back to PENDING.
+      await abandonPendingTransaction(transactionId)
 
       return NextResponse.json({ success: true, action: "cancel", transactionId })
     }
@@ -172,8 +155,11 @@ export async function POST(
     }
 
     if (action === "capture") {
-      if (transaction.stripePaymentId) {
-        await captureAuthorization(transaction.stripePaymentId)
+      if (!(await releaseFunds(transaction))) {
+        return NextResponse.json(
+          { error: "Couldn't collect this payment -- the card hold may have expired. You can release it instead." },
+          { status: 402 }
+        )
       }
       await prisma.transaction.update({
         where: { id: transactionId },

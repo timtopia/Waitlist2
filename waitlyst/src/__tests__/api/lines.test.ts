@@ -51,6 +51,7 @@ const mockStripe = {
 vi.mock("@/lib/stripe", () => ({
   stripe: mockStripe,
   refundTransactions: vi.fn().mockResolvedValue(0),
+  expireCheckoutSession: vi.fn().mockResolvedValue(undefined),
 }))
 
 // Mock settle-transactions

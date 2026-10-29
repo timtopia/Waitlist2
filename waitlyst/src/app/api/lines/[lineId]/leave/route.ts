@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { settleTransactionsForUser } from "@/lib/settle-transactions"
+import { expireCheckoutSession } from "@/lib/stripe"
 
 export async function DELETE(
   req: Request,
@@ -14,18 +15,20 @@ export async function DELETE(
   const userId = result.userId
 
   try {
-    await prisma.$transaction(async (tx) => {
+    const abandonedSessionId = await prisma.$transaction(async (tx) => {
       const position = await tx.linePosition.findUnique({
         where: { lineId_userId: { lineId, userId } },
       })
       if (!position) throw new Error("Not in this line")
 
       // Cancel any pending transaction this position is locked in
+      let lockedSessionId: string | null = null
       if (position.lockedBy) {
-        await tx.transaction.update({
+        const abandoned = await tx.transaction.update({
           where: { id: position.lockedBy },
           data: { status: "FAILED" },
         })
+        lockedSessionId = abandoned?.stripePaymentId ?? null
         await tx.linePosition.updateMany({
           where: { lockedBy: position.lockedBy },
           data: { lockedUntil: null, lockedBy: null },
@@ -58,7 +61,12 @@ export async function DELETE(
       // voluntarily leaves. The position swap was a legitimate trade.
       // Refunds are only issued by admin action or when a line is deleted.
       await settleTransactionsForUser(tx, lineId, userId)
+      return lockedSessionId
     })
+
+    // The other party may still have the payment page open; kill it so
+    // they can't authorize a swap with someone who's gone.
+    await expireCheckoutSession(abandonedSessionId)
 
     return NextResponse.json({ success: true })
   } catch (error) {

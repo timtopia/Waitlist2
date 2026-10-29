@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server"
+import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
-import { getBaseUrl } from "@/lib/stripe"
+import { getBaseUrl, abandonPendingTransaction } from "@/lib/stripe"
 
 /**
  * Handle Stripe Checkout cancellation redirect.
- * When a user cancels payment on the Stripe checkout page, they're sent here.
- * We unlock the positions and mark the transaction as FAILED.
+ * When the buyer cancels on the Stripe checkout page they're sent here: the
+ * pending transaction is abandoned, both spots unlock, and an accepted offer
+ * goes back to PENDING. This is a bare GET link, so it only acts for the
+ * signed-in buyer and only on a still-PENDING checkout -- anyone else hitting
+ * the URL (or a stale tab after the swap completed) changes nothing.
  */
 export async function GET(
   req: Request,
@@ -18,22 +22,19 @@ export async function GET(
 
   if (transactionId) {
     try {
-      await prisma.$transaction(async (tx) => {
-        // Find and unlock positions locked by this transaction
-        await tx.linePosition.updateMany({
-          where: { lockedBy: transactionId },
-          data: {
-            lockedUntil: null,
-            lockedBy: null,
-          },
-        })
-
-        // Mark transaction as failed
-        await tx.transaction.update({
-          where: { id: transactionId },
-          data: { status: "FAILED" },
-        })
+      const session = await auth()
+      const transaction = await prisma.transaction.findUnique({
+        where: { id: transactionId },
+        select: { buyerId: true, lineId: true },
       })
+      if (
+        session?.user?.id &&
+        transaction &&
+        transaction.lineId === lineId &&
+        transaction.buyerId === session.user.id
+      ) {
+        await abandonPendingTransaction(transactionId)
+      }
     } catch (error) {
       console.error("Cancel payment error:", error)
       // Continue to redirect even if cleanup fails

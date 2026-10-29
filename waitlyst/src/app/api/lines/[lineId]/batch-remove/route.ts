@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
-import { refundTransactions } from "@/lib/stripe"
+import { returnBuyerFunds } from "@/lib/stripe"
 import { settleTransactionsForUser } from "@/lib/settle-transactions"
 
 export async function POST(
@@ -107,7 +107,7 @@ export async function POST(
 
       // Process refunds outside the transaction (Stripe calls)
       if (result.purchasesToRefund.length > 0) {
-        await refundTransactions(result.purchasesToRefund)
+        await returnBuyerFunds(result.purchasesToRefund)
 
         // Now delete the position after refunds are processed
         await prisma.$transaction(async (tx) => {

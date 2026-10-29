@@ -13,12 +13,14 @@ const mockPrisma = {
   swapOffer: {
     findUnique: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn().mockResolvedValue({ count: 1 }),
   },
   transaction: {
     create: vi.fn(),
     update: vi.fn(),
     findFirst: vi.fn(),
     findUnique: vi.fn(),
+    findMany: vi.fn(),
   },
   user: {
     findUnique: vi.fn(),
@@ -63,6 +65,9 @@ vi.mock("@/lib/stripe", () => ({
   getBaseUrl: vi.fn(() => "http://localhost:3000"),
   performPositionSwap: vi.fn().mockResolvedValue(true),
   captureAuthorization: vi.fn().mockResolvedValue(100),
+  releaseFunds: vi.fn().mockResolvedValue(true),
+  lockPositionsForTransaction: vi.fn().mockResolvedValue(true),
+  abandonPendingTransaction: vi.fn().mockResolvedValue(true),
 }))
 
 // Mock email (fire-and-forget, never awaited by the route logic we test)
@@ -318,6 +323,38 @@ describe("POST /api/lines/[lineId]/fulfill", () => {
     const data = await response.json()
     expect(data.error).toMatch(/pending swap/i)
   })
+
+  it("only marks purchases settled once their money was actually collected", async () => {
+    // Regression: settledAt was stamped before capture, so a lapsed hold
+    // still showed as "paid out" and vanished from the owner's queue.
+    mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdById: "owner-1", name: "L" })
+    mockPrisma.linePosition.findUnique.mockResolvedValue({
+      id: "pos-1", lineId: "line-1", userId: "buyer-1", fulfilled: false, lockedUntil: null,
+      user: { id: "buyer-1", email: null, emailNotifications: false },
+    })
+    mockPrisma.linePosition.updateMany.mockResolvedValue({ count: 1 })
+    mockPrisma.transaction.findMany.mockResolvedValue([
+      { id: "t-ok", sellerId: "s1", amount: 10, ownerFee: 1, stripePaymentId: "cs_ok", lineId: "line-1" },
+      { id: "t-lapsed", sellerId: "s2", amount: 10, ownerFee: 1, stripePaymentId: "cs_lapsed", lineId: "line-1" },
+    ])
+    const { releaseFunds } = await import("@/lib/stripe")
+    vi.mocked(releaseFunds).mockResolvedValueOnce(true).mockResolvedValueOnce(false)
+
+    const { POST } = await import("@/app/api/lines/[lineId]/fulfill/route")
+    const response = await POST(
+      new Request("http://localhost/api/lines/line-1/fulfill", { method: "POST", body: JSON.stringify({ positionId: "pos-1" }) }),
+      { params: Promise.resolve({ lineId: "line-1" }) }
+    )
+    const data = await response.json()
+
+    expect(data).toMatchObject({ payoutsReleased: 1, payoutsFailed: 1 })
+    expect(mockPrisma.transaction.update).toHaveBeenCalledTimes(1)
+    expect(mockPrisma.transaction.update).toHaveBeenCalledWith({
+      where: { id: "t-ok" },
+      data: { settledAt: expect.any(Date) },
+    })
+  })
 })
 
 describe("POST /api/lines/[lineId]/settlement/action (cancel on PENDING)", () => {
@@ -348,15 +385,10 @@ describe("POST /api/lines/[lineId]/settlement/action (cancel on PENDING)", () =>
     const response = await POST(req, { params: Promise.resolve({ lineId: "line-1" }) })
     expect(response.status).toBe(200)
 
-    expect(mockPrisma.linePosition.updateMany).toHaveBeenCalledWith({
-      where: { lockedBy: "txn-1" },
-      data: { lockedUntil: null, lockedBy: null },
-    })
-    expect(mockPrisma.transaction.update).toHaveBeenCalledWith({
-      where: { id: "txn-1" },
-      data: { status: "FAILED" },
-    })
-    expect(expire).toHaveBeenCalledWith("cs_stuck")
+    // abandonPendingTransaction unlocks, FAILs (only if still PENDING),
+    // expires the session and reopens the offer -- see stripe-core tests.
+    const { abandonPendingTransaction } = await import("@/lib/stripe")
+    expect(abandonPendingTransaction).toHaveBeenCalledWith("txn-1")
   })
 
   it("rejects 'capture' on a PENDING transaction (nothing was ever authorized)", async () => {
@@ -402,8 +434,27 @@ describe("PATCH /api/lines/[lineId]/price", () => {
     expect(data.error).toMatch(/at least \$1/)
   })
 
+  it("refuses to re-price while a buyer is mid-checkout on this spot", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "user-1" } })
+    mockPrisma.line.findUnique.mockResolvedValue({ allowResale: true, maxAskingPrice: null })
+    mockPrisma.linePosition.findUnique.mockResolvedValue({
+      lockedUntil: new Date(Date.now() + 10 * 60 * 1000),
+    })
+
+    const { PATCH } = await import("@/app/api/lines/[lineId]/price/route")
+    const req = new Request("http://localhost/api/lines/line-1/price", {
+      method: "PATCH",
+      body: JSON.stringify({ price: 500 }),
+    })
+
+    const response = await PATCH(req, { params: Promise.resolve({ lineId: "line-1" }) })
+    expect(response.status).toBe(409)
+    expect(mockPrisma.linePosition.update).not.toHaveBeenCalled()
+  })
+
   it("still allows null (un-listing)", async () => {
     mockAuth.mockResolvedValue({ user: { id: "user-1" } })
+    mockPrisma.linePosition.findUnique.mockResolvedValue({ lockedUntil: null })
     mockPrisma.linePosition.update.mockResolvedValue({
       id: "pos-1",
       askingPrice: null,

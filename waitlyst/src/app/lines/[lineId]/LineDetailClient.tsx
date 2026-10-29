@@ -123,6 +123,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         not_paid: "Payment was not completed.",
         no_transaction: "Transaction could not be found.",
         invalid_transaction: "Invalid transaction.",
+        swap_failed: "Your spot changed before the swap could finish, so it was cancelled. The hold on your card has been released.",
       }
       addToast(messages[reason || ""] || "Something went wrong with your payment.", "error")
       router.replace(`/lines/${lineId}`, { scroll: false })

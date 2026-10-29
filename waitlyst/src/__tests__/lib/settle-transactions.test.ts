@@ -142,21 +142,23 @@ describe("settleTransactionsForUser", () => {
     expect(mockTx.transaction.updateMany).not.toHaveBeenCalled()
   })
 
-  it("should process both COMPLETED and REFUNDED transactions", async () => {
+  it("only closes out REFUNDED transactions, never uncaptured COMPLETED ones", async () => {
+    // Regression: buyer bought a spot, then buyer and seller both left before
+    // the buyer was served. The purchase was stamped settledAt -- which the
+    // settlement page reads as "captured & paid out" -- so the owner could no
+    // longer capture or release it, the hold lapsed, and the seller was never
+    // paid while the owner's fee showed as earned.
     const lineId = "line-1"
     const userId = "user-leaving"
 
-    // The findMany query filters by status: { in: ["COMPLETED", "REFUNDED"] }
     mockTx.transaction.findMany.mockResolvedValue([])
 
-    const result = await settleTransactionsForUser(mockTx as any, lineId, userId)
+    const result = await settleTransactionsForUser(mockTx as never, lineId, userId)
 
     expect(result).toBe(0)
     expect(mockTx.transaction.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({
-          status: { in: ["COMPLETED", "REFUNDED"] },
-        }),
+        where: expect.objectContaining({ status: "REFUNDED" }),
       })
     )
   })

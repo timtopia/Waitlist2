@@ -46,6 +46,17 @@ export async function PATCH(
   }
 
   try {
+    const current = await prisma.linePosition.findUnique({
+      where: { lineId_userId: { lineId, userId: result.userId } },
+      select: { lockedUntil: true },
+    })
+    if (current?.lockedUntil && current.lockedUntil > new Date()) {
+      return NextResponse.json(
+        { error: "Someone is paying for a swap with you right now. You can change your listing once it finishes." },
+        { status: 409 }
+      )
+    }
+
     const position = await prisma.linePosition.update({
       where: {
         lineId_userId: {

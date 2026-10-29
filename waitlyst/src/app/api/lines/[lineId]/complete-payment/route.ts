@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getStripe, getBaseUrl, performPositionSwap } from "@/lib/stripe"
+import { getStripe, getBaseUrl, performPositionSwap, isCheckoutAuthorized } from "@/lib/stripe"
 import { prisma } from "@/lib/prisma"
 
 /**
@@ -31,7 +31,7 @@ export async function GET(
     // Retrieve the checkout session from Stripe to verify payment
     const checkoutSession = await stripe.checkout.sessions.retrieve(sessionId)
 
-    if (checkoutSession.payment_status !== "paid") {
+    if (!(await isCheckoutAuthorized(checkoutSession))) {
       console.error(`Payment not completed for session ${sessionId}: status=${checkoutSession.payment_status}`)
       return NextResponse.redirect(`${baseUrl}/lines/${lineId}?payment=error&reason=not_paid`)
     }
@@ -55,9 +55,18 @@ export async function GET(
     // Perform the swap (idempotent — won't swap again if already completed by webhook).
     // Note: With auth-then-capture, the payment is authorized but NOT captured yet.
     // Capture happens later when the creator fulfills the position.
-    const swapped = await performPositionSwap(transactionId)
+    await performPositionSwap(transactionId)
 
-    // Whether we swapped or it was already done, the payment authorization was successful
+    // Swapped now or already by the webhook: success. Anything else means the
+    // checkout was cancelled or the queue moved under it, and the hold was
+    // released -- telling the buyer "success" here would be a lie.
+    const settled = await prisma.transaction.findUnique({
+      where: { id: transactionId },
+      select: { status: true },
+    })
+    if (settled?.status !== "COMPLETED") {
+      return NextResponse.redirect(`${baseUrl}/lines/${lineId}?payment=error&reason=swap_failed`)
+    }
     return NextResponse.redirect(`${baseUrl}/lines/${lineId}?payment=success`)
   } catch (error) {
     console.error("Complete payment error:", error)
