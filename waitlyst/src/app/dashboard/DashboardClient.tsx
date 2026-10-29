@@ -10,6 +10,7 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal"
 import { DropdownMenu, DropdownMenuItem } from "@/components/ui/DropdownMenu"
 import { useToast } from "@/components/ui/Toast"
 import { timeAgo, formatCurrency } from "@/lib/format"
+import { formatWaitTime } from "@/lib/wait-time"
 import type { MemberPhase } from "@/lib/member-status"
 
 interface CreatedLine {
@@ -64,6 +65,14 @@ interface LineStats {
   totalRefunded: number
   pendingSettlement: number
   netRevenue: number
+  service?: {
+    served: number
+    left: number
+    removed: number
+    waiting: number
+    medianWaitMinutes: number | null
+    servedLastHour: number
+  }
 }
 
 interface StatsModal {
@@ -468,7 +477,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white border border-ink p-6 max-w-md w-full mx-4">
             <h3 className="text-lg font-semibold tracking-tight mb-4">
-              {statsModal.lineName} - Transaction Stats
+              {statsModal.lineName} - Line Stats
             </h3>
 
             {statsModal.loading ? (
@@ -478,6 +487,34 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
               </div>
             ) : statsModal.stats ? (
               <div className="space-y-4">
+                {statsModal.stats.service && (() => {
+                  const s = statsModal.stats.service
+                  return (
+                    <>
+                      <p className="font-mono text-xs uppercase tracking-widest text-ink/40">Service</p>
+                      <div className="grid grid-cols-3 divide-x divide-rule border border-rule">
+                        <div className="p-3 text-center">
+                          <p className="font-mono text-2xl tabular-nums">{s.served}</p>
+                          <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mt-1">Served</p>
+                        </div>
+                        <div className="p-3 text-center">
+                          <p className="font-mono text-2xl tabular-nums">{s.waiting}</p>
+                          <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mt-1">Waiting</p>
+                        </div>
+                        <div className="p-3 text-center">
+                          <p className="font-mono text-2xl tabular-nums">
+                            {s.medianWaitMinutes === null ? "--" : formatWaitTime(s.medianWaitMinutes)}
+                          </p>
+                          <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mt-1">Typical wait</p>
+                        </div>
+                      </div>
+                      <p className="text-xs text-ink/50 text-center">
+                        {s.servedLastHour} served in the last hour · {s.left} left on their own · {s.removed} removed
+                      </p>
+                    </>
+                  )
+                })()}
+
                 <div className="border border-ink p-4 text-center">
                   <p className="font-mono text-3xl tabular-nums text-green-700">
                     {formatCurrency(statsModal.stats.ownerFeeEarned ?? 0)}

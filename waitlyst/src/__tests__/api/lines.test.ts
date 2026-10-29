@@ -32,6 +32,7 @@ const mockPrisma = {
   },
   queueVisit: {
     create: vi.fn(),
+    findMany: vi.fn().mockResolvedValue([]),
   },
   user: {
     findMany: vi.fn(),
@@ -676,6 +677,12 @@ describe("Stats API", () => {
       { id: "txn-2", status: "COMPLETED", amount: 50, settledAt: null },
       { id: "txn-3", status: "REFUNDED", amount: 25, settledAt: new Date() },
     ])
+    const joinedAt = new Date(Date.now() - 30 * 60000)
+    mockPrisma.queueVisit.findMany.mockResolvedValue([
+      { outcome: "SERVED", joinedAt, servedAt: new Date(joinedAt.getTime() + 12 * 60000) },
+      { outcome: "LEFT", joinedAt, servedAt: null },
+    ])
+    mockPrisma.linePosition.findMany.mockResolvedValue([{ fulfilled: false, joinedAt, fulfilledAt: null }])
 
     const { GET } = await import("@/app/api/lines/[lineId]/stats/route")
     const req = new Request("http://localhost/api/lines/line-1/stats")
@@ -690,6 +697,9 @@ describe("Stats API", () => {
     expect(data.totalCompleted).toBe(100)
     expect(data.pendingSettlement).toBe(50)
     expect(data.netRevenue).toBe(75)
+    expect(data.service).toEqual({
+      served: 1, left: 1, removed: 0, waiting: 1, medianWaitMinutes: 12, servedLastHour: 1,
+    })
   })
 })
 

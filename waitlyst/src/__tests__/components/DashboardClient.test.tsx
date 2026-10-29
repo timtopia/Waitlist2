@@ -193,7 +193,7 @@ describe("DashboardClient", () => {
       fireEvent.click(screen.getByText("View Stats"))
 
       await waitFor(() => {
-        expect(screen.getByText("Test Line 1 - Transaction Stats")).toBeInTheDocument()
+        expect(screen.getByText("Test Line 1 - Line Stats")).toBeInTheDocument()
       })
     })
 
@@ -438,7 +438,7 @@ describe("DashboardClient", () => {
       fireEvent.click(screen.getByText("View Stats"))
 
       await waitFor(() => {
-        expect(screen.getByText("Test Line 1 - Transaction Stats")).toBeInTheDocument()
+        expect(screen.getByText("Test Line 1 - Line Stats")).toBeInTheDocument()
       })
 
       // Find and click the Close button in the modal
@@ -446,7 +446,7 @@ describe("DashboardClient", () => {
       fireEvent.click(closeButton)
 
       await waitFor(() => {
-        expect(screen.queryByText("Test Line 1 - Transaction Stats")).not.toBeInTheDocument()
+        expect(screen.queryByText("Test Line 1 - Line Stats")).not.toBeInTheDocument()
       })
     })
 

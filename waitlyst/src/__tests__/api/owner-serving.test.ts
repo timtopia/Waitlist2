@@ -9,9 +9,13 @@ const mockPrisma = {
     findFirst: vi.fn(),
     count: vi.fn(),
     update: vi.fn(),
+    findMany: vi.fn().mockResolvedValue([]),
   },
   transaction: {
     findMany: vi.fn(),
+  },
+  queueVisit: {
+    findMany: vi.fn().mockResolvedValue([]),
   },
   swapOffer: {
     updateMany: vi.fn(),

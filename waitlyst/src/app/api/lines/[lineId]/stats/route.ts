@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
+import { serviceStats } from "@/lib/service-stats"
 
 // Get transaction stats for a line (owner only)
 export async function GET(
@@ -13,11 +14,20 @@ export async function GET(
   if (result instanceof NextResponse) return result
 
   try {
-    // Get all transactions for this line
-    const transactions = await prisma.transaction.findMany({
-      where: { lineId },
-      orderBy: { createdAt: "desc" },
-    })
+    const [transactions, visits, positions] = await Promise.all([
+      prisma.transaction.findMany({
+        where: { lineId },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.queueVisit.findMany({
+        where: { lineId },
+        select: { outcome: true, joinedAt: true, servedAt: true },
+      }),
+      prisma.linePosition.findMany({
+        where: { lineId },
+        select: { fulfilled: true, joinedAt: true, fulfilledAt: true },
+      }),
+    ])
 
     // Categorize by status (regardless of settlement)
     const completed = transactions.filter(t => t.status === "COMPLETED")
@@ -51,6 +61,7 @@ export async function GET(
       pendingSettlement,
       netRevenue: totalCompleted - totalRefunded,
       recentTransactions: transactions.slice(0, 10),
+      service: serviceStats(visits, positions),
     })
   } catch (error) {
     console.error("Stats error:", error)
