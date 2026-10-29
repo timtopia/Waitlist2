@@ -486,7 +486,7 @@ describe("POST /api/lines/[lineId]/checkout", () => {
     expect(response.status).toBe(400)
 
     const data = await response.json()
-    expect(data.error).toContain("not available for swap")
+    expect(data.error).toContain("hasn't listed their position for sale")
   })
 
   it("should return 409 if buyer position is locked", async () => {

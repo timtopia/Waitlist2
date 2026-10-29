@@ -7,6 +7,7 @@ import { useToast } from "./ui/Toast"
 import { useState, useEffect, useCallback } from "react"
 import { useSession } from "next-auth/react"
 import { formatCurrency } from "@/lib/format"
+import { calcFees } from "@/lib/fees"
 
 interface Position {
   id: string
@@ -64,6 +65,7 @@ interface QueueDisplayProps {
   feeInfo?: FeeInfo
   isPaused?: boolean
   hasPayoutSetup?: boolean
+  stripeEnabled?: boolean
   allowResale?: boolean
   maxAskingPrice?: number | null
   hideCapacity?: boolean
@@ -78,14 +80,14 @@ function formatWaitTime(minutes: number): string {
   return `~${Math.round(hours)} hrs`
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, feeInfo, isPaused = false, hasPayoutSetup = false, allowResale = true, maxAskingPrice = null, hideCapacity = false }: QueueDisplayProps) {
+export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, feeInfo, isPaused = false, hasPayoutSetup = false, stripeEnabled = false, allowResale = true, maxAskingPrice = null, hideCapacity = false }: QueueDisplayProps) {
   const { data: session } = useSession()
   const { addToast } = useToast()
   const [loadingAction, setLoadingAction] = useState<string | null>(null)
   const [removalModal, setRemovalModal] = useState<RemovalModal | null>(null)
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
   const [waitTimeData, setWaitTimeData] = useState<{ estimatedMinutesPerPerson: number | null; basedOn: number } | null>(null)
+  const [connectLoading, setConnectLoading] = useState(false)
 
   // Offer system state
   const [sentOffers, setSentOffers] = useState<SwapOffer[]>([])
@@ -93,6 +95,11 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
   const [offerFormOpen, setOfferFormOpen] = useState<string | null>(null)
   const [offerAmount, setOfferAmount] = useState("")
   const [offerLoading, setOfferLoading] = useState(false)
+
+  // Listing-for-sale state (the current user's own position)
+  const [listPriceFormOpen, setListPriceFormOpen] = useState(false)
+  const [listPriceAmount, setListPriceAmount] = useState("")
+  const [priceLoading, setPriceLoading] = useState(false)
 
   // Batch select state
   const [selectMode, setSelectMode] = useState(false)
@@ -133,6 +140,20 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
   useEffect(() => {
     fetchOffers()
   }, [fetchOffers, positions.length])
+
+  // Poll for offer status changes (e.g. the person in front accepting your
+  // offer) even when nothing else on the page has changed.
+  useEffect(() => {
+    if (!session?.user?.id) return
+    const interval = setInterval(fetchOffers, 10000)
+    return () => clearInterval(interval)
+  }, [fetchOffers, session?.user?.id])
+
+  /** What a buyer actually pays for a listed position, including owner + platform fees. */
+  function buyerTotal(askingPrice: number): number {
+    if (!feeInfo) return askingPrice
+    return calcFees(askingPrice, feeInfo.ownerFeePercent, feeInfo.platformFeePercent).total
+  }
 
   const currentUserPosition = positions.find((p) => p.user.id === session?.user?.id)
   const positionInFront = currentUserPosition
@@ -187,12 +208,11 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
       const data = await res.json()
       if (res.ok) {
         if (action === "accept") {
-          if (data.checkoutUrl) {
-            window.location.href = data.checkoutUrl
-            return
-          } else if (data.devMode) {
+          if (data.devMode) {
             addToast("Swap completed!", "success")
-            onRefresh()
+          } else if (data.pendingBuyerPayment) {
+            // Payment is on the buyer, not us — we just wait for them now.
+            addToast("Offer accepted — waiting for the buyer to complete payment.", "success")
           }
         } else {
           addToast("Offer declined", "info")
@@ -204,6 +224,98 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
       }
     } finally {
       setLoadingAction(null)
+    }
+  }
+
+  /** Buy a listed position outright at its asking price (the person directly in front of you). */
+  async function handleBuyPosition(positionId: string) {
+    setLoadingAction(`buy-${positionId}`)
+    try {
+      const res = await fetch(`/api/lines/${lineId}/checkout`, { method: "POST" })
+      const data = await res.json()
+      if (res.ok) {
+        if (data.url) {
+          window.location.href = data.url
+          return
+        }
+        addToast("Position purchased!", "success")
+        onRefresh()
+      } else {
+        addToast(data.error || "Failed to buy position", "error")
+      }
+    } finally {
+      setLoadingAction(null)
+    }
+  }
+
+  /** Once the person in front has accepted your offer, fetch the payment link that's actually yours to use. */
+  async function handleCompletePayment(offerId: string) {
+    setLoadingAction(`pay-${offerId}`)
+    try {
+      const res = await fetch(`/api/lines/${lineId}/offer/${offerId}/checkout`)
+      const data = await res.json()
+      if (res.ok && data.checkoutUrl) {
+        window.location.href = data.checkoutUrl
+        return
+      }
+      addToast(data.error || "Could not start payment", "error")
+    } finally {
+      setLoadingAction(null)
+    }
+  }
+
+  async function handleConnectSetup() {
+    setConnectLoading(true)
+    try {
+      const res = await fetch("/api/stripe/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ returnTo: window.location.pathname }),
+      })
+      const data = await res.json()
+      if (res.ok && data.url) {
+        window.location.href = data.url
+      } else {
+        addToast(data.error || "Failed to start payout setup", "error")
+        setConnectLoading(false)
+      }
+    } catch {
+      addToast("Failed to start payout setup", "error")
+      setConnectLoading(false)
+    }
+  }
+
+  /** List, re-price, or un-list the current user's own position. */
+  async function handleSetPrice(price: number | null) {
+    if (price !== null && (!price || price < 1)) {
+      addToast("Price must be at least $1.00", "error")
+      return
+    }
+    if (price !== null && maxAskingPrice != null && price > maxAskingPrice) {
+      addToast(`Price exceeds max price of ${formatCurrency(maxAskingPrice)}`, "error")
+      return
+    }
+    setPriceLoading(true)
+    try {
+      const res = await fetch(`/api/lines/${lineId}/price`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ price }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        addToast(
+          price === null ? "Removed from sale" : `Listed for ${formatCurrency(price)}`,
+          "success"
+        )
+        setListPriceFormOpen(false)
+        setListPriceAmount("")
+        onRefresh()
+      } else {
+        addToast(data.error || "Failed to update listing", "error")
+      }
+    } finally {
+      setPriceLoading(false)
     }
   }
 
@@ -612,6 +724,20 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                         {isFront && !pos.fulfilled && (
                           <span className="ml-2 text-sm text-green-700">(Next up)</span>
                         )}
+                        {pos.askingPrice != null && !isCurrentUser && (
+                          <span className="ml-2 font-mono text-xs uppercase tracking-widest text-accent">
+                            Listed {formatCurrency(pos.askingPrice)}
+                          </span>
+                        )}
+                        {pos.askingPrice != null &&
+                          !isCurrentUser &&
+                          !isDirectlyInFront &&
+                          currentUserPosition &&
+                          pos.position < currentUserPosition.position && (
+                            <span className="ml-2 text-xs text-ink/40 normal-case">
+                              (only the person directly behind can buy this)
+                            </span>
+                          )}
                         {pos.fulfilled && (
                           <span className="ml-2 inline-flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-green-700">
                             <span className="w-1.5 h-1.5 bg-green-600" aria-hidden />
@@ -701,10 +827,123 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                   )
                 })}
 
+                {/* List / re-price / un-list the current user's own position */}
+                {isCurrentUser && allowResale && !isPaused && !selectMode && (
+                  <div className="mt-3">
+                    {isLocked ? (
+                      <p className="text-sm text-ink/50">
+                        Your position is locked while a swap is in progress.
+                      </p>
+                    ) : pos.askingPrice != null ? (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm text-ink/70">
+                          Listed for{" "}
+                          <span className="font-mono tabular-nums">{formatCurrency(pos.askingPrice)}</span>
+                          {feeInfo && (
+                            <span className="text-ink/40"> (buyer pays {formatCurrency(buyerTotal(pos.askingPrice))})</span>
+                          )}
+                        </p>
+                        <button
+                          onClick={() => handleSetPrice(null)}
+                          disabled={priceLoading}
+                          className="font-mono text-xs uppercase tracking-widest text-ink/50 hover:text-ink underline underline-offset-4 disabled:opacity-50"
+                        >
+                          Remove from sale
+                        </button>
+                      </div>
+                    ) : listPriceFormOpen ? (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className="relative flex-1 sm:flex-none">
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-ink/40">$</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max={maxAskingPrice ?? undefined}
+                            step="0.01"
+                            placeholder="0.00"
+                            value={listPriceAmount}
+                            onChange={(e) => setListPriceAmount(e.target.value)}
+                            className={`w-full sm:w-28 pl-6 pr-2 py-1 border bg-white font-mono tabular-nums text-sm focus:outline-none focus:border-ink ${
+                              maxAskingPrice != null && listPriceAmount && parseFloat(listPriceAmount) > maxAskingPrice
+                                ? "border-accent"
+                                : "border-rule"
+                            }`}
+                          />
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => handleSetPrice(parseFloat(listPriceAmount))}
+                          isLoading={priceLoading}
+                          disabled={maxAskingPrice != null && !!listPriceAmount && parseFloat(listPriceAmount) > maxAskingPrice}
+                        >
+                          List for Sale
+                        </Button>
+                        <button
+                          onClick={() => { setListPriceFormOpen(false); setListPriceAmount("") }}
+                          className="text-sm text-ink/50 hover:text-ink"
+                        >
+                          Cancel
+                        </button>
+                        {maxAskingPrice != null && (
+                          <span className={`text-xs font-mono tabular-nums ${
+                            listPriceAmount && parseFloat(listPriceAmount) > maxAskingPrice
+                              ? "text-accent"
+                              : "text-ink/40"
+                          }`}>
+                            Max: {formatCurrency(maxAskingPrice)}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setListPriceFormOpen(true)}
+                        className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"
+                      >
+                        List Your Spot For Sale
+                      </button>
+                    )}
+                    {stripeEnabled && !hasPayoutSetup && (pos.askingPrice != null || listPriceFormOpen) && (
+                      <div className="mt-2 flex items-center justify-between gap-3 bg-accent/5 border border-accent/30 px-3 py-2">
+                        <p className="text-xs text-ink/70">
+                          You haven&apos;t connected a payout account yet -- without one, a sale here has nowhere to pay you.
+                        </p>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={handleConnectSetup}
+                          isLoading={connectLoading}
+                          className="flex-shrink-0"
+                        >
+                          Connect Now
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Offer to swap -- shown on the position directly in front */}
                 {isDirectlyInFront && !isCurrentUser && allowResale && !isPaused && !isLocked && !selectMode && (
-                  <div className="mt-3">
-                    {sentOfferToFront?.status === "PENDING" ? (
+                  <div className="mt-3 space-y-2">
+                    {pos.askingPrice != null && (
+                      <div>
+                        <Button
+                          size="sm"
+                          onClick={() => handleBuyPosition(pos.id)}
+                          isLoading={loadingAction === `buy-${pos.id}`}
+                        >
+                          Buy for {formatCurrency(buyerTotal(pos.askingPrice))}
+                        </Button>
+                      </div>
+                    )}
+                    {sentOfferToFront?.status === "ACCEPTED" ? (
+                      <Button
+                        size="sm"
+                        onClick={() => handleCompletePayment(sentOfferToFront.id)}
+                        isLoading={loadingAction === `pay-${sentOfferToFront.id}`}
+                      >
+                        Offer accepted -- Complete Payment
+                      </Button>
+                    ) : sentOfferToFront?.status === "PENDING" ? (
                       <p className="text-sm text-ink/50">
                         Offer sent: {formatCurrency(sentOfferToFront.amount)} -- Waiting for response
                       </p>

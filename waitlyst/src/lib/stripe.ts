@@ -1,5 +1,7 @@
 import Stripe from "stripe"
 import { prisma } from "./prisma"
+import { sendEmail } from "./email"
+import { positionSoldEmail } from "./email-templates"
 
 // Lazy-initialize Stripe to ensure env vars are loaded by Next.js before we read them.
 // Module-level `process.env` reads can happen before Next.js injects .env values.
@@ -242,5 +244,38 @@ export async function performPositionSwap(transactionId: string): Promise<boolea
     })
   })
 
+  // Every completed swap path (direct buy, Stripe return, webhook, offer
+  // accept) funnels through here, so this is the one place the seller learns
+  // their spot sold -- for a direct buy they'd otherwise never be told.
+  notifySellerOfSale(transaction).catch(() => {})
+
   return true
+}
+
+async function notifySellerOfSale(transaction: {
+  lineId: string
+  sellerId: string
+  amount: number
+}) {
+  const [seller, sellerPosition, line] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: transaction.sellerId },
+      select: { name: true, email: true, emailNotifications: true },
+    }),
+    prisma.linePosition.findUnique({
+      where: { lineId_userId: { lineId: transaction.lineId, userId: transaction.sellerId } },
+      select: { position: true },
+    }),
+    prisma.line.findUnique({ where: { id: transaction.lineId }, select: { name: true } }),
+  ])
+  if (!seller?.email || !seller.emailNotifications || !sellerPosition || !line) return
+
+  const { subject, html } = positionSoldEmail(
+    seller.name || "there",
+    line.name,
+    transaction.amount,
+    sellerPosition.position,
+    `${getBaseUrl()}/lines/${transaction.lineId}`
+  )
+  await sendEmail(seller.email, subject, html)
 }

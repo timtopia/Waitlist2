@@ -102,6 +102,22 @@ export async function PATCH(
       )
     }
 
+    // Re-check adjacency at accept time, not just when the offer was made.
+    // Positions can shift between offer creation and acceptance (e.g. another
+    // swap completed first), so an old offer can go stale. Accepting a stale
+    // offer would let the offerer skip over whoever is now in between —
+    // mark it DECLINED instead of letting the swap go through.
+    if (sellerPosition.position !== buyerPosition.position - 1) {
+      await prisma.swapOffer.update({
+        where: { id: offerId },
+        data: { status: "DECLINED" },
+      })
+      return NextResponse.json(
+        { error: "This offer is no longer valid -- queue positions have changed since it was sent." },
+        { status: 409 }
+      )
+    }
+
     // Check if either position is locked
     const now = new Date()
     if (buyerPosition.lockedUntil && now < buyerPosition.lockedUntil) {
@@ -245,9 +261,13 @@ export async function PATCH(
           data: { stripePaymentId: checkoutSession.id },
         })
 
+        // IMPORTANT: this response goes to the SELLER (only the offer's
+        // recipient can call accept), but it's the BUYER who owes money.
+        // Never send checkoutUrl here — the buyer fetches their own payment
+        // link from GET /offer/[offerId]/checkout once they see ACCEPTED.
         return NextResponse.json({
           offer: { ...offer, status: "ACCEPTED" },
-          checkoutUrl: checkoutSession.url,
+          pendingBuyerPayment: true,
         })
       } catch (stripeError) {
         console.error("Stripe checkout session creation failed:", stripeError)

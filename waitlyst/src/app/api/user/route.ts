@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
+import { getStripe } from "@/lib/stripe"
 import { rateLimit } from "@/lib/rate-limit"
 import { validateString, validateBoolean } from "@/lib/validate"
 
@@ -28,7 +29,7 @@ export async function GET() {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
 
-    return NextResponse.json(user)
+    return NextResponse.json({ ...user, stripeEnabled: !!getStripe() })
   } catch (error) {
     console.error("Get user error:", error)
     return NextResponse.json(

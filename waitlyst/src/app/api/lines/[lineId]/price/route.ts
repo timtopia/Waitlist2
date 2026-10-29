@@ -17,8 +17,8 @@ export async function PATCH(
     if (typeof price !== "number" || isNaN(price)) {
       return NextResponse.json({ error: "Price must be a number" }, { status: 400 })
     }
-    if (price < 0) {
-      return NextResponse.json({ error: "Price cannot be negative" }, { status: 400 })
+    if (price < 1) {
+      return NextResponse.json({ error: "Price must be at least $1.00" }, { status: 400 })
     }
     if (price > 10000) {
       return NextResponse.json({ error: "Price must be no more than $10,000" }, { status: 400 })

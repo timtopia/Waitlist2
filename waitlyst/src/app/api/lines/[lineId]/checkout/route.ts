@@ -79,8 +79,12 @@ export async function POST(
     }
 
     if (!targetPosition.askingPrice) {
+      // Note: you can only ever buy the position directly in front of you
+      // (enforced by the query above), never an arbitrary listed position
+      // further ahead -- so this message is specifically about your actual
+      // neighbor, not about whichever listing you may have had in mind.
       return NextResponse.json(
-        { error: "This position is not available for swap" },
+        { error: "The person directly in front of you hasn't listed their position for sale." },
         { status: 400 }
       )
     }

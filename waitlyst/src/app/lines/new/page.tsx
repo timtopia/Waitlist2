@@ -1,15 +1,30 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { Suspense, useState, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { Button } from "@/components/ui/Button"
 import { Input, Textarea } from "@/components/ui/Input"
 import { Card, CardContent } from "@/components/ui/Card"
+import { useToast } from "@/components/ui/Toast"
 
 export default function CreateLinePage() {
+  return (
+    <Suspense>
+      <CreateLineForm />
+    </Suspense>
+  )
+}
+
+function CreateLineForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const { addToast } = useToast()
   const { data: session, status } = useSession()
+  const [connectOnboarded, setConnectOnboarded] = useState<boolean | null>(null)
+  const [stripeEnabled, setStripeEnabled] = useState(false)
+  const [connectLoading, setConnectLoading] = useState(false)
+  const [connectError, setConnectError] = useState<string | null>(null)
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [isPublic, setIsPublic] = useState(true)
@@ -89,6 +104,54 @@ export default function CreateLinePage() {
     setSelectedTemplate(id)
     const tpl = templates.find((t) => t.id === id)
     tpl?.apply()
+  }
+
+  useEffect(() => {
+    if (!session) return
+    fetch("/api/user")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((user) => {
+        setConnectOnboarded(user?.stripeConnectOnboarded ?? false)
+        setStripeEnabled(!!user?.stripeEnabled)
+      })
+      .catch(() => setConnectOnboarded(false))
+  }, [session])
+
+  useEffect(() => {
+    const connectStatus = searchParams.get("connect")
+    if (connectStatus === "success") {
+      setConnectOnboarded(true)
+      addToast("Payout account connected -- your fees will now be paid out.", "success")
+      router.replace("/lines/new", { scroll: false })
+    } else if (connectStatus === "incomplete") {
+      addToast("Payout setup isn't finished yet. Pick it back up whenever you're ready.", "info")
+      router.replace("/lines/new", { scroll: false })
+    } else if (connectStatus === "error") {
+      addToast("Something went wrong connecting your payout account. Please try again.", "error")
+      router.replace("/lines/new", { scroll: false })
+    }
+  }, [searchParams, router, addToast])
+
+  async function handleConnectSetup() {
+    setConnectLoading(true)
+    setConnectError(null)
+    try {
+      const res = await fetch("/api/stripe/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ returnTo: "/lines/new" }),
+      })
+      const data = await res.json()
+      if (res.ok && data.url) {
+        window.location.href = data.url
+      } else {
+        setConnectError(data.error || "Failed to start payout setup")
+        setConnectLoading(false)
+      }
+    } catch {
+      setConnectError("Failed to start payout setup")
+      setConnectLoading(false)
+    }
   }
 
   if (status === "loading") {
@@ -309,6 +372,26 @@ export default function CreateLinePage() {
                   <span> A 10% platform fee also applies to each swap.</span>
                 )}
               </p>
+              {ownerFeePercent && parseFloat(ownerFeePercent) > 0 && stripeEnabled && connectOnboarded === false && (
+                <div className="mt-2 flex items-center justify-between gap-3 bg-accent/5 border border-accent/30 px-3 py-2">
+                  <p className="text-xs text-ink/70">
+                    You haven&apos;t connected a payout account yet -- without one, this fee has nowhere to go.
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleConnectSetup}
+                    isLoading={connectLoading}
+                    className="flex-shrink-0"
+                  >
+                    Connect Now
+                  </Button>
+                </div>
+              )}
+              {connectError && (
+                <p className="text-xs text-accent mt-1">{connectError}</p>
+              )}
             </div>
 
             {/* Schedule Toggle */}

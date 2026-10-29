@@ -64,6 +64,19 @@ export function validateUrl(value: unknown, name: string): string | null {
   return null
 }
 
+/**
+ * Validates a client-supplied "return to this page after redirect" path
+ * (e.g. for Stripe Connect onboarding). Only an internal relative path is
+ * safe here -- a full URL or "//host/..." would redirect off-site after
+ * Stripe hands control back to us.
+ */
+export function sanitizeReturnPath(value: unknown, fallback: string): string {
+  if (typeof value !== "string") return fallback
+  if (!value.startsWith("/") || value.startsWith("//")) return fallback
+  if (value.includes("://")) return fallback
+  return value
+}
+
 export function validateBoolean(value: unknown, name: string): string | null {
   if (value === undefined || value === null) {
     return `${name} is required`

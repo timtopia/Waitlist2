@@ -86,6 +86,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [qrSvg, setQrSvg] = useState<string | null>(null)
   const [qrLoading, setQrLoading] = useState(false)
   const [hasPayoutSetup, setHasPayoutSetup] = useState(false)
+  const [stripeEnabled, setStripeEnabled] = useState(false)
   const qrCanvasRef = useRef<HTMLCanvasElement>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -122,6 +123,23 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     }
   }, [searchParams, lineId, addToast, router])
 
+  // Handle Stripe Connect onboarding status, if the user set up payouts
+  // from this page (e.g. right after listing their position for sale).
+  useEffect(() => {
+    const connectStatus = searchParams.get("connect")
+    if (connectStatus === "success") {
+      setHasPayoutSetup(true)
+      addToast("Payout account connected -- you'll now get paid for swaps.", "success")
+      router.replace(`/lines/${lineId}`, { scroll: false })
+    } else if (connectStatus === "incomplete") {
+      addToast("Payout setup isn't finished yet. Pick it back up whenever you're ready.", "info")
+      router.replace(`/lines/${lineId}`, { scroll: false })
+    } else if (connectStatus === "error") {
+      addToast("Something went wrong connecting your payout account. Please try again.", "error")
+      router.replace(`/lines/${lineId}`, { scroll: false })
+    }
+  }, [searchParams, lineId, addToast, router])
+
   useEffect(() => {
     if (typeof window !== "undefined" && "Notification" in window) {
       setNotificationsEnabled(Notification.permission === "granted")
@@ -137,6 +155,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         if (res.ok) {
           const data = await res.json()
           setHasPayoutSetup(!!data.stripeConnectOnboarded)
+          setStripeEnabled(!!data.stripeEnabled)
         }
       } catch {
         // Non-critical — default to false
@@ -184,6 +203,13 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     fetchActivity()
   }, [fetchActivity])
 
+  // After the viewer's own action (join, buy, list, swap), refresh the
+  // activity feed too -- otherwise it lags until the next background poll.
+  const refreshAll = useCallback(() => {
+    fetchLine()
+    fetchActivity()
+  }, [fetchLine, fetchActivity])
+
   const handleLineUpdate = useCallback((event: LineUpdateEvent) => {
     if (event.type === "poll-update" && event.data) {
       // Poll detected a change — use the fresh data directly (no extra fetch)
@@ -225,10 +251,12 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const userPosition = line?.positions.find((p) => p.user.id === session?.user?.id)
   const hasProductInfo = !!(line?.productName || line?.productImage)
 
-  async function handleJoin() {
+  async function handleJoin(): Promise<boolean> {
     if (!session) {
-      signIn("google")
-      return
+      // Come back with ?join=1 so the join completes on return instead of
+      // making them find and press "Join Line" a second time after sign-in.
+      signIn("google", { callbackUrl: `/lines/${lineId}?join=1` })
+      return false
     }
 
     setJoining(true)
@@ -237,15 +265,32 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         method: "POST",
       })
       if (res.ok) {
-        fetchLine()
-      } else {
-        const data = await res.json()
-        addToast(data.error || "Failed to join line", "error")
+        refreshAll()
+        return true
       }
+      const data = await res.json()
+      addToast(data.error || "Failed to join line", "error")
+      return false
     } finally {
       setJoining(false)
     }
   }
+
+  // Finish a join that was interrupted by the sign-in redirect. Ref guard so
+  // a re-render while the request is in flight can't double-submit.
+  const autoJoinAttempted = useRef(false)
+  useEffect(() => {
+    if (searchParams.get("join") !== "1" || !session || !line) return
+    if (autoJoinAttempted.current) return
+    autoJoinAttempted.current = true
+    router.replace(`/lines/${lineId}`, { scroll: false })
+    if (canJoin) {
+      handleJoin().then((joined) => {
+        if (joined) addToast("You're in line!", "success")
+      })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, session, line, canJoin])
 
   async function handleDelete() {
     setDeleting(true)
@@ -666,11 +711,12 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
           <QueueDisplay
             lineId={line.id}
             positions={line.positions}
-            onRefresh={fetchLine}
+            onRefresh={refreshAll}
             isCreator={isCreator}
             feeInfo={feeInfo}
             isPaused={linePaused}
             hasPayoutSetup={hasPayoutSetup}
+            stripeEnabled={stripeEnabled}
             allowResale={line.allowResale}
             maxAskingPrice={line.maxAskingPrice}
             hideCapacity={!isCreator && line.hideCapacity}

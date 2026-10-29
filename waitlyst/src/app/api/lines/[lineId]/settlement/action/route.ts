@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
-import { captureAuthorization, cancelAuthorization } from "@/lib/stripe"
+import { captureAuthorization, cancelAuthorization, getStripe } from "@/lib/stripe"
 import { rateLimit } from "@/lib/rate-limit"
 
 const settlementLimiter = rateLimit({ interval: 60000, limit: 20 })
@@ -116,6 +116,45 @@ export async function POST(
         { error: "Transaction not found" },
         { status: 404 }
       )
+    }
+
+    // A PENDING transaction never got as far as an authorized payment — it's
+    // an abandoned or stuck checkout, not something to "capture" or "release
+    // a hold" on. The only sane owner action is cancelling it outright so the
+    // locked positions free up and the queue stops showing a phantom swap.
+    if (transaction.status === "PENDING") {
+      if (action !== "cancel") {
+        return NextResponse.json(
+          { error: "A pending (unpaid) checkout can only be cancelled, not captured." },
+          { status: 400 }
+        )
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.linePosition.updateMany({
+          where: { lockedBy: transaction.id },
+          data: { lockedUntil: null, lockedBy: null },
+        })
+        await tx.transaction.update({
+          where: { id: transactionId },
+          data: { status: "FAILED" },
+        })
+      })
+
+      // Best-effort: kill the Stripe Checkout Session too, so a stale link
+      // the buyer still has lying around can't be used after the fact.
+      if (transaction.stripePaymentId) {
+        const stripe = getStripe()
+        if (stripe) {
+          try {
+            await stripe.checkout.sessions.expire(transaction.stripePaymentId)
+          } catch {
+            // Already expired, completed, or gone — nothing to do.
+          }
+        }
+      }
+
+      return NextResponse.json({ success: true, action: "cancel", transactionId })
     }
 
     if (transaction.status !== "COMPLETED") {

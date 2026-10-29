@@ -23,6 +23,9 @@ const mockPrisma = {
     update: vi.fn(),
     updateMany: vi.fn(),
   },
+  swapOffer: {
+    updateMany: vi.fn(),
+  },
   user: {
     findMany: vi.fn(),
   },

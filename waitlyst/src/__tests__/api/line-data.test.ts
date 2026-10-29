@@ -334,6 +334,39 @@ describe("GET /api/lines/[lineId]/activity", () => {
     expect(data[1].description).toContain("Alice joined the line")
   })
 
+  it("shows what the buyer actually paid (including fees), not just the seller's take", async () => {
+    // Regression test: tx.amount is the seller's asking price (what they
+    // receive), not the buyer's total. The line-activity feed used to show
+    // "bought a spot ... for $90.00" when the buyer actually paid $103.50 --
+    // misleading since it looked like the full price paid.
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1" })
+    mockPrisma.transaction.findMany.mockResolvedValue([
+      {
+        id: "txn-1",
+        buyerId: "user-1",
+        sellerId: "user-2",
+        amount: 90,
+        ownerFee: 9,
+        platformFee: 4.5,
+        status: "COMPLETED",
+        createdAt: new Date("2025-06-01T14:00:00Z"),
+      },
+    ])
+    mockPrisma.linePosition.findMany.mockResolvedValue([])
+    mockPrisma.user.findMany.mockResolvedValue([
+      { id: "user-1", name: "Alice" },
+      { id: "user-2", name: "Bob" },
+    ])
+
+    const { GET } = await import("@/app/api/lines/[lineId]/activity/route")
+    const req = new Request("http://localhost/api/lines/line-1/activity")
+    const response = await GET(req, { params: Promise.resolve({ lineId: "line-1" }) })
+
+    const data = await response.json()
+    expect(data[0].description).toContain("$103.50")
+    expect(data[0].description).toContain("$90.00 to Bob")
+  })
+
   it("should include refund activities", async () => {
     mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1" })
 
@@ -554,6 +587,47 @@ describe("GET /api/activity", () => {
     expect(purchase).toBeDefined()
     expect(purchase.description).toContain("Bought a position for $25.00")
     expect(purchase.amount).toBe(25)
+  })
+
+  it("shows the buyer's total including fees, but the seller's amount unchanged", async () => {
+    // Same underlying bug as the per-line activity feed: tx.amount is the
+    // seller's take. The buyer's own dashboard history must show what they
+    // actually paid, while the seller's "Sold for $X" line is already correct.
+    mockAuth.mockResolvedValue({ user: { id: "user-1" } })
+    mockPrisma.transaction.findMany.mockResolvedValue([
+      {
+        id: "txn-buy",
+        buyerId: "user-1",
+        sellerId: "user-2",
+        amount: 90,
+        ownerFee: 9,
+        platformFee: 4.5,
+        status: "COMPLETED",
+        createdAt: new Date("2025-06-01T14:00:00Z"),
+      },
+      {
+        id: "txn-sell",
+        buyerId: "user-3",
+        sellerId: "user-1",
+        amount: 50,
+        ownerFee: 5,
+        platformFee: 2.5,
+        status: "COMPLETED",
+        createdAt: new Date("2025-06-01T15:00:00Z"),
+      },
+    ])
+    mockPrisma.linePosition.findMany.mockResolvedValue([])
+
+    const { GET } = await import("@/app/api/activity/route")
+    const response = await GET()
+    const data = await response.json()
+
+    const purchase = data.find((a: { id: string }) => a.id === "tx-txn-buy")
+    const sale = data.find((a: { id: string }) => a.id === "tx-txn-sell")
+    expect(purchase.description).toContain("Bought a position for $103.50")
+    expect(purchase.amount).toBe(103.5)
+    expect(sale.description).toContain("Sold a position for $50.00")
+    expect(sale.amount).toBe(50)
   })
 
   it("should return refund activity", async () => {

@@ -39,6 +39,19 @@ export async function DELETE(
         data: { position: { decrement: 1 } },
       })
 
+      // Invalidate any pending swap offers to/from this user in this line —
+      // the position they referred to no longer exists, so leaving a PENDING
+      // offer alive would let it resurface (and even be acted on) if the
+      // same two people's positions line up again after a rejoin.
+      await tx.swapOffer.updateMany({
+        where: {
+          lineId,
+          status: "PENDING",
+          OR: [{ fromUserId: userId }, { toUserId: userId }],
+        },
+        data: { status: "DECLINED" },
+      })
+
       // Settle any transactions where both parties have now left the line.
       // This covers both COMPLETED and REFUNDED transactions.
       // Note: We do NOT automatically refund completed purchases when a user

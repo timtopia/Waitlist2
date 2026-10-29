@@ -72,13 +72,18 @@ export async function GET() {
           createdAt: tx.createdAt.toISOString(),
         })
       } else if (tx.status === "COMPLETED" || tx.status === "PENDING") {
+        // tx.amount is the seller's take -- correct for the seller's own
+        // "Sold for $X" line, but the buyer actually paid that plus owner +
+        // platform fees. Showing tx.amount for the buyer's own history
+        // understated what actually left their account.
+        const buyerPaid = tx.amount + (tx.ownerFee || 0) + (tx.platformFee || 0)
         activities.push({
           id: `tx-${tx.id}`,
           type: isBuyer ? "purchase" : "sale",
           description: isBuyer
-            ? `Bought a position for $${tx.amount.toFixed(2)}`
+            ? `Bought a position for $${buyerPaid.toFixed(2)}`
             : `Sold a position for $${tx.amount.toFixed(2)}`,
-          amount: tx.amount,
+          amount: isBuyer ? buyerPaid : tx.amount,
           createdAt: tx.createdAt.toISOString(),
         })
       }

@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# agent validation harness (local-only, never committed)
+/validation/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

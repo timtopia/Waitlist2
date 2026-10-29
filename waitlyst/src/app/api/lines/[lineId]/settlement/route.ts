@@ -53,6 +53,7 @@ export async function GET(
         sellerId: txn.sellerId,
         sellerName: userMap.get(txn.sellerId) || "Anonymous",
         amount: txn.amount,
+        ownerFee: txn.ownerFee,
         status: txn.status,
         settledAt: txn.settledAt?.toISOString() || null,
         stripePaymentId: txn.stripePaymentId,
@@ -62,7 +63,12 @@ export async function GET(
       }
     })
 
-    // Only include COMPLETED (unsettled) transactions in settlement summary
+    // The "settlement" summary (fulfilled/unfulfilled, captured/pending-decision)
+    // is specifically about COMPLETED (authorized) transactions waiting on an
+    // owner decision to capture or release. A transaction still sitting at
+    // PENDING never got that far — payment was never authorized at all (an
+    // abandoned or stuck checkout) — so it's tracked separately below rather
+    // than silently folded into zeros here.
     const completedTxns = enrichedTransactions.filter((t) => t.status === "COMPLETED")
     const fulfilledTxns = completedTxns.filter((t) => t.buyerFulfilled)
     const unfulfilledTxns = completedTxns.filter((t) => !t.buyerFulfilled)
@@ -70,6 +76,20 @@ export async function GET(
     const totalAmount = completedTxns.reduce((sum, t) => sum + t.amount, 0)
     const capturedAmount = completedTxns.filter((t) => t.settledAt !== null).reduce((sum, t) => sum + t.amount, 0)
     const pendingAmount = completedTxns.filter((t) => t.settledAt === null).reduce((sum, t) => sum + t.amount, 0)
+
+    const stuckTxns = enrichedTransactions.filter((t) => t.status === "PENDING")
+    const stuckAmount = stuckTxns.reduce((sum, t) => sum + t.amount, 0)
+
+    // What the owner actually earns from this line's swap activity -- this is
+    // the number that matters for "how much can I pull out," distinct from
+    // totalAmount/capturedAmount above which track the seller's side.
+    const completedRawTxns = transactions.filter((t) => t.status === "COMPLETED")
+    const ownerFeeCaptured = completedRawTxns
+      .filter((t) => t.settledAt !== null)
+      .reduce((sum, t) => sum + t.ownerFee, 0)
+    const ownerFeePending = completedRawTxns
+      .filter((t) => t.settledAt === null)
+      .reduce((sum, t) => sum + t.ownerFee, 0)
 
     return NextResponse.json({
       transactions: enrichedTransactions,
@@ -80,6 +100,10 @@ export async function GET(
         totalAmount,
         capturedAmount,
         pendingAmount,
+        stuckCount: stuckTxns.length,
+        stuckAmount,
+        ownerFeeCaptured,
+        ownerFeePending,
       },
     })
   } catch (error) {

@@ -133,7 +133,11 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
     setConnectLoading(true)
     setConnectError(null)
     try {
-      const res = await fetch("/api/stripe/connect", { method: "POST" })
+      const res = await fetch("/api/stripe/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ returnTo: "/profile" }),
+      })
       const data = await res.json()
       if (res.ok && data.url) {
         window.location.href = data.url

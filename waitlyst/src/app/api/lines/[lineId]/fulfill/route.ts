@@ -34,6 +34,10 @@ export async function POST(
         throw new Error("Position already fulfilled")
       }
 
+      if (position.lockedUntil && position.lockedUntil > new Date()) {
+        throw new Error("Position locked")
+      }
+
       // Mark position as fulfilled
       await tx.linePosition.update({
         where: { id: positionId },
@@ -179,6 +183,12 @@ export async function POST(
       return NextResponse.json(
         { error: "This position has already been fulfilled" },
         { status: 400 }
+      )
+    }
+    if (message === "Position locked") {
+      return NextResponse.json(
+        { error: "This position is in the middle of a pending swap and can't be fulfilled until it completes or the lock expires." },
+        { status: 409 }
       )
     }
     console.error("Fulfill error:", error)
