@@ -35,6 +35,8 @@ interface Stats {
 interface Transaction {
   id: string
   amount: number
+  /** null if the line has since been deleted */
+  lineName: string | null
   status: string
   role: "buyer" | "seller"
   createdAt: string
@@ -560,7 +562,8 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                     />
                     <div>
                       <p className="text-sm font-medium">
-                        {tx.role === "buyer" ? "Swapped up" : "Swapped down"}
+                        {tx.role === "buyer" ? "Bought a spot" : "Sold your spot"}
+                        {tx.lineName && <span className="text-ink/50 font-normal"> in {tx.lineName}</span>}
                       </p>
                       <p className="font-mono text-xs text-ink/40">{formatDateTime(tx.createdAt)}</p>
                     </div>
@@ -572,7 +575,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                     <p className={`font-mono text-sm tabular-nums ${
                       tx.role === "buyer" ? "text-accent" : "text-green-700"
                     }`}>
-                      {tx.role === "buyer" ? "-" : "+"}{formatCurrency(tx.amount)}
+                      {tx.status === "REFUNDED" ? "" : tx.role === "buyer" ? "-" : "+"}{formatCurrency(tx.amount)}
                     </p>
                   </div>
                 </div>

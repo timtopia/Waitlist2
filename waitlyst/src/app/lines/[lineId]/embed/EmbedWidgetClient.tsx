@@ -19,7 +19,24 @@ interface EmbedWidgetClientProps {
   /** The line has a limit that isn't shown */
   hideCapacity: boolean
   kind: "STANDARD" | "RESTAURANT"
+  isActive: boolean
+  /** Capacity used as the server counts it */
+  capacityUsed: number
 }
+
+/** The parts of the line that change while the widget is open */
+interface LiveState {
+  positionCount: number
+  capacityUsed: number
+  maxCapacity: number | null
+  isFull: boolean
+  isActive: boolean
+  nowServing: string | null
+  opensAt: string | null
+  closesAt: string | null
+}
+
+const REFRESH_MS = 30_000
 
 function formatTimeLeft(ms: number): string {
   if (ms <= 0) return "0s"
@@ -39,8 +56,6 @@ function formatPrice(price: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
   }).format(price)
 }
 
@@ -49,13 +64,19 @@ type LineStatus =
   | { state: "open"; closesAt: Date | null }
   | { state: "closed" }
   | { state: "full" }
+  | { state: "paused" }
 
 function getLineStatus(
   opensAt: string | null,
   closesAt: string | null,
-  isFull: boolean
+  isFull: boolean,
+  isActive: boolean
 ): LineStatus {
   const now = new Date()
+
+  if (!isActive) {
+    return { state: "paused" }
+  }
 
   if (opensAt && now < new Date(opensAt)) {
     return { state: "not_yet_open", opensAt: new Date(opensAt) }
@@ -78,26 +99,63 @@ export function EmbedWidgetClient({
   productName,
   productImage,
   productPrice,
-  positionCount,
-  maxCapacity,
-  isFull,
-  opensAt,
-  closesAt,
-  nowServing,
   hideCapacity,
   kind,
+  ...initial
 }: EmbedWidgetClientProps) {
   const [now, setNow] = useState(new Date())
+  const [live, setLive] = useState<LiveState>({
+    positionCount: initial.positionCount,
+    capacityUsed: initial.capacityUsed,
+    maxCapacity: initial.maxCapacity,
+    isFull: initial.isFull,
+    isActive: initial.isActive,
+    nowServing: initial.nowServing,
+    opensAt: initial.opensAt,
+    closesAt: initial.closesAt,
+  })
+  const { positionCount, capacityUsed, maxCapacity, isFull, isActive, nowServing, opensAt, closesAt } = live
 
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 1000)
     return () => clearInterval(interval)
   }, [])
 
-  const status = getLineStatus(opensAt, closesAt, isFull)
+  // The page is rendered once on the server; keep the count, "full",
+  // "paused" and "now serving" current while it sits on someone's site.
+  useEffect(() => {
+    async function refresh() {
+      if (document.visibilityState !== "visible") return
+      try {
+        const res = await fetch(`/api/lines/${lineId}`)
+        if (!res.ok) return
+        const line = await res.json()
+        setLive({
+          positionCount: (line.positions ?? []).reduce(
+            (sum: number, p: { partySize?: number }) => sum + (p.partySize ?? 1),
+            0
+          ),
+          capacityUsed: line.capacityUsed,
+          maxCapacity: line.maxCapacity,
+          isFull: line.isFull,
+          isActive: line.isActive,
+          nowServing: line.nowServing,
+          opensAt: line.opensAt,
+          closesAt: line.closesAt,
+        })
+      } catch {
+        // Keep showing the last known state
+      }
+    }
+    const interval = setInterval(refresh, REFRESH_MS)
+    return () => clearInterval(interval)
+  }, [lineId])
+
+  const status = getLineStatus(opensAt, closesAt, isFull, isActive)
   const lineUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/lines/${lineId}`
 
-  const canJoin = status.state === "open" || status.state === "not_yet_open"
+  // A paused line can still be viewed; joining waits until it resumes
+  const canJoin = status.state === "open" || status.state === "not_yet_open" || status.state === "paused"
 
   return (
     <div className="flex flex-col h-screen bg-white">
@@ -184,6 +242,15 @@ export function EmbedWidgetClient({
           </div>
         )}
 
+        {status.state === "paused" && (
+          <div className="bg-white border border-amber-600 p-3 mb-3">
+            <p className="text-sm font-semibold text-amber-600">Paused</p>
+            <p className="text-xs text-ink/50">
+              Not taking new joins right now.
+            </p>
+          </div>
+        )}
+
         {status.state === "closed" && (
           <div className="bg-white border border-accent p-3 mb-3">
             <p className="text-sm font-semibold text-accent">Line Closed</p>
@@ -210,29 +277,29 @@ export function EmbedWidgetClient({
                 {kind === "RESTAURANT" ? "Guests" : "Spots Filled"}
               </span>
               <span className="font-mono text-xs tabular-nums text-ink">
-                {positionCount} / {maxCapacity}
+                {capacityUsed} / {maxCapacity}
               </span>
             </div>
             <div className="w-full bg-ink/10 h-2">
               <div
                 className={`h-2 transition-all duration-500 ${
-                  positionCount >= maxCapacity
+                  capacityUsed >= maxCapacity
                     ? "bg-accent"
-                    : positionCount >= maxCapacity * 0.8
+                    : capacityUsed >= maxCapacity * 0.8
                     ? "bg-amber-600"
                     : "bg-ink"
                 }`}
                 style={{
                   width: `${Math.min(
-                    (positionCount / maxCapacity) * 100,
+                    (capacityUsed / maxCapacity) * 100,
                     100
                   )}%`,
                 }}
               />
             </div>
-            {positionCount < maxCapacity && (
+            {capacityUsed < maxCapacity && (
               <p className="text-xs text-ink/40 mt-1">
-                {maxCapacity - positionCount} {capacityUnit(kind, maxCapacity - positionCount)} remaining
+                {maxCapacity - capacityUsed} {capacityUnit(kind, maxCapacity - capacityUsed)} remaining
               </p>
             )}
           </div>
@@ -259,7 +326,7 @@ export function EmbedWidgetClient({
               : "bg-ink/10 text-ink/40 cursor-not-allowed pointer-events-none"
           }`}
         >
-          {status.state === "not_yet_open"
+          {status.state === "not_yet_open" || status.state === "paused"
             ? "View Line"
             : status.state === "closed"
             ? "Line Closed"

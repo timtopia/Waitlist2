@@ -24,6 +24,7 @@ interface CreatedLine {
   frontPerson: {
     id: string
     position: number
+    calledAt: string | null
     user: { id: string; name: string | null }
   } | null
 }
@@ -106,7 +107,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [statsModal, setStatsModal] = useState<StatsModal | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ lineId: string; lineName: string } | null>(null)
-  const [removeConfirm, setRemoveConfirm] = useState<{ lineId: string } | null>(null)
+  const [removeConfirm, setRemoveConfirm] = useState<{ lineId: string; positionId: string; name: string } | null>(null)
   const [onboardingDismissed, setOnboardingDismissed] = useState(false)
 
   // Check localStorage for dismissed onboarding
@@ -269,15 +270,37 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
     }
   }
 
-  async function handleRemoveFront(lineId: string) {
+  async function handleServeFront(lineId: string, positionId: string, name: string) {
+    setLoadingAction(`serve-${lineId}`)
+    try {
+      const res = await fetch(`/api/lines/${lineId}/fulfill`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ positionId }),
+      })
+      if (res.ok) {
+        addToast(`${name} marked as served`, "success")
+        router.refresh()
+      } else {
+        const data = await res.json()
+        addToast(data.error || "Failed to mark as served", "error")
+      }
+    } finally {
+      setLoadingAction(null)
+    }
+  }
+
+  async function handleRemoveFront(lineId: string, positionId: string, name: string) {
     setRemoveConfirm(null)
     setLoadingAction(`remove-${lineId}`)
     try {
       const res = await fetch(`/api/lines/${lineId}/remove-front`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ positionId }),
       })
       if (res.ok) {
-        addToast("Person removed from front of line", "success")
+        addToast(`${name} removed from the line`, "success")
         router.refresh()
       } else {
         const data = await res.json()
@@ -625,11 +648,11 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
       <ConfirmModal
         open={!!removeConfirm}
         title="Remove Person"
-        message="Remove the person at the front of the line?"
+        message={removeConfirm ? `Remove ${removeConfirm.name} from the front of the line? If they haven't been served, any payment of theirs still on hold is refunded.` : ""}
         confirmLabel="Remove"
         variant="danger"
         isLoading={!!removeConfirm && loadingAction === `remove-${removeConfirm.lineId}`}
-        onConfirm={() => removeConfirm && handleRemoveFront(removeConfirm.lineId)}
+        onConfirm={() => removeConfirm && handleRemoveFront(removeConfirm.lineId, removeConfirm.positionId, removeConfirm.name)}
         onCancel={() => setRemoveConfirm(null)}
       />
 
@@ -802,16 +825,31 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                     <div className="flex items-center gap-2 ml-4 flex-shrink-0">
                       {line.frontPerson && (
                         <div className="flex items-center gap-1">
+                          {/* Call next always calls the first person not yet served,
+                              so once they're called the next step is serving them. */}
+                          {line.frontPerson.calledAt && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={(e) => {
+                                e.preventDefault()
+                                handleServeFront(line.id, line.frontPerson!.id, line.frontPerson!.user.name || "Guest")
+                              }}
+                              isLoading={loadingAction === `serve-${line.id}`}
+                            >
+                              Mark Served
+                            </Button>
+                          )}
                           <Button
                             size="sm"
-                            variant="secondary"
+                            variant={line.frontPerson.calledAt ? "ghost" : "secondary"}
                             onClick={(e) => {
                               e.preventDefault()
                               handleCallNext(line.id)
                             }}
                             isLoading={loadingAction === `call-${line.id}`}
                           >
-                            Call Next
+                            {line.frontPerson.calledAt ? "Call Again" : "Call Next"}
                           </Button>
                           {/* remove-front removes position #1; when served people are still
                               ahead of the next person, that would remove the wrong one. */}
@@ -819,7 +857,11 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                             <button
                               onClick={(e) => {
                                 e.preventDefault()
-                                setRemoveConfirm({ lineId: line.id })
+                                setRemoveConfirm({
+                                  lineId: line.id,
+                                  positionId: line.frontPerson!.id,
+                                  name: line.frontPerson!.user.name || "this person",
+                                })
                               }}
                               disabled={loadingAction === `remove-${line.id}`}
                               className="text-xs text-accent hover:underline underline-offset-4 px-1 py-0.5 disabled:opacity-50"

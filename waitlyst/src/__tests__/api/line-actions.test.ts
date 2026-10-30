@@ -10,6 +10,7 @@ const mockPrisma = {
   },
   linePosition: {
     findFirst: vi.fn(),
+    findUnique: vi.fn(),
     delete: vi.fn(),
     updateMany: vi.fn(),
     count: vi.fn(),
@@ -53,14 +54,16 @@ vi.mock("@/lib/settle-transactions", () => ({
 
 // Mock stripe
 vi.mock("@/lib/stripe", () => ({
-  refundTransactions: vi.fn().mockResolvedValue(0),
-  returnBuyerFunds: vi.fn().mockResolvedValue(0),
+  refundTransactions: vi.fn().mockResolvedValue([]),
+  returnBuyerFunds: vi.fn().mockResolvedValue([]),
+  releaseAndSettle: vi.fn().mockResolvedValue(true),
   expireCheckoutSession: vi.fn().mockResolvedValue(undefined),
 }))
 
 // Mock fees
 vi.mock("@/lib/fees", () => ({
   getPlatformFeePercent: vi.fn(() => 10),
+  buyerTotal: (t: { amount: number; ownerFee: number; platformFee: number }) => t.amount + t.ownerFee + t.platformFee,
 }))
 
 // ─── Pause Route ────────────────────────────────────────────────────────────
@@ -673,6 +676,24 @@ describe("POST /api/lines/[lineId]/remove-front", () => {
     expect(response.status).toBe(404)
     const data = await response.json()
     expect(data.error).toContain("not found")
+  })
+
+  it("refuses to remove someone else when the person the dashboard showed has gone", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdById: "owner-1" })
+    mockPrisma.linePosition.findUnique.mockResolvedValue(null)
+
+    const { POST } = await import("@/app/api/lines/[lineId]/remove-front/route")
+    const response = await POST(
+      new Request("http://localhost/api/lines/line-1/remove-front", {
+        method: "POST",
+        body: JSON.stringify({ positionId: "pos-gone" }),
+      }),
+      { params: Promise.resolve({ lineId: "line-1" }) }
+    )
+
+    expect(response.status).toBe(409)
+    expect(mockPrisma.linePosition.delete).not.toHaveBeenCalled()
   })
 
   it("should return 400 if no one is in line", async () => {

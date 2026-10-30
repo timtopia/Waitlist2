@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { runAfterResponse } from "@/lib/after-response"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { rateLimit } from "@/lib/rate-limit"
@@ -170,7 +171,7 @@ export async function POST(
         amount,
         lineUrl
       )
-      sendEmail(toUser.email, subject, html).catch(() => {})
+      runAfterResponse(() => sendEmail(toUser.email!, subject, html))
     }
 
     return NextResponse.json(offer, { status: 201 })

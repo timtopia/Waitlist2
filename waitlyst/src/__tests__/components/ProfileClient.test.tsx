@@ -56,6 +56,7 @@ const mockTransactions = [
   {
     id: "tx-1",
     amount: 25.0,
+    lineName: "Friday dinner",
     status: "COMPLETED",
     role: "buyer" as const,
     createdAt: "2025-04-01T14:30:00.000Z",
@@ -64,6 +65,7 @@ const mockTransactions = [
   {
     id: "tx-2",
     amount: 50.0,
+    lineName: null,
     status: "PENDING",
     role: "seller" as const,
     createdAt: "2025-04-02T09:00:00.000Z",
@@ -72,6 +74,7 @@ const mockTransactions = [
   {
     id: "tx-3",
     amount: 15.0,
+    lineName: null,
     status: "COMPLETED",
     role: "seller" as const,
     createdAt: "2025-04-03T11:15:00.000Z",
@@ -239,12 +242,13 @@ describe("ProfileClient", () => {
 
     // Buyer transaction shows negative amount
     expect(screen.getByText("-$25.00")).toBeInTheDocument()
-    expect(screen.getByText("Swapped up")).toBeInTheDocument()
+    expect(screen.getByText("Bought a spot")).toBeInTheDocument()
+    expect(screen.getByText("in Friday dinner")).toBeInTheDocument()
 
     // Seller transactions show positive amounts
     expect(screen.getByText("+$50.00")).toBeInTheDocument()
     expect(screen.getByText("+$15.00")).toBeInTheDocument()
-    const soldLabels = screen.getAllByText("Swapped down")
+    const soldLabels = screen.getAllByText("Sold your spot")
     expect(soldLabels).toHaveLength(2)
 
     // Statuses are displayed

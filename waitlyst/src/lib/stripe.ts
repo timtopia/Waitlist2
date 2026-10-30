@@ -1,4 +1,5 @@
 import Stripe from "stripe"
+import { runAfterResponse } from "./after-response"
 import type { Prisma } from "@prisma/client"
 import { prisma } from "./prisma"
 import { sendEmail } from "./email"
@@ -421,7 +422,7 @@ export async function performPositionSwap(transactionId: string): Promise<boolea
   // Every completed swap path (direct buy, Stripe return, webhook, offer
   // accept) funnels through here, so this is the one place the seller learns
   // their spot sold -- for a direct buy they'd otherwise never be told.
-  notifySellerOfSale(transaction).catch(() => {})
+  runAfterResponse(() => notifySellerOfSale(transaction))
 
   return true
 }

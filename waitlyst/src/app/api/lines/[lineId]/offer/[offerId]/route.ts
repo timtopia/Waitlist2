@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { runAfterResponse } from "@/lib/after-response"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import {
@@ -412,7 +413,7 @@ export async function DELETE(
 }
 
 function notifyOffererAccepted(offererId: string, lineName: string, lineId: string) {
-  prisma.user
+  runAfterResponse(() => prisma.user
     .findUnique({
       where: { id: offererId },
       select: { name: true, email: true, emailNotifications: true },
@@ -425,6 +426,5 @@ function notifyOffererAccepted(offererId: string, lineName: string, lineId: stri
         `${getBaseUrl()}/lines/${lineId}`
       )
       return sendEmail(offerer.email, subject, html)
-    })
-    .catch(() => {})
+    }))
 }
