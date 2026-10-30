@@ -171,6 +171,62 @@ describe("POST /api/lines/[lineId]/call-next", () => {
   })
 })
 
+describe("POST /api/lines/[lineId]/call-next -- restaurant hosts calling a party", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const ann = { id: "pos-1", userId: "ann", position: 1, partySize: 6, lockedBy: null, lockedUntil: null, calledAt: null, user: { name: "Ann", email: "ann@x", emailNotifications: true } }
+  const bob = { id: "pos-2", userId: "bob", position: 2, partySize: 2, lockedBy: null, lockedUntil: null, calledAt: null, user: { name: "Bob", email: "bob@x", emailNotifications: true } }
+
+  function call(body: unknown) {
+    return import("@/app/api/lines/[lineId]/call-next/route").then(({ POST }) =>
+      POST(new Request("http://localhost/api/lines/line-1/call-next", { method: "POST", body: JSON.stringify(body) }), params)
+    )
+  }
+
+  it("seats a party of 2 at a free two-top ahead of the party of 6 at the front", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdById: "owner-1", kind: "RESTAURANT" })
+    mockPrisma.linePosition.findFirst.mockResolvedValueOnce(ann).mockResolvedValueOnce(bob)
+    mockPrisma.line.update.mockResolvedValue({ id: "line-1", name: "Dinner" })
+
+    const res = await call({ positionId: "pos-2" })
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ calledUserId: "bob", partySize: 2, positionId: "pos-2" })
+    expect(mockPrisma.line.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ nowServing: "Bob (party of 2)", nowServingUserId: "bob" }) })
+    )
+    // Ann keeps her place and isn't told she's "next" because of it
+    expect(mockPrisma.linePosition.update).toHaveBeenCalledTimes(1)
+    expect(sendEmail).toHaveBeenCalledTimes(1)
+    expect(sendEmail.mock.calls[0][0]).toBe("bob@x")
+  })
+
+  it("won't call someone out of order on a standard line", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdById: "owner-1", kind: "STANDARD" })
+    mockPrisma.linePosition.findFirst.mockResolvedValueOnce(ann)
+
+    const res = await call({ positionId: "pos-2" })
+
+    expect(res.status).toBe(400)
+    expect(mockPrisma.line.update).not.toHaveBeenCalled()
+  })
+
+  it("says so when the named party has already left or been seated", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdById: "owner-1", kind: "RESTAURANT" })
+    mockPrisma.linePosition.findFirst.mockResolvedValueOnce(ann).mockResolvedValueOnce(null)
+
+    const res = await call({ positionId: "pos-gone" })
+
+    expect(res.status).toBe(404)
+    expect(mockPrisma.line.update).not.toHaveBeenCalled()
+  })
+})
+
 describe("GET /api/lines/[lineId]/stats -- owner fee earnings", () => {
   beforeEach(() => {
     vi.clearAllMocks()

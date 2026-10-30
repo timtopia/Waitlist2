@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useSession } from "next-auth/react"
 import { formatCurrency } from "@/lib/format"
 import { calcFees } from "@/lib/fees"
+import { MAX_PARTY_SIZE } from "@/lib/capacity"
 
 interface Position {
   id: string
@@ -16,6 +17,7 @@ interface Position {
   lockedUntil: string | null
   fulfilled?: boolean
   fulfilledAt?: string | null
+  partySize?: number
   user: {
     id: string
     name: string | null
@@ -86,6 +88,8 @@ interface QueueDisplayProps {
   maxAskingPrice?: number | null
   hideCapacity?: boolean
   nowServingUserId?: string | null
+  /** Restaurant lines show party sizes and let the host call any party */
+  isRestaurant?: boolean
 }
 
 /** Format estimated wait time into a human-readable string */
@@ -97,7 +101,7 @@ function formatWaitTime(minutes: number): string {
   return `~${Math.round(hours)} hrs`
 }
 
-export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, feeInfo, isPaused = false, hasPayoutSetup = false, stripeEnabled = false, allowResale = true, maxAskingPrice = null, hideCapacity = false, nowServingUserId = null }: QueueDisplayProps) {
+export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, feeInfo, isPaused = false, hasPayoutSetup = false, stripeEnabled = false, allowResale = true, maxAskingPrice = null, hideCapacity = false, nowServingUserId = null, isRestaurant = false }: QueueDisplayProps) {
   const { data: session } = useSession()
   const { addToast } = useToast()
   const [loadingAction, setLoadingAction] = useState<string | null>(null)
@@ -444,6 +448,46 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
       } else {
         const data = await res.json()
         addToast(data.error || "Failed to remove person", "error")
+      }
+    } finally {
+      setLoadingAction(null)
+    }
+  }
+
+  async function handleCall(positionId: string) {
+    setLoadingAction(`call-${positionId}`)
+    try {
+      const res = await fetch(`/api/lines/${lineId}/call-next`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ positionId }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        addToast(`Called ${data.calledUser} (party of ${data.partySize})`, "success")
+        onRefresh()
+      } else {
+        addToast(data.error || "Failed to call this party", "error")
+      }
+    } finally {
+      setLoadingAction(null)
+    }
+  }
+
+  async function handlePartySize(partySize: number) {
+    setLoadingAction("party-size")
+    try {
+      const res = await fetch(`/api/lines/${lineId}/party`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ partySize }),
+      })
+      if (res.ok) {
+        addToast(`Updated to a party of ${partySize}`, "success")
+        onRefresh()
+      } else {
+        const data = await res.json()
+        addToast(data.error || "Failed to update your party size", "error")
       }
     } finally {
       setLoadingAction(null)
@@ -864,6 +908,26 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                           </span>
                         )}
                       </p>
+                      {isRestaurant && (
+                        isCurrentUser && !pos.fulfilled ? (
+                          <label className="flex items-center gap-1.5 text-xs text-ink/60 mt-0.5">
+                            Party of
+                            <select
+                              value={pos.partySize ?? 1}
+                              onChange={(e) => handlePartySize(Number(e.target.value))}
+                              disabled={loadingAction === "party-size"}
+                              className="border border-rule bg-white px-1 py-0.5 text-ink"
+                              aria-label="Your party size"
+                            >
+                              {Array.from({ length: MAX_PARTY_SIZE }, (_, i) => i + 1).map((n) => (
+                                <option key={n} value={n}>{n}</option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : (
+                          <p className="text-xs text-ink/60 mt-0.5">Party of {pos.partySize ?? 1}</p>
+                        )
+                      )}
                       {isLocked && (
                         <p className="font-mono text-xs uppercase tracking-widest text-amber-600 flex items-center gap-1.5 mt-0.5">
                           <span className="inline-block w-1.5 h-1.5 flex-shrink-0 bg-amber-600" />
@@ -890,17 +954,27 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                           Leave
                         </Button>
                       )}
+                      {isCreator && isRestaurant && !isCurrentUser && !pos.fulfilled && (
+                        <button
+                          onClick={() => handleCall(pos.id)}
+                          disabled={loadingAction === `call-${pos.id}`}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 font-mono text-xs uppercase tracking-widest text-accent border border-rule hover:border-accent transition-colors disabled:opacity-50"
+                          title={`Call this party of ${pos.partySize ?? 1}`}
+                        >
+                          {pos.user.id === nowServingUserId ? "Call again" : "Call"}
+                        </button>
+                      )}
                       {isCreator && !isCurrentUser && !pos.fulfilled && (
                         <button
                           onClick={() => handleFulfill(pos.id)}
                           disabled={loadingAction === `fulfill-${pos.id}`}
                           className="inline-flex items-center gap-1.5 px-2.5 py-1.5 font-mono text-xs uppercase tracking-widest text-green-700 border border-rule hover:border-green-700 transition-colors disabled:opacity-50"
-                          title="Mark as fulfilled"
+                          title={isRestaurant ? "Mark as seated" : "Mark as fulfilled"}
                         >
                           {loadingAction === `fulfill-${pos.id}` && (
                             <div className="w-3 h-3 border-2 border-green-700 border-t-transparent rounded-full animate-spin" />
                           )}
-                          Fulfill
+                          {isRestaurant ? "Seated" : "Fulfill"}
                         </button>
                       )}
                       {isCreator && !isCurrentUser && (

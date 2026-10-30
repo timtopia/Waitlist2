@@ -56,10 +56,12 @@ export async function PATCH(
         if (isNaN(cap) || cap < 1) {
           return NextResponse.json({ error: "Capacity must be a positive whole number" }, { status: 400 })
         }
-        // Verify capacity is not less than current participants
-        const currentCount = await prisma.linePosition.count({
+        // Verify capacity is not less than the guests already in line
+        const { _sum } = await prisma.linePosition.aggregate({
           where: { lineId },
+          _sum: { partySize: true },
         })
+        const currentCount = _sum.partySize ?? 0
         if (cap < currentCount) {
           return NextResponse.json(
             { error: `Capacity cannot be less than the ${currentCount} people currently in line` },
@@ -68,6 +70,22 @@ export async function PATCH(
         }
       }
       allowedUpdates.maxCapacity = cap
+    }
+    // Line type decides how party sizes and payments work, so it can only
+    // change before anyone has joined.
+    if (updates.kind !== undefined) {
+      if (updates.kind !== "STANDARD" && updates.kind !== "RESTAURANT") {
+        return NextResponse.json({ error: "Line type must be STANDARD or RESTAURANT" }, { status: 400 })
+      }
+      const inLine = await prisma.linePosition.count({ where: { lineId } })
+      const current = await prisma.line.findUnique({ where: { id: lineId }, select: { kind: true } })
+      if (inLine > 0 && current?.kind !== updates.kind) {
+        return NextResponse.json(
+          { error: "The line type can't be changed once people have joined" },
+          { status: 400 }
+        )
+      }
+      allowedUpdates.kind = updates.kind
     }
     // Owner fee percentage (clamped to 0-50)
     if (typeof updates.ownerFeePercent === "number") {

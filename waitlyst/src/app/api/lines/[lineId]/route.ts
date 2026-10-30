@@ -4,7 +4,7 @@ import { requireLineOwner } from "@/lib/auth-helpers"
 import { expireCheckoutSession, getBaseUrl, returnBuyerFunds } from "@/lib/stripe"
 import { getPlatformFeePercent } from "@/lib/fees"
 import { rateLimit } from "@/lib/rate-limit"
-import { capacityView } from "@/lib/capacity"
+import { capacityView, guestCount } from "@/lib/capacity"
 import { auth } from "@/auth"
 import { createHash } from "crypto"
 import { sendEmail } from "@/lib/email"
@@ -71,7 +71,7 @@ export async function GET(
       return NextResponse.json({ error: "Line not found" }, { status: 404 })
     }
 
-    const capacity = capacityView(line, line.positions.length, viewerId)
+    const capacity = capacityView(line, guestCount(line.positions), viewerId)
 
     return NextResponse.json({ ...line, ...capacity, platformFeePercent: getPlatformFeePercent() }, {
       headers: cacheHeaders,

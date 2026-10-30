@@ -410,6 +410,15 @@ export async function performPositionSwap(transactionId: string): Promise<boolea
     return false
   }
 
+  // Restaurant lines keep the buyer's card on hold until they're seated, so
+  // the owner can still release it if the evening goes wrong. Everywhere else
+  // the trade is final: collect and pay out now. If collecting fails, the
+  // purchase stays open on the settlement page like any other.
+  const line = await prisma.line.findUnique({ where: { id: lineId }, select: { kind: true } })
+  if (line?.kind !== "RESTAURANT") {
+    await releaseAndSettle(transaction)
+  }
+
   // Every completed swap path (direct buy, Stripe return, webhook, offer
   // accept) funnels through here, so this is the one place the seller learns
   // their spot sold -- for a direct buy they'd otherwise never be told.

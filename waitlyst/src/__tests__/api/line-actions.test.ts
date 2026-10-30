@@ -13,6 +13,7 @@ const mockPrisma = {
     delete: vi.fn(),
     updateMany: vi.fn(),
     count: vi.fn(),
+    aggregate: vi.fn(),
   },
   transaction: {
     update: vi.fn(),
@@ -509,7 +510,7 @@ describe("PATCH /api/lines/[lineId]/settings", () => {
       id: "line-1",
       createdById: "owner-1",
     })
-    mockPrisma.linePosition.count.mockResolvedValue(10)
+    mockPrisma.linePosition.aggregate.mockResolvedValue({ _sum: { partySize: 10 } })
 
     const { PATCH } = await import("@/app/api/lines/[lineId]/settings/route")
     const req = new Request("http://localhost/api/lines/line-1/settings", {

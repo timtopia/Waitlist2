@@ -18,6 +18,7 @@ import { useNotifications } from "@/hooks/useNotifications"
 import { MemberStatusCard, NotificationState } from "@/components/MemberStatusCard"
 import { OwnerConsole } from "@/components/OwnerConsole"
 import { timeAgo } from "@/lib/format"
+import { MAX_PARTY_SIZE, capacityUnit, guestCount } from "@/lib/capacity"
 import { getMemberStatus, diffMemberStatus, describeMemberEvent, memberTabTitle } from "@/lib/member-status"
 
 interface ActivityItem {
@@ -51,6 +52,7 @@ interface Line {
   nowServingUserId: string | null
   nowServingAt: string | null
   hideCapacity: boolean
+  kind: "STANDARD" | "RESTAURANT"
   createdAt: string
   createdBy: {
     id: string
@@ -64,6 +66,7 @@ interface Line {
     lockedUntil: string | null
     fulfilled: boolean
     fulfilledAt: string | null
+    partySize: number
     user: {
       id: string
       name: string | null
@@ -77,6 +80,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [line, setLine] = useState<Line | null>(null)
   const [loading, setLoading] = useState(true)
   const [joining, setJoining] = useState(false)
+  const [partySize, setPartySize] = useState(2)
   const [error, setError] = useState<string | null>(null)
   const [notificationPermission, setNotificationPermission] = useState<NotificationState>("unsupported")
   const notificationsEnabled = notificationPermission === "granted"
@@ -284,6 +288,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const lineFull = line?.isFull ?? false
   const canJoin = !isInLine && !isCreator && !lineNotYetOpen && !lineClosed && !lineFull && !linePaused
   const userPosition = line?.positions.find((p) => p.user.id === session?.user?.id)
+  const isRestaurant = line?.kind === "RESTAURANT"
+  const guests = line ? guestCount(line.positions) : 0
   const hasProductInfo = !!(line?.productName || line?.productImage)
 
   // canJoin depends on the clock, but nothing re-rendered when opensAt or
@@ -321,6 +327,10 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     try {
       const res = await fetch(`/api/lines/${lineId}/join`, {
         method: "POST",
+        ...(line?.kind === "RESTAURANT" && {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ partySize }),
+        }),
       })
       if (res.ok) {
         refreshAll()
@@ -508,6 +518,21 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             </div>
             <div className="flex items-center gap-2">
               <ShareLine lineId={line.id} lineName={line.name} />
+              {canJoin && session && line.kind === "RESTAURANT" && (
+                <label className="flex items-center gap-2 text-sm text-ink/60">
+                  <span className="whitespace-nowrap">Party of</span>
+                  <select
+                    value={partySize}
+                    onChange={(e) => setPartySize(Number(e.target.value))}
+                    className="border border-rule bg-white px-2 py-2 text-ink"
+                    aria-label="Party size"
+                  >
+                    {Array.from({ length: MAX_PARTY_SIZE }, (_, i) => i + 1).map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
               {canJoin && (
                 <Button onClick={handleJoin} isLoading={joining}>
                   {session ? "Join Line" : "Sign in to Join"}
@@ -591,6 +616,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
           justCreated={justCreated}
           onDismissCreated={() => setJustCreated(false)}
           onChanged={refreshAll}
+          isRestaurant={isRestaurant}
         />
       )}
 
@@ -717,8 +743,9 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             opensAt={line.opensAt}
             closesAt={line.closesAt}
             maxCapacity={line.maxCapacity}
-            currentCount={line.positions.length}
+            currentCount={guests}
             isFull={line.isFull}
+            kind={line.kind}
             hideCapacity={line.hasCapacityLimit && line.maxCapacity === null}
           />
         </div>
@@ -728,7 +755,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       {memberStatus && userPosition && (
         <MemberStatusCard
           status={memberStatus}
-          maxCapacity={line.maxCapacity}
+          maxCapacity={isRestaurant ? null : line.maxCapacity}
           totalPositions={line.positions.length}
           askingPrice={userPosition.askingPrice}
           lineId={line.id}
@@ -776,20 +803,22 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         <CardHeader>
           <div className="flex items-center justify-between flex-wrap gap-2">
             <h2 className="text-lg font-semibold tracking-tight text-ink">
-              Queue ({line.positions.length} {line.positions.length === 1 ? "person" : "people"})
+              Queue ({line.positions.length} {isRestaurant
+                ? `${line.positions.length === 1 ? "party" : "parties"}, ${guests} ${guests === 1 ? "guest" : "guests"}`
+                : line.positions.length === 1 ? "person" : "people"})
             </h2>
             {line.hasCapacityLimit && (
               <div className="flex items-center gap-3">
                 {line.maxCapacity !== null ? (
                   <span className="font-mono text-xs uppercase tracking-widest text-ink/40 tabular-nums">
-                    {line.positions.length} of {line.maxCapacity} spots filled
+                    {guests} of {line.maxCapacity} {capacityUnit(line.kind, line.maxCapacity)} filled
                   </span>
                 ) : (
                   <span className="font-mono text-xs uppercase tracking-widest text-ink/40">
-                    Limited spots available
+                    Limited {capacityUnit(line.kind, 2)} available
                   </span>
                 )}
-                {userPosition && line.maxCapacity !== null && (
+                {userPosition && line.maxCapacity !== null && !isRestaurant && (
                   userPosition.position <= line.maxCapacity ? (
                     <span className="inline-flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-green-700">
                       <span className="w-1.5 h-1.5 bg-green-600" aria-hidden />
@@ -820,6 +849,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             maxAskingPrice={line.maxAskingPrice}
             hideCapacity={!isCreator && line.hideCapacity}
             nowServingUserId={line.nowServingUserId}
+            isRestaurant={isRestaurant}
           />
         </CardContent>
       </Card>

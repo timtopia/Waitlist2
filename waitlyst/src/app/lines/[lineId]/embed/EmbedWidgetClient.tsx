@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { capacityUnit } from "@/lib/capacity"
 
 interface EmbedWidgetClientProps {
   lineId: string
@@ -17,6 +18,7 @@ interface EmbedWidgetClientProps {
   nowServing: string | null
   /** The line has a limit that isn't shown */
   hideCapacity: boolean
+  kind: "STANDARD" | "RESTAURANT"
 }
 
 function formatTimeLeft(ms: number): string {
@@ -83,6 +85,7 @@ export function EmbedWidgetClient({
   closesAt,
   nowServing,
   hideCapacity,
+  kind,
 }: EmbedWidgetClientProps) {
   const [now, setNow] = useState(new Date())
 
@@ -194,7 +197,7 @@ export function EmbedWidgetClient({
           <div className="bg-white border border-accent p-3 mb-3">
             <p className="text-sm font-semibold text-accent">Line Full</p>
             <p className="text-xs text-ink/50">
-              {maxCapacity === null ? "All spots have been taken." : `All ${maxCapacity} spots have been taken.`}
+              {maxCapacity === null ? `All ${capacityUnit(kind, 2)} have been taken.` : `All ${maxCapacity} ${capacityUnit(kind, maxCapacity)} have been taken.`}
             </p>
           </div>
         )}
@@ -204,7 +207,7 @@ export function EmbedWidgetClient({
           <div className="mb-3">
             <div className="flex items-center justify-between mb-1">
               <span className="font-mono text-xs uppercase tracking-widest text-ink/50">
-                Spots Filled
+                {kind === "RESTAURANT" ? "Guests" : "Spots Filled"}
               </span>
               <span className="font-mono text-xs tabular-nums text-ink">
                 {positionCount} / {maxCapacity}
@@ -229,8 +232,7 @@ export function EmbedWidgetClient({
             </div>
             {positionCount < maxCapacity && (
               <p className="text-xs text-ink/40 mt-1">
-                {maxCapacity - positionCount} spot
-                {maxCapacity - positionCount !== 1 ? "s" : ""} remaining
+                {maxCapacity - positionCount} {capacityUnit(kind, maxCapacity - positionCount)} remaining
               </p>
             )}
           </div>
@@ -241,8 +243,7 @@ export function EmbedWidgetClient({
         ) : maxCapacity === null && !hideCapacity ? (
           <div className="mb-3">
             <p className="text-xs text-ink/50">
-              {positionCount} {positionCount === 1 ? "person" : "people"} in
-              line
+              {positionCount} {positionCount === 1 ? "person" : "people"} waiting
             </p>
           </div>
         ) : null}

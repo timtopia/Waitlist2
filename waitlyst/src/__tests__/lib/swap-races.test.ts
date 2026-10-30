@@ -19,7 +19,7 @@ const db = {
   transactions: [] as Txn[],
   offers: [] as Offer[],
   users: [] as { id: string; name: string; email: string | null; emailNotifications: boolean; stripeConnectId: string | null; stripeConnectOnboarded: boolean }[],
-  lines: [] as { id: string; name: string; createdById: string; nowServingUserId?: string | null }[],
+  lines: [] as { id: string; name: string; createdById: string; nowServingUserId?: string | null; kind?: "STANDARD" | "RESTAURANT" }[],
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 0))
@@ -266,6 +266,48 @@ describe("performPositionSwap under concurrency", () => {
 
     await performPositionSwap("t1")
     expect(db.positions.find((p) => p.userId === "ben")).toMatchObject({ position: 1, askingPrice: null })
+  })
+})
+
+describe("when a swap's money moves", () => {
+  beforeEach(() => {
+    fakeStripe.paymentIntents.capture.mockResolvedValue({ id: "pi_x", status: "succeeded", latest_charge: "ch_1" })
+  })
+
+  it("a standard line collects and settles the purchase as soon as the spots swap", async () => {
+    addTxn("t1", "ben", "sam", { stripePaymentId: "cs_1" })
+    const { performPositionSwap } = await import("@/lib/stripe")
+
+    expect(await performPositionSwap("t1")).toBe(true)
+
+    expect(fakeStripe.paymentIntents.capture).toHaveBeenCalledWith("pi_x")
+    const txn = db.transactions[0]
+    expect(txn.status).toBe("COMPLETED")
+    expect(txn.capturedAt).toBeInstanceOf(Date)
+    expect(txn.settledAt).toBeInstanceOf(Date)
+  })
+
+  it("a restaurant line leaves the buyer's card on hold until they're seated", async () => {
+    db.lines[0].kind = "RESTAURANT"
+    addTxn("t1", "ben", "sam", { stripePaymentId: "cs_1" })
+    const { performPositionSwap } = await import("@/lib/stripe")
+
+    expect(await performPositionSwap("t1")).toBe(true)
+
+    expect(posOf("ben")).toBe(1)
+    expect(fakeStripe.paymentIntents.capture).not.toHaveBeenCalled()
+    expect(db.transactions[0].settledAt).toBeNull()
+  })
+
+  it("a standard-line purchase that can't be collected stays open for the owner", async () => {
+    fakeStripe.paymentIntents.retrieve.mockResolvedValue({ id: "pi_x", status: "canceled" })
+    addTxn("t1", "ben", "sam", { stripePaymentId: "cs_1" })
+    const { performPositionSwap } = await import("@/lib/stripe")
+
+    expect(await performPositionSwap("t1")).toBe(true)
+
+    expect(db.transactions[0].status).toBe("COMPLETED")
+    expect(db.transactions[0].settledAt).toBeNull()
   })
 })
 

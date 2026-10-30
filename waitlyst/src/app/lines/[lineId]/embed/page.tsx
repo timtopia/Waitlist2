@@ -30,7 +30,11 @@ export default async function EmbedPage({ params }: Props) {
     )
   }
 
-  const positionCount = line._count.positions
+  const { _sum } = await prisma.linePosition.aggregate({
+    where: { lineId },
+    _sum: { partySize: true },
+  })
+  const positionCount = _sum.partySize ?? 0
   const capacity = capacityView(line, positionCount)
 
   return (
@@ -41,6 +45,7 @@ export default async function EmbedPage({ params }: Props) {
       productImage={line.productImage}
       productPrice={line.productPrice}
       positionCount={positionCount}
+      kind={line.kind}
       maxCapacity={capacity.maxCapacity}
       isFull={capacity.isFull}
       opensAt={line.opensAt ? line.opensAt.toISOString() : null}
