@@ -4,7 +4,7 @@ import { requireLineOwner } from "@/lib/auth-helpers"
 import { expireCheckoutSession, getBaseUrl, returnBuyerFunds } from "@/lib/stripe"
 import { getPlatformFeePercent } from "@/lib/fees"
 import { rateLimit } from "@/lib/rate-limit"
-import { capacityView, guestCount } from "@/lib/capacity"
+import { capacityUsed, capacityView } from "@/lib/capacity"
 import { auth } from "@/auth"
 import { lineViewer, shortName } from "@/lib/privacy"
 import { createHash } from "crypto"
@@ -73,7 +73,10 @@ export async function GET(
       return NextResponse.json({ error: "Line not found" }, { status: 404 })
     }
 
-    const capacity = capacityView(line, guestCount(line.positions), viewerId)
+    const servedAndCleared = line.kind === "RESTAURANT"
+      ? 0
+      : await prisma.queueVisit.count({ where: { lineId, outcome: "SERVED" } })
+    const capacity = capacityView(line, capacityUsed(line.kind, line.positions, servedAndCleared), viewerId)
 
     // The owner sees full names. People in the line see each other as
     // "First L.". Anyone else sees the queue's shape but not who is in it.

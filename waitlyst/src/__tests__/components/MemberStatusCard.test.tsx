@@ -56,7 +56,7 @@ describe("MemberStatusCard", () => {
       />
     )
     expect(screen.getByText("It's your turn")).toBeInTheDocument()
-    expect(screen.getByText(/called you just now\. Head to the front now\./)).toBeInTheDocument()
+    expect(screen.getByText(/called you just now. It's your turn now./)).toBeInTheDocument()
     expect(fetchMock).not.toHaveBeenCalled()
   })
 

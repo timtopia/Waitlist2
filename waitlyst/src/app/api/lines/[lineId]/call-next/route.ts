@@ -79,9 +79,9 @@ export async function POST(
     const [line] = await prisma.$transaction([
       prisma.line.update({
         where: { id: lineId },
+        // The owner's own announcement is left alone: the called party is
+        // told by their status card, and everyone sees "Now serving".
         data: {
-          announcement: `\u{1F4E2} ${publicName}, you're up! Please come forward.`,
-          announcementAt: calledAt,
           nowServing: servingLabel,
           nowServingUserId: frontPosition.userId,
           nowServingAt: calledAt,
@@ -115,7 +115,8 @@ export async function POST(
     // called out of order doesn't change who's on deck.
     if (!frontPosition.calledAt && frontPosition.id === firstUnserved?.id) {
       const onDeck = await prisma.linePosition.findFirst({
-        where: { lineId, fulfilled: false, position: { gt: frontPosition.position } },
+        // Skip parties already called out of order -- they've been told.
+        where: { lineId, fulfilled: false, calledAt: null, position: { gt: frontPosition.position } },
         orderBy: { position: "asc" },
         include: { user: { select: { name: true, email: true, emailNotifications: true } } },
       })

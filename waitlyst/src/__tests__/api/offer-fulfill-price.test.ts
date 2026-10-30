@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 const mockPrisma = {
   line: {
     findUnique: vi.fn(),
+    updateMany: vi.fn(),
   },
   linePosition: {
     findUnique: vi.fn(),
@@ -360,6 +361,11 @@ describe("POST /api/lines/[lineId]/fulfill", () => {
     expect(mockPrisma.swapOffer.updateMany).toHaveBeenCalledWith({
       where: { lineId: "line-1", status: "PENDING", OR: [{ fromUserId: "buyer-1" }, { toUserId: "buyer-1" }] },
       data: { status: "EXPIRED" },
+    })
+    // "Now serving" stops showing them once they're served
+    expect(mockPrisma.line.updateMany).toHaveBeenCalledWith({
+      where: { id: "line-1", nowServingUserId: "buyer-1" },
+      data: { nowServing: null, nowServingUserId: null, nowServingAt: null },
     })
   })
 })

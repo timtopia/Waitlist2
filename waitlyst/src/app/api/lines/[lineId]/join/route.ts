@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { countCapacityUsed } from "@/lib/capacity-server"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { rateLimit } from "@/lib/rate-limit"
@@ -72,11 +73,7 @@ export async function POST(
 
       // Capacity counts guests, so a party only fits if all of it does
       if (line.maxCapacity) {
-        const { _sum } = await tx.linePosition.aggregate({
-          where: { lineId },
-          _sum: { partySize: true },
-        })
-        const taken = _sum.partySize ?? 0
+        const taken = await countCapacityUsed(line, tx)
         if (taken >= line.maxCapacity) {
           throw new JoinRefusedError("This line is full")
         }

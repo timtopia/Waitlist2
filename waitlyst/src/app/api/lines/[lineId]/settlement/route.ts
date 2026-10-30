@@ -45,6 +45,15 @@ export async function GET(
     const positionMap = new Map(
       positions.map((p) => [p.userId, { position: p.position, fulfilled: p.fulfilled }])
     )
+    // Someone served and then cleared from the line has no position any more,
+    // but was still served -- the visit history says so. Without this, every
+    // cleared buyer looked unserved and "Cancel all unfulfilled" would
+    // release their payment.
+    const servedVisits = await prisma.queueVisit.findMany({
+      where: { lineId, userId: { in: buyerIds }, outcome: "SERVED" },
+      select: { userId: true },
+    })
+    const servedAndCleared = new Set(servedVisits.map((v) => v.userId))
 
     // Build enriched transaction list
     const enrichedTransactions = transactions.map((txn) => {
@@ -65,7 +74,7 @@ export async function GET(
         stripePaymentId: txn.stripePaymentId,
         captureBefore: txn.captureBefore?.toISOString() || null,
         holdExpired: !!txn.holdExpiredAt,
-        buyerFulfilled: buyerPos?.fulfilled ?? false,
+        buyerFulfilled: buyerPos ? buyerPos.fulfilled : servedAndCleared.has(txn.buyerId),
         buyerPosition: buyerPos?.position ?? null,
         createdAt: txn.createdAt.toISOString(),
       }

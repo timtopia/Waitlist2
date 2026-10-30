@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { prisma } from "@/lib/prisma"
 import { capacityView } from "@/lib/capacity"
+import { countCapacityUsed } from "@/lib/capacity-server"
 import { EmbedWidgetClient } from "./EmbedWidgetClient"
 
 export const metadata: Metadata = {
@@ -35,7 +36,7 @@ export default async function EmbedPage({ params }: Props) {
     _sum: { partySize: true },
   })
   const positionCount = _sum.partySize ?? 0
-  const capacity = capacityView(line, positionCount)
+  const capacity = capacityView(line, await countCapacityUsed(line))
 
   return (
     <EmbedWidgetClient

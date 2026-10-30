@@ -5,7 +5,7 @@
  * the counter would push them back after the organizer called them.
  */
 export function tradeBlocker(
-  position: { userId: string; fulfilled: boolean },
+  position: { userId: string; fulfilled: boolean; calledAt: Date | string | null },
   nowServingUserId: string | null,
   whose: "yours" | "theirs"
 ): string | null {
@@ -14,7 +14,9 @@ export function tradeBlocker(
       ? "You've already been served, so your spot can't be traded."
       : "That person has already been served, so their spot can't be traded."
   }
-  if (nowServingUserId && position.userId === nowServingUserId) {
+  // Every called party is blocked, not just the one in "now serving":
+  // restaurant hosts can have several parties called at once.
+  if (position.calledAt || (nowServingUserId && position.userId === nowServingUserId)) {
     return whose === "yours"
       ? "You've been called up, so your spot can't be traded now."
       : "That person has been called up, so their spot can't be traded now."

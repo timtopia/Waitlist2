@@ -102,7 +102,8 @@ describe("POST /api/lines/[lineId]/call-next", () => {
 
     await call()
     expect(mockPrisma.linePosition.findFirst).toHaveBeenLastCalledWith(
-      expect.objectContaining({ where: { lineId: "line-1", fulfilled: false, position: { gt: 1 } } })
+      // Parties already called out of order are skipped
+      expect.objectContaining({ where: { lineId: "line-1", fulfilled: false, calledAt: null, position: { gt: 1 } } })
     )
     expect(sendEmail).toHaveBeenCalledTimes(1)
     expect(sendEmail.mock.calls[0][0]).toBe("bob@test")

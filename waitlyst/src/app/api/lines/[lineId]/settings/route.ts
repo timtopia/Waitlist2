@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
+import { countCapacityUsed } from "@/lib/capacity-server"
 import { validateString, validateNumber, validateUrl, validateImageUrl } from "@/lib/validate"
 
 export async function PATCH(
@@ -77,11 +78,7 @@ export async function PATCH(
           return NextResponse.json({ error: "Capacity must be a positive whole number" }, { status: 400 })
         }
         // Verify capacity is not less than the guests already in line
-        const { _sum } = await prisma.linePosition.aggregate({
-          where: { lineId },
-          _sum: { partySize: true },
-        })
-        const currentCount = _sum.partySize ?? 0
+        const currentCount = await countCapacityUsed(result.line)
         if (cap < currentCount) {
           return NextResponse.json(
             {
