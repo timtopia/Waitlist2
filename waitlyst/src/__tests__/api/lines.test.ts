@@ -215,6 +215,40 @@ describe("GET /api/lines/[lineId]", () => {
     expect(await get()).toMatchObject({ maxCapacity: 10 })
   })
 
+  it("shows names to the owner, short names to people in line, and none to anyone else", async () => {
+    mockPrisma.line.findUnique.mockResolvedValue({
+      id: "line-1",
+      createdById: "owner-1",
+      maxCapacity: null,
+      hideCapacity: false,
+      updatedAt: new Date(),
+      createdBy: { id: "owner-1", name: "Creator", image: null },
+      positions: [
+        { id: "p1", userId: "alice", lockedBy: null, partySize: 1, user: { id: "alice", name: "Alice Walker", image: "a.png" } },
+        { id: "p2", userId: "member-1", lockedBy: null, partySize: 1, user: { id: "member-1", name: "Mia Chen", image: null } },
+      ],
+    })
+    const { GET } = await import("@/app/api/lines/[lineId]/route")
+    const first = async () => {
+      const res = await GET(new Request("http://localhost/api/lines/line-1"), { params: Promise.resolve({ lineId: "line-1" }) })
+      return (await res.json()).positions
+    }
+
+    mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
+    expect((await first())[0].user.name).toBe("Alice Walker")
+
+    mockAuth.mockResolvedValue({ user: { id: "member-1" } })
+    mockPrisma.linePosition.findUnique.mockResolvedValueOnce({ id: "p2" })
+    const asMember = await first()
+    expect(asMember[0].user).toMatchObject({ id: "alice", name: "Alice W." })
+    expect(asMember[1].user.name).toBe("Mia Chen") // their own entry is untouched
+
+    mockAuth.mockResolvedValue(null)
+    const asPublic = await first()
+    expect(asPublic[0].user).toEqual({ id: "anon-p1", name: null, image: null })
+    expect(asPublic[0].userId).toBe("anon-p1")
+  })
+
   it("answers 304 without loading positions when the poller's ETag still matches", async () => {
     mockAuth.mockResolvedValue(null)
     mockPrisma.line.findUnique.mockResolvedValue({

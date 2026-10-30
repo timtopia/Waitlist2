@@ -18,7 +18,7 @@ export default function PrivacyPolicyPage() {
             Privacy Policy
           </h1>
           <p className="font-mono text-xs uppercase tracking-widest text-ink/40">
-            Last updated: April 15, 2026
+            Last updated: October 30, 2026
           </p>
         </div>
 
@@ -136,9 +136,13 @@ export default function PrivacyPolicyPage() {
               information with Stripe to process payments and payouts.
             </li>
             <li>
-              <strong>With other users:</strong> Your name and profile picture
-              are visible to other participants in lines you join. Line creators
-              can see the names and positions of users in their lines.
+              <strong>With other users:</strong> Other people in a line you
+              join see your first name, last initial and profile picture.
+              People who aren&apos;t in the line see only positions, not who
+              holds them. When you are called, your first name is shown on the
+              line&apos;s page. The line&apos;s creator sees your full name and
+              position, and can export a list of the people in their line that
+              includes email addresses so they can contact you.
             </li>
             <li>
               <strong>As required by law:</strong> We may disclose information if

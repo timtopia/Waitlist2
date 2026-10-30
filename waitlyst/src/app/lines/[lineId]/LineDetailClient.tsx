@@ -482,6 +482,9 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                   fill
                   className="object-cover"
                   sizes="(max-width: 640px) 100vw, 192px"
+                  // Owners can link an image on any https host; the
+                  // optimizer only accepts the hosts in next.config.ts.
+                  unoptimized
                 />
               </div>
             )}

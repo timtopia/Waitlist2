@@ -3,6 +3,10 @@ import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 
 function escapeCsvField(value: string): string {
+  // Spreadsheets run a cell starting with = + - @ (or a tab/CR) as a formula,
+  // and names come from people's Google accounts. A leading apostrophe makes
+  // it plain text.
+  if (/^[=+\-@\t\r]/.test(value)) value = `'${value}`
   if (value.includes(",") || value.includes('"') || value.includes("\n") || value.includes("\r")) {
     return `"${value.replace(/"/g, '""')}"`
   }
@@ -32,24 +36,33 @@ export async function GET(
     })
 
     // Build CSV
-    const headers = ["Position", "Name", "Email", "Joined At", "Asking Price", "Status"]
+    const isRestaurant = result.line.kind === "RESTAURANT"
+    const headers = [
+      "Position", "Name", "Email", ...(isRestaurant ? ["Party Size"] : []),
+      "Joined At", "Called At", "Served At", "Asking Price", "Status",
+    ]
     const rows = positions.map((pos) => {
       const name = pos.user.name || "Anonymous"
       const email = pos.user.email || ""
       const joinedAt = new Date(pos.joinedAt).toISOString()
       const askingPrice = pos.askingPrice !== null ? `$${pos.askingPrice.toFixed(2)}` : ""
       const isLocked = pos.lockedUntil && new Date(pos.lockedUntil) > new Date()
-      const status = pos.askingPrice !== null
-        ? isLocked
-          ? "Open to Swap (Locked)"
-          : "Open to Swap"
-        : "In Line"
+      const status = pos.fulfilled
+        ? isRestaurant ? "Seated" : "Served"
+        : pos.calledAt
+          ? "Called"
+          : pos.askingPrice !== null
+            ? isLocked ? "Open to Swap (Locked)" : "Open to Swap"
+            : "Waiting"
 
       return [
         String(pos.position),
         escapeCsvField(name),
         escapeCsvField(email),
+        ...(isRestaurant ? [String(pos.partySize)] : []),
         joinedAt,
+        pos.calledAt ? new Date(pos.calledAt).toISOString() : "",
+        pos.fulfilledAt ? new Date(pos.fulfilledAt).toISOString() : "",
         askingPrice,
         status,
       ].join(",")

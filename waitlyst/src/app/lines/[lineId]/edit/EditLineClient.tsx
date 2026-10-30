@@ -89,12 +89,7 @@ export function EditLineClient({
       return
     }
 
-    setSaving(true)
-    try {
-      const res = await fetch(`/api/lines/${line.id}/settings`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+    const values: Record<string, unknown> = {
           name: name.trim(),
           description: description.trim() || null,
           isPublic,
@@ -110,7 +105,42 @@ export function EditLineClient({
           allowResale,
           maxAskingPrice: maxAskingPrice ? parseFloat(maxAskingPrice) : null,
           hideCapacity: maxCapacity ? hideCapacity : false,
-        }),
+    }
+    // Send only what was changed on this page. Sending everything wrote back
+    // the pause and public settings as they were when the page loaded, so
+    // pausing from the console and then saving a new description here
+    // quietly resumed the line.
+    const original: Record<string, unknown> = {
+      name: line.name,
+      description: line.description,
+      isPublic: line.isPublic,
+      isActive: line.isActive,
+      opensAt: line.opensAt ? new Date(line.opensAt).toISOString() : null,
+      closesAt: line.closesAt ? new Date(line.closesAt).toISOString() : null,
+      maxCapacity: line.maxCapacity,
+      ownerFeePercent: line.ownerFeePercent,
+      productName: line.productName,
+      productImage: line.productImage,
+      productPrice: line.productPrice,
+      productUrl: line.productUrl,
+      allowResale: line.allowResale,
+      maxAskingPrice: line.maxAskingPrice,
+      hideCapacity: line.hideCapacity,
+    }
+    const changes = Object.fromEntries(
+      Object.entries(values).filter(([key, value]) => JSON.stringify(value) !== JSON.stringify(original[key]))
+    )
+    if (Object.keys(changes).length === 0) {
+      router.push(`/lines/${line.id}`)
+      return
+    }
+
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/lines/${line.id}/settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(changes),
       })
 
       if (res.ok) {

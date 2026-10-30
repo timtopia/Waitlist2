@@ -130,7 +130,7 @@ export function OwnerConsole({
   async function handleTogglePause() {
     setBusy("pause")
     try {
-      const { ok, data } = await post("pause")
+      const { ok, data } = await post("pause", { isActive: !isActive })
       if (ok) {
         addToast(data.isActive ? "Line resumed -- people can join again" : "Line paused -- no new joins or swaps", "success")
       } else {

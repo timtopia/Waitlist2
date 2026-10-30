@@ -227,6 +227,14 @@ describe("POST /api/lines/[lineId]/duplicate", () => {
       isPublic: true,
       maxCapacity: 50,
       ownerFeePercent: 5,
+      kind: "RESTAURANT",
+      allowResale: false,
+      maxAskingPrice: null,
+      hideCapacity: true,
+      productName: null,
+      productImage: null,
+      productPrice: null,
+      productUrl: null,
     })
     mockPrisma.line.create.mockResolvedValue({
       id: "line-2",
@@ -250,15 +258,25 @@ describe("POST /api/lines/[lineId]/duplicate", () => {
     const data = await response.json()
     expect(data.name).toBe("My Line (Copy)")
     expect(data.id).toBe("line-2")
+    // Every setting carries over (swaps stay off, still a restaurant line),
+    // and the copy starts paused
     expect(mockPrisma.line.create).toHaveBeenCalledWith({
       data: {
         name: "My Line (Copy)",
         description: "A test line",
         createdById: "owner-1",
         isPublic: true,
-        isActive: true,
+        isActive: false,
+        kind: "RESTAURANT",
         maxCapacity: 50,
+        hideCapacity: true,
         ownerFeePercent: 5,
+        allowResale: false,
+        maxAskingPrice: null,
+        productName: null,
+        productImage: null,
+        productPrice: null,
+        productUrl: null,
       },
     })
   })
@@ -422,6 +440,55 @@ describe("PATCH /api/lines/[lineId]/announcement", () => {
 describe("PATCH /api/lines/[lineId]/settings", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  it("rejects a closing time that isn't a date instead of failing with a 500", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdById: "owner-1", opensAt: null, closesAt: null })
+
+    const { PATCH } = await import("@/app/api/lines/[lineId]/settings/route")
+    const response = await PATCH(
+      new Request("http://localhost/api/lines/line-1/settings", { method: "PATCH", body: JSON.stringify({ closesAt: "not a date" }) }),
+      { params: Promise.resolve({ lineId: "line-1" }) }
+    )
+    expect(response.status).toBe(400)
+    expect(mockPrisma.line.update).not.toHaveBeenCalled()
+  })
+
+  it("rejects a closing time before the stored opening time", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
+    mockPrisma.line.findUnique.mockResolvedValue({
+      id: "line-1",
+      createdById: "owner-1",
+      opensAt: new Date("2030-01-02T18:00:00Z"),
+      closesAt: null,
+    })
+
+    const { PATCH } = await import("@/app/api/lines/[lineId]/settings/route")
+    const response = await PATCH(
+      new Request("http://localhost/api/lines/line-1/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ closesAt: "2030-01-02T17:00:00Z" }),
+      }),
+      { params: Promise.resolve({ lineId: "line-1" }) }
+    )
+    expect(response.status).toBe(400)
+    expect((await response.json()).error).toMatch(/close after it opens/)
+  })
+
+  it("rejects a product image that isn't an https link", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdById: "owner-1" })
+
+    const { PATCH } = await import("@/app/api/lines/[lineId]/settings/route")
+    const response = await PATCH(
+      new Request("http://localhost/api/lines/line-1/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ productImage: "http://example.com/shoe.jpg" }),
+      }),
+      { params: Promise.resolve({ lineId: "line-1" }) }
+    )
+    expect(response.status).toBe(400)
   })
 
   it("should return 401 if not authenticated", async () => {

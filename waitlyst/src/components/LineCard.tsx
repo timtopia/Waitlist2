@@ -83,6 +83,7 @@ export function LineCard({ line }: LineCardProps) {
                 width={40}
                 height={40}
                 className="object-cover w-10 h-10 border border-rule flex-shrink-0"
+                unoptimized
               />
             )}
             <div className="min-w-0">

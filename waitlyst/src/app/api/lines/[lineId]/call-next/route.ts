@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { firstName } from "@/lib/privacy"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { sendEmail } from "@/lib/email"
@@ -60,9 +61,12 @@ export async function POST(
     }
 
     const userName = frontPosition.user?.name || "Next person"
+    // The banner and "now serving" are shown to anyone viewing the line, so
+    // they carry a first name only.
+    const publicName = firstName(frontPosition.user?.name) || "Next person"
     const servingLabel = result.line.kind === "RESTAURANT"
-      ? `${userName} (party of ${frontPosition.partySize})`
-      : userName
+      ? `${publicName} (party of ${frontPosition.partySize})`
+      : publicName
 
     // Once called, this spot is at the counter and stops being tradeable.
     // A swap still on the payment page would push them back after they were
@@ -76,7 +80,7 @@ export async function POST(
       prisma.line.update({
         where: { id: lineId },
         data: {
-          announcement: `\u{1F4E2} ${userName}, you're up! Please come forward.`,
+          announcement: `\u{1F4E2} ${publicName}, you're up! Please come forward.`,
           announcementAt: calledAt,
           nowServing: servingLabel,
           nowServingUserId: frontPosition.userId,

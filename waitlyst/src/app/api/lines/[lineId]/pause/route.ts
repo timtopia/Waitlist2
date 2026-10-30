@@ -11,10 +11,16 @@ export async function POST(
   const result = await requireLineOwner(lineId)
   if (result instanceof NextResponse) return result
 
+  // Callers say which state they want. Flipping whatever is stored meant a
+  // double-click, or the owner on two devices, could land on the opposite
+  // of what they asked for. A body without isActive still toggles.
+  const body = await req.json().catch(() => ({}))
+  const isActive = typeof body?.isActive === "boolean" ? body.isActive : !result.line.isActive
+
   try {
     const updatedLine = await prisma.line.update({
       where: { id: lineId },
-      data: { isActive: !result.line.isActive },
+      data: { isActive },
     })
 
     return NextResponse.json({ isActive: updatedLine.isActive })
