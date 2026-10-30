@@ -12,6 +12,7 @@ interface ConsolePosition {
   position: number
   fulfilled: boolean
   lockedUntil: string | null
+  calledAt?: string | null
   partySize?: number
   user: { id: string; name: string | null }
 }
@@ -58,7 +59,7 @@ export function OwnerConsole({
   const served = positions.filter((p) => p.fulfilled)
   const upNext = waiting[0] ?? null
   const afterNext = waiting[1] ?? null
-  const isServingUpNext = !!upNext && nowServingUserId === upNext.user.id
+  const isServingUpNext = !!upNext && (!!upNext.calledAt || nowServingUserId === upNext.user.id)
   const upNextLocked = !!upNext?.lockedUntil && new Date(upNext.lockedUntil) > new Date()
 
   const fetchEarnings = useCallback(async () => {

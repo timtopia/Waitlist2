@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 import { prisma } from "@/lib/prisma"
-import { capacityUnit, capacityView, guestCount } from "@/lib/capacity"
+import { capacityUnit, capacityUsed, capacityView, guestCount } from "@/lib/capacity"
 import { LineDetailClient } from "./LineDetailClient"
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || "https://waitlyst.app"
@@ -14,14 +14,14 @@ async function getLine(lineId: string) {
     where: { id: lineId },
     include: {
       createdBy: { select: { name: true } },
-      positions: { select: { partySize: true } },
+      positions: { select: { partySize: true, fulfilled: true } },
     },
   })
 }
 
 function buildDescription(line: NonNullable<Awaited<ReturnType<typeof getLine>>>) {
   const positionCount = guestCount(line.positions)
-  const { maxCapacity, isFull } = capacityView(line, positionCount)
+  const { maxCapacity, isFull } = capacityView(line, capacityUsed(line.kind, line.positions))
   const capacityText = maxCapacity
     ? `${positionCount}/${maxCapacity} ${capacityUnit(line.kind, maxCapacity)} filled`
     : `${positionCount} ${positionCount === 1 ? "person" : "people"} in line`
@@ -101,7 +101,7 @@ export default async function LineDetailPage({ params }: Props) {
             "@type": "Offer",
             price: line.productPrice,
             priceCurrency: "USD",
-            availability: capacityView(line, guestCount(line.positions)).isFull
+            availability: capacityView(line, capacityUsed(line.kind, line.positions)).isFull
               ? "https://schema.org/SoldOut"
               : "https://schema.org/InStock",
           },

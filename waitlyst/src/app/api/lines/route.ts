@@ -147,19 +147,33 @@ export async function GET(req: Request) {
       orderBy: { createdAt: "desc" },
     })
 
-    // Capacity counts guests, which only differs from the number of spots on
-    // restaurant lines
-    const guestSums = await prisma.linePosition.groupBy({
-      by: ["lineId"],
-      where: { lineId: { in: lines.map((l) => l.id) } },
-      _sum: { partySize: true },
-    })
-    const guestsIn = new Map(guestSums.map((g) => [g.lineId, g._sum.partySize ?? 0]))
+    // Guests in line (shown on the card), split by served so restaurant
+    // capacity can leave seated parties out; served-and-cleared counts for
+    // other lines' capacity (see capacityUsed).
+    const lineIds = lines.map((l) => l.id)
+    const [guestSums, servedVisits] = await Promise.all([
+      prisma.linePosition.groupBy({
+        by: ["lineId", "fulfilled"],
+        where: { lineId: { in: lineIds } },
+        _sum: { partySize: true },
+        _count: true,
+      }),
+      prisma.queueVisit.groupBy({
+        by: ["lineId"],
+        where: { lineId: { in: lineIds }, outcome: "SERVED" },
+        _count: true,
+      }),
+    ])
+    const clearedIn = new Map(servedVisits.map((v) => [v.lineId, v._count]))
 
     // Cached publicly, so every viewer gets the anonymous view of capacity
     const visible = lines.map((line) => {
-      const guests = guestsIn.get(line.id) ?? 0
-      return { ...line, guestCount: guests, ...capacityView(line, guests) }
+      const rows = guestSums.filter((g) => g.lineId === line.id)
+      const guests = rows.reduce((sum, g) => sum + (g._sum.partySize ?? 0), 0)
+      const used = line.kind === "RESTAURANT"
+        ? rows.filter((g) => !g.fulfilled).reduce((sum, g) => sum + (g._sum.partySize ?? 0), 0)
+        : rows.reduce((sum, g) => sum + g._count, 0) + (clearedIn.get(line.id) ?? 0)
+      return { ...line, guestCount: guests, ...capacityView(line, used) }
     })
 
     return NextResponse.json(visible, {

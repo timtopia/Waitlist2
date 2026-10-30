@@ -26,6 +26,7 @@ const mockPrisma = {
   },
   queueVisit: {
     create: vi.fn(),
+    count: vi.fn().mockResolvedValue(0),
   },
   user: {
     update: vi.fn(),
@@ -576,8 +577,9 @@ describe("PATCH /api/lines/[lineId]/settings", () => {
     mockPrisma.line.findUnique.mockResolvedValue({
       id: "line-1",
       createdById: "owner-1",
+      kind: "STANDARD",
     })
-    mockPrisma.linePosition.aggregate.mockResolvedValue({ _sum: { partySize: 10 } })
+    mockPrisma.linePosition.count.mockResolvedValue(10)
 
     const { PATCH } = await import("@/app/api/lines/[lineId]/settings/route")
     const req = new Request("http://localhost/api/lines/line-1/settings", {

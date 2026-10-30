@@ -14,6 +14,8 @@ export interface StatusLine {
   positions: {
     position: number
     fulfilled: boolean
+    /** Set when the organizer calls this person; cleared only by leaving */
+    calledAt?: string | null
     user: { id: string; name: string | null }
   }[]
 }
@@ -25,16 +27,20 @@ export interface MemberStatus {
   ahead: number
 }
 
+/**
+ * Being called is recorded on the person's own spot (calledAt), not inferred
+ * from the line's single "now serving" slot or from being at the front:
+ * restaurant hosts call parties out of order, and calling a second party
+ * must not make the first one look un-called.
+ */
 export function getMemberPhase(input: {
   fulfilled: boolean
   ahead: number
-  nowServingUserId: string | null
-  userId: string
+  calledAt: string | Date | null | undefined
 }): MemberPhase {
   if (input.fulfilled) return "served"
-  if (input.ahead === 0) {
-    return input.nowServingUserId === input.userId ? "called" : "next"
-  }
+  if (input.calledAt) return "called"
+  if (input.ahead === 0) return "next"
   return "waiting"
 }
 
@@ -44,7 +50,7 @@ export function getMemberStatus(line: StatusLine, userId: string | undefined): M
   if (!mine) return null
   const ahead = line.positions.filter((p) => p.position < mine.position && !p.fulfilled).length
   return {
-    phase: getMemberPhase({ fulfilled: mine.fulfilled, ahead, nowServingUserId: line.nowServingUserId, userId }),
+    phase: getMemberPhase({ fulfilled: mine.fulfilled, ahead, calledAt: mine.calledAt }),
     position: mine.position,
     ahead,
   }
@@ -67,7 +73,9 @@ export function diffMemberStatus(prev: StatusLine, next: StatusLine, userId: str
   if (!before && !after) return []
 
   if (before && !after) {
-    return [{ kind: "removed", wasServed: before.phase === "served" || before.phase === "called" }]
+    // Only being served counts as done; a called no-show who is then
+    // removed was not served.
+    return [{ kind: "removed", wasServed: before.phase === "served" }]
   }
   if (!after) return []
 
@@ -108,7 +116,7 @@ const MOVED_ALERT_THRESHOLD = 5
 export function describeMemberEvent(event: MemberEvent, lineName: string): MemberAlert | null {
   switch (event.kind) {
     case "called":
-      return { title: "It's your turn!", body: `${lineName}: head to the front now.`, toast: true, tone: "success" }
+      return { title: "It's your turn!", body: `${lineName} is ready for you.`, toast: true, tone: "success" }
     case "next":
       return { title: "You're next", body: `You're at the front of ${lineName}. Get ready.`, toast: true, tone: "info" }
     case "served":
@@ -120,7 +128,9 @@ export function describeMemberEvent(event: MemberEvent, lineName: string): Membe
     case "removed":
       return event.wasServed
         ? { title: "All done", body: `You've left ${lineName} after being served.`, toast: true, tone: "info" }
-        : { title: "You're no longer in line", body: `The organizer removed you from ${lineName}.`, toast: true, tone: "warning" }
+        // Leaving from this tab is handled by the caller; reaching here means
+        // it happened elsewhere -- another device, or the organizer.
+        : { title: "You're no longer in line", body: `You're no longer in ${lineName}. You left from another device, or the organizer removed you.`, toast: true, tone: "warning" }
     case "announcement":
       return { title: `Update from ${lineName}`, body: event.text, toast: false, tone: "info" }
     case "paused":

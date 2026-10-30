@@ -34,6 +34,8 @@ const mockPrisma = {
   queueVisit: {
     create: vi.fn(),
     findMany: vi.fn().mockResolvedValue([]),
+    count: vi.fn().mockResolvedValue(0),
+    groupBy: vi.fn().mockResolvedValue([]),
   },
   user: {
     findMany: vi.fn(),
@@ -157,8 +159,8 @@ describe("Lines API", () => {
         { id: "line-2", maxCapacity: 50, hideCapacity: false, createdById: "creator-1", _count: { positions: 3 } },
       ])
       mockPrisma.linePosition.groupBy.mockResolvedValue([
-        { lineId: "line-1", _sum: { partySize: 3 } },
-        { lineId: "line-2", _sum: { partySize: 3 } },
+        { lineId: "line-1", fulfilled: false, _sum: { partySize: 3 }, _count: 3 },
+        { lineId: "line-2", fulfilled: false, _sum: { partySize: 3 }, _count: 3 },
       ])
 
       const { GET } = await import("@/app/api/lines/route")

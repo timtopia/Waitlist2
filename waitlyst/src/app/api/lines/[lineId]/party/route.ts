@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { countCapacityUsed } from "@/lib/capacity-server"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { lockLine } from "@/lib/queue-exit"
@@ -41,13 +42,13 @@ export async function PATCH(
       })
       if (!mine) throw new PartyRefusedError("You're not in this line")
       if (mine.fulfilled) throw new PartyRefusedError("You've already been seated")
+      // The host picked this party for a table at this size
+      if (mine.calledAt) {
+        throw new PartyRefusedError("You've been called, so ask the host if your party size changed")
+      }
 
       if (line.maxCapacity && partySize > mine.partySize) {
-        const { _sum } = await tx.linePosition.aggregate({
-          where: { lineId },
-          _sum: { partySize: true },
-        })
-        const left = line.maxCapacity - (_sum.partySize ?? 0)
+        const left = line.maxCapacity - await countCapacityUsed(line, tx)
         if (partySize - mine.partySize > left) {
           throw new PartyRefusedError(
             left > 0

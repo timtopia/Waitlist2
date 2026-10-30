@@ -6,6 +6,7 @@ const mockPrisma = {
   transaction: { findMany: vi.fn() },
   user: { findMany: vi.fn() },
   linePosition: { findMany: vi.fn() },
+  queueVisit: { findMany: vi.fn().mockResolvedValue([]) },
 }
 
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }))

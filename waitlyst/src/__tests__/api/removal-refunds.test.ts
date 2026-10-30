@@ -7,6 +7,7 @@ const mockPrisma = {
   line: { findUnique: vi.fn() },
   linePosition: { findUnique: vi.fn(), findMany: vi.fn() },
   transaction: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+  queueVisit: { findMany: vi.fn().mockResolvedValue([]) },
   $transaction: vi.fn(),
 }
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }))
@@ -113,6 +114,18 @@ describe("POST /settlement/action cancel", () => {
 
     expect(res.status).toBe(502)
     expect(mockPrisma.transaction.update).not.toHaveBeenCalled()
+  })
+
+  it("bulk cancel leaves alone a buyer who was served and then cleared from the line", async () => {
+    mockPrisma.transaction.findMany.mockResolvedValue([heldPurchase])
+    mockPrisma.linePosition.findMany.mockResolvedValue([]) // cleared: no position
+    mockPrisma.queueVisit.findMany.mockResolvedValueOnce([{ userId: "guest-1" }])
+    mockReturnBuyerFunds.mockResolvedValue([])
+
+    const res = await post({ action: "cancel-all-unfulfilled" })
+
+    expect(await res.json()).toMatchObject({ count: 0, failedCount: 0 })
+    expect(mockReturnBuyerFunds).toHaveBeenCalledWith([])
   })
 
   it("bulk cancel only closes out the purchases that were returned", async () => {

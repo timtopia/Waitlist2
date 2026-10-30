@@ -54,6 +54,12 @@ export async function POST(
           select: { userId: true, fulfilled: true },
         })
         const fulfilledMap = new Map(positions.map((p) => [p.userId, p.fulfilled]))
+        // Served and already cleared from the line: still served
+        const servedVisits = await prisma.queueVisit.findMany({
+          where: { lineId, userId: { in: buyerIds }, outcome: "SERVED" },
+          select: { userId: true },
+        })
+        for (const v of servedVisits) if (!fulfilledMap.has(v.userId)) fulfilledMap.set(v.userId, true)
 
         // Only cancel transactions where the buyer was NOT fulfilled
         const unfulfilledTxns = transactions.filter(

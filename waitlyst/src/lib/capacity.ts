@@ -9,6 +9,8 @@ export interface CapacityView {
   maxCapacity: number | null
   hasCapacityLimit: boolean
   isFull: boolean
+  /** How much of the capacity is used (see capacityUsed) */
+  capacityUsed: number
 }
 
 /**
@@ -18,7 +20,7 @@ export interface CapacityView {
  */
 export function capacityView(
   line: CapacityFields,
-  positionCount: number,
+  used: number,
   viewerId: string | null = null
 ): CapacityView {
   const hasCapacityLimit = line.maxCapacity !== null
@@ -26,8 +28,31 @@ export function capacityView(
   return {
     maxCapacity: hidden ? null : line.maxCapacity,
     hasCapacityLimit,
-    isFull: line.maxCapacity !== null && positionCount >= line.maxCapacity,
+    isFull: line.maxCapacity !== null && used >= line.maxCapacity,
+    capacityUsed: used,
   }
+}
+
+/**
+ * How much of a line's capacity is used:
+ * - Restaurant lines count the guests still waiting. A seated party has its
+ *   table, so it stops holding a place on the list even before the host
+ *   clears it.
+ * - Other lines count everyone admitted: people in line, served or not, plus
+ *   served people already cleared (servedAndCleared). A 100-spot drop stays
+ *   at 100 when the owner clears the served -- otherwise clearing would let
+ *   more people in than there is stock for. People who leave or are removed
+ *   without being served do free their spot.
+ */
+export function capacityUsed(
+  kind: LineKind,
+  positions: { partySize?: number | null; fulfilled?: boolean }[],
+  servedAndCleared = 0
+): number {
+  if (kind === "RESTAURANT") {
+    return positions.reduce((sum, p) => sum + (p.fulfilled ? 0 : p.partySize ?? 1), 0)
+  }
+  return positions.length + servedAndCleared
 }
 
 /** Largest party a restaurant line will seat from one spot in the queue. */

@@ -71,8 +71,7 @@ export default async function DashboardPage() {
         phase: getMemberPhase({
           fulfilled: pos.fulfilled,
           ahead: aheadCounts[i],
-          nowServingUserId: pos.line.nowServingUserId,
-          userId: pos.userId,
+          calledAt: pos.calledAt,
         }),
         askingPrice: pos.askingPrice?.toString() || null,
         joinedAt: pos.joinedAt.toISOString(),

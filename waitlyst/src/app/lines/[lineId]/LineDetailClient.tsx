@@ -38,6 +38,8 @@ interface Line {
   maxCapacity: number | null // null when hidden from this viewer
   hasCapacityLimit: boolean
   isFull: boolean
+  /** Capacity used as the server counts it (see capacityUsed) */
+  capacityUsed: number
   ownerFeePercent: number
   platformFeePercent: number
   announcement: string | null
@@ -66,6 +68,7 @@ interface Line {
     lockedUntil: string | null
     fulfilled: boolean
     fulfilledAt: string | null
+    calledAt: string | null
     partySize: number
     user: {
       id: string
@@ -85,6 +88,9 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [notificationPermission, setNotificationPermission] = useState<NotificationState>("unsupported")
   const notificationsEnabled = notificationPermission === "granted"
   const [departure, setDeparture] = useState<{ wasServed: boolean } | null>(null)
+  // Set when the viewer leaves from this tab, so the next poll isn't
+  // reported as "you're no longer in line".
+  const leftHereRef = useRef(false)
   const [, setScheduleTick] = useState(0)
   const [deleting, setDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -249,6 +255,10 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     if (!prev) return
 
     for (const change of diffMemberStatus(prev, next, session?.user?.id)) {
+      if (change.kind === "removed" && leftHereRef.current) {
+        leftHereRef.current = false
+        continue
+      }
       if (change.kind === "removed") setDeparture({ wasServed: change.wasServed })
       if (change.kind === "called" || change.kind === "next") setDeparture(null)
       const alert = describeMemberEvent(change, next.name)
@@ -294,7 +304,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   // (maxCapacity is null for us) the server still refuses parties that don't fit.
   const maxPartySize =
     line?.maxCapacity != null
-      ? Math.max(1, Math.min(MAX_PARTY_SIZE, line.maxCapacity - guests))
+      ? Math.max(1, Math.min(MAX_PARTY_SIZE, line.maxCapacity - line.capacityUsed))
       : MAX_PARTY_SIZE
   const joinPartySize = Math.min(partySize, maxPartySize)
   const hasProductInfo = !!(line?.productName || line?.productImage)
@@ -322,11 +332,14 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     return () => clearTimeout(timer)
   }, [opensAtMs, closesAtMs, viewerId, lineId, sendNotification, addToast])
 
-  async function handleJoin(): Promise<boolean> {
+  async function handleJoin(sizeOverride?: number): Promise<boolean> {
+    const size = sizeOverride ?? joinPartySize
     if (!session) {
       // Come back with ?join=1 so the join completes on return instead of
       // making them find and press "Join Line" a second time after sign-in.
-      signIn("google", { callbackUrl: `/lines/${lineId}?join=1` })
+      // The party size they picked rides along, or they'd join as the default.
+      const party = line?.kind === "RESTAURANT" ? `&party=${size}` : ""
+      signIn("google", { callbackUrl: `/lines/${lineId}?join=1${party}` })
       return false
     }
 
@@ -336,7 +349,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         method: "POST",
         ...(line?.kind === "RESTAURANT" && {
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ partySize: joinPartySize }),
+          body: JSON.stringify({ partySize: size }),
         }),
       })
       if (res.ok) {
@@ -359,10 +372,22 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     if (autoJoinAttempted.current) return
     autoJoinAttempted.current = true
     router.replace(`/lines/${lineId}`, { scroll: false })
+    const party = Number(searchParams.get("party"))
+    const size = Number.isInteger(party) && party >= 1 ? Math.min(party, maxPartySize) : undefined
+    if (size) setPartySize(size)
     if (canJoin) {
-      handleJoin().then((joined) => {
+      handleJoin(size).then((joined) => {
         if (joined) addToast("You're in line!", "success")
       })
+    } else if (!isInLine && !isCreator) {
+      // Say why, rather than landing them back on the page with nothing done
+      addToast(
+        lineFull ? "The line filled up while you were signing in."
+          : linePaused ? "The line was paused while you were signing in."
+          : lineClosed ? "The line closed while you were signing in."
+          : "You can't join this line right now.",
+        "info"
+      )
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, session, line, canJoin])
@@ -528,7 +553,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             </div>
             <div className="flex items-center gap-2">
               <ShareLine lineId={line.id} lineName={line.name} />
-              {canJoin && session && line.kind === "RESTAURANT" && (
+              {canJoin && line.kind === "RESTAURANT" && (
                 <label className="flex items-center gap-2 text-sm text-ink/60">
                   <span className="whitespace-nowrap">Party of</span>
                   <select
@@ -544,7 +569,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                 </label>
               )}
               {canJoin && (
-                <Button onClick={handleJoin} isLoading={joining}>
+                <Button onClick={() => handleJoin()} isLoading={joining}>
                   {session ? "Join Line" : "Sign in to Join"}
                 </Button>
               )}
@@ -771,7 +796,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             opensAt={line.opensAt}
             closesAt={line.closesAt}
             maxCapacity={line.maxCapacity}
-            currentCount={guests}
+            currentCount={line.capacityUsed}
             isFull={line.isFull}
             kind={line.kind}
             hideCapacity={line.hasCapacityLimit && line.maxCapacity === null}
@@ -789,7 +814,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
           lineId={line.id}
           hideCapacity={!isCreator && line.hideCapacity}
           isPaused={linePaused}
-          calledAt={line.nowServingAt}
+          calledAt={userPosition?.calledAt ?? null}
           notificationPermission={notificationPermission}
           onEnableNotifications={enableNotifications}
         />
@@ -806,10 +831,10 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
               <p className="text-sm text-ink/60 mt-1">
                 {departure.wasServed
                   ? "The organizer served you and cleared your spot. Thanks for waiting."
-                  : "The organizer removed you from the line."}
+                  : "You left from another device, or the organizer removed you."}
               </p>
               {canJoin && (
-                <Button size="sm" variant="secondary" className="mt-3" onClick={handleJoin} isLoading={joining}>
+                <Button size="sm" variant="secondary" className="mt-3" onClick={() => handleJoin()} isLoading={joining}>
                   Rejoin at the back
                 </Button>
               )}
@@ -839,7 +864,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
               <div className="flex items-center gap-3">
                 {line.maxCapacity !== null ? (
                   <span className="font-mono text-xs uppercase tracking-widest text-ink/40 tabular-nums">
-                    {guests} of {line.maxCapacity} {capacityUnit(line.kind, line.maxCapacity)} filled
+                    {line.capacityUsed} of {line.maxCapacity} {capacityUnit(line.kind, line.maxCapacity)} filled
                   </span>
                 ) : (
                   <span className="font-mono text-xs uppercase tracking-widest text-ink/40">
@@ -878,6 +903,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             hideCapacity={!isCreator && line.hideCapacity}
             nowServingUserId={line.nowServingUserId}
             isRestaurant={isRestaurant}
+            onLeft={() => { leftHereRef.current = true }}
           />
         </CardContent>
       </Card>

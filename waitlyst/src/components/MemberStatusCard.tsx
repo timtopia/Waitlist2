@@ -74,7 +74,7 @@ export function MemberStatusCard({
   let detail: string
   if (phase === "called") {
     headline = "It's your turn"
-    detail = `The organizer called you${calledAt ? ` ${timeAgo(calledAt)}` : ""}. Head to the front now.`
+    detail = `The organizer called you${calledAt ? ` ${timeAgo(calledAt)}` : ""}. It's your turn now.`
   } else if (phase === "served") {
     headline = "You've been served"
     detail = "You're all set. Leave the line whenever you're ready."

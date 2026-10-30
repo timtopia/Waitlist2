@@ -51,6 +51,12 @@ export async function POST(
       if (marked.count === 0) {
         throw new Error("Position already fulfilled")
       }
+      // Once they're served, "Now serving" shouldn't keep showing them to
+      // everyone until the owner clears served people.
+      await tx.line.updateMany({
+        where: { id: lineId, nowServingUserId: position.userId },
+        data: { nowServing: null, nowServingUserId: null, nowServingAt: null },
+      })
       await tx.swapOffer.updateMany({
         where: {
           lineId,

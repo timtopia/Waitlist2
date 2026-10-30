@@ -9,7 +9,7 @@ import {
 } from "@/lib/member-status"
 
 function makeLine(
-  people: { id: string; name?: string | null; fulfilled?: boolean }[],
+  people: { id: string; name?: string | null; fulfilled?: boolean; called?: boolean }[],
   overrides: Partial<StatusLine> = {}
 ): StatusLine {
   return {
@@ -20,6 +20,7 @@ function makeLine(
     positions: people.map((p, i) => ({
       position: i + 1,
       fulfilled: p.fulfilled ?? false,
+      calledAt: p.called ? "2026-10-30T19:00:00Z" : null,
       user: { id: p.id, name: p.name === undefined ? p.id.toUpperCase() : p.name },
     })),
     ...overrides,
@@ -43,10 +44,20 @@ describe("getMemberStatus", () => {
     expect(getMemberStatus(line, "me")?.phase).toBe("next")
   })
 
-  it("is 'called' when the called user is the viewer and no one is ahead", () => {
-    const line = makeLine([{ id: "me" }, { id: "b" }], { nowServingUserId: "me" })
+  it("is 'called' when the viewer's own spot has been called", () => {
+    const line = makeLine([{ id: "me", called: true }, { id: "b" }], { nowServingUserId: "me" })
     expect(getMemberStatus(line, "me")?.phase).toBe("called")
     expect(getMemberStatus(line, "b")?.phase).toBe("waiting")
+  })
+
+  it("shows a party called out of order as called, with people still ahead", () => {
+    const line = makeLine([{ id: "big" }, { id: "me", called: true }], { nowServingUserId: "me" })
+    expect(getMemberStatus(line, "me")).toEqual({ phase: "called", position: 2, ahead: 1 })
+  })
+
+  it("keeps an earlier-called party called after the host calls someone else", () => {
+    const line = makeLine([{ id: "me", called: true }, { id: "b", called: true }], { nowServingUserId: "b" })
+    expect(getMemberStatus(line, "me")?.phase).toBe("called")
   })
 
   it("isn't fooled when the called person is a served person ahead", () => {
@@ -59,7 +70,7 @@ describe("getMemberStatus", () => {
     // at the front would be told it was their turn.
     const line = makeLine([{ id: "me", name: "Sam" }, { id: "other", name: "Sam" }], { nowServingUserId: "other" })
     expect(getMemberStatus(line, "me")?.phase).toBe("next")
-    expect(getMemberPhase({ fulfilled: false, ahead: 0, nowServingUserId: "other", userId: "me" })).toBe("next")
+    expect(getMemberPhase({ fulfilled: false, ahead: 0, calledAt: null })).toBe("next")
   })
 
   it("reports served once fulfilled, even at the front while called", () => {
@@ -89,7 +100,7 @@ describe("diffMemberStatus", () => {
 
   it("reports being called without a duplicate announcement event", () => {
     const prev = makeLine([{ id: "me" }, { id: "b" }])
-    const next = makeLine([{ id: "me" }, { id: "b" }], {
+    const next = makeLine([{ id: "me", called: true }, { id: "b" }], {
       nowServingUserId: "me",
       announcement: "ME, you're up!",
       announcementAt: "t1",
@@ -100,8 +111,8 @@ describe("diffMemberStatus", () => {
   })
 
   it("reports being served", () => {
-    const prev = makeLine([{ id: "me" }], { nowServingUserId: "me" })
-    const next = makeLine([{ id: "me", fulfilled: true }], { nowServingUserId: "me" })
+    const prev = makeLine([{ id: "me", called: true }], { nowServingUserId: "me" })
+    const next = makeLine([{ id: "me", called: true, fulfilled: true }], { nowServingUserId: "me" })
     expect(diffMemberStatus(prev, next, "me")).toEqual([{ kind: "served" }])
   })
 
@@ -109,8 +120,9 @@ describe("diffMemberStatus", () => {
     const empty = makeLine([{ id: "b" }])
     expect(diffMemberStatus(makeLine([{ id: "me", fulfilled: true }, { id: "b" }]), empty, "me"))
       .toEqual([{ kind: "removed", wasServed: true }])
-    expect(diffMemberStatus(makeLine([{ id: "me" }, { id: "b" }], { nowServingUserId: "me" }), empty, "me"))
-      .toEqual([{ kind: "removed", wasServed: true }])
+    // Called but never served (a no-show) is not "served"
+    expect(diffMemberStatus(makeLine([{ id: "me", called: true }, { id: "b" }], { nowServingUserId: "me" }), empty, "me"))
+      .toEqual([{ kind: "removed", wasServed: false }])
     expect(diffMemberStatus(makeLine([{ id: "b" }, { id: "me" }]), empty, "me"))
       .toEqual([{ kind: "removed", wasServed: false }])
   })

@@ -46,7 +46,7 @@ export async function PATCH(
     }
     const mine = await prisma.linePosition.findUnique({
       where: { lineId_userId: { lineId, userId: result.userId } },
-      select: { userId: true, fulfilled: true },
+      select: { userId: true, fulfilled: true, calledAt: true },
     })
     const blocked = mine && tradeBlocker(mine, line?.nowServingUserId ?? null, "yours")
     if (blocked) {

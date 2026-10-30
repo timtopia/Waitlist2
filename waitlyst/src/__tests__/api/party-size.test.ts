@@ -84,6 +84,17 @@ describe("PATCH /api/lines/[lineId]/party", () => {
     expect(res.status).toBe(400)
   })
 
+  it("can't change once the host has called the party", async () => {
+    mockPrisma.line.findUnique.mockResolvedValue(restaurant)
+    mockPrisma.linePosition.findUnique.mockResolvedValue({ ...myParty, calledAt: new Date() })
+
+    const res = await setPartySize(4)
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toMatch(/ask the host/)
+    expect(mockPrisma.linePosition.update).not.toHaveBeenCalled()
+  })
+
   it("rejects sizes that aren't a whole number from 1 to 20", async () => {
     mockPrisma.line.findUnique.mockResolvedValue(restaurant)
     mockPrisma.linePosition.findUnique.mockResolvedValue(myParty)

@@ -93,6 +93,8 @@ interface QueueDisplayProps {
   nowServingUserId?: string | null
   /** Restaurant lines show party sizes and let the host call any party */
   isRestaurant?: boolean
+  /** Called after the viewer leaves the line from this page */
+  onLeft?: () => void
 }
 
 /** Format estimated wait time into a human-readable string */
@@ -104,7 +106,7 @@ function formatWaitTime(minutes: number): string {
   return `~${Math.round(hours)} hrs`
 }
 
-export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, feeInfo, isPaused = false, hasPayoutSetup = false, stripeEnabled = false, allowResale = true, maxAskingPrice = null, hideCapacity = false, nowServingUserId = null, isRestaurant = false }: QueueDisplayProps) {
+export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, feeInfo, isPaused = false, hasPayoutSetup = false, stripeEnabled = false, allowResale = true, maxAskingPrice = null, hideCapacity = false, nowServingUserId = null, isRestaurant = false, onLeft }: QueueDisplayProps) {
   const { data: session } = useSession()
   const { addToast } = useToast()
   const [loadingAction, setLoadingAction] = useState<string | null>(null)
@@ -392,6 +394,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
         method: "DELETE",
       })
       if (res.ok) {
+        onLeft?.()
         addToast("You left the line", "info")
         onRefresh()
       } else {
