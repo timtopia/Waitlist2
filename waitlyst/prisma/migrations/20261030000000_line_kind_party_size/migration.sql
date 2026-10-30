@@ -1,0 +1,8 @@
+-- CreateEnum
+CREATE TYPE "LineKind" AS ENUM ('STANDARD', 'RESTAURANT');
+
+-- AlterTable
+ALTER TABLE "Line" ADD COLUMN "kind" "LineKind" NOT NULL DEFAULT 'STANDARD';
+
+-- AlterTable
+ALTER TABLE "LinePosition" ADD COLUMN "partySize" INTEGER NOT NULL DEFAULT 1;

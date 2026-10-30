@@ -12,6 +12,7 @@ interface ConsolePosition {
   position: number
   fulfilled: boolean
   lockedUntil: string | null
+  partySize?: number
   user: { id: string; name: string | null }
 }
 
@@ -26,6 +27,7 @@ interface OwnerConsoleProps {
   justCreated?: boolean
   onDismissCreated?: () => void
   onChanged: () => void
+  isRestaurant?: boolean
 }
 
 interface Earnings {
@@ -44,6 +46,7 @@ export function OwnerConsole({
   justCreated = false,
   onDismissCreated,
   onChanged,
+  isRestaurant = false,
 }: OwnerConsoleProps) {
   const { addToast } = useToast()
   const [busy, setBusy] = useState<string | null>(null)
@@ -302,6 +305,7 @@ export function OwnerConsole({
                 <>
                   <Button size="sm" onClick={handleCall} isLoading={busy === "call"} disabled={!!busy}>
                     Call {upNext.user.name || "Next"}
+                    {isRestaurant && ` (party of ${upNext.partySize ?? 1})`}
                   </Button>
                   <Button
                     size="sm"

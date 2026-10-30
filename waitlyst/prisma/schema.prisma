@@ -88,6 +88,10 @@ model Line {
   nowServingUserId String? // Who was called -- compare this, not the name
   nowServingAt     DateTime? // When the current person was called
   hideCapacity     Boolean        @default(false) // When true, don't show exact capacity to non-owners
+  // RESTAURANT lines take party sizes (capacity counts guests) and hold swap
+  // payments until the guest is served; STANDARD lines collect and pay out
+  // the moment a swap completes.
+  kind             LineKind       @default(STANDARD)
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
@@ -101,6 +105,7 @@ model LinePosition {
   userId      String
   user        User      @relation(fields: [userId], references: [id])
   position    Int // 1 = first in line
+  partySize   Int       @default(1) // Guests in this party; always 1 on STANDARD lines
   askingPrice Float? // null = not for sale
   lockedUntil DateTime? // Position is locked for swap until this time
   lockedBy    String? // Transaction ID that locked this position
@@ -196,4 +201,9 @@ enum VisitOutcome {
   SERVED // Marked served before leaving the line
   LEFT // Left on their own
   REMOVED // Removed by the organizer without being served
+}
+
+enum LineKind {
+  STANDARD
+  RESTAURANT
 }

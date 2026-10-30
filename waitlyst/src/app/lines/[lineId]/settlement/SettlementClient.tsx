@@ -60,9 +60,10 @@ interface SettlementClientProps {
   lineName: string
   stripeConnectOnboarded: boolean
   stripeEnabled: boolean
+  kind: "STANDARD" | "RESTAURANT"
 }
 
-export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, stripeEnabled }: SettlementClientProps) {
+export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, stripeEnabled, kind }: SettlementClientProps) {
   const { addToast } = useToast()
   const router = useRouter()
   const pathname = usePathname()
@@ -474,6 +475,11 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
           <h1 className="text-2xl font-semibold tracking-tight">
             Settlement &mdash; {lineName}
           </h1>
+          <p className="text-sm text-ink/60 mt-1 max-w-2xl">
+            {kind === "RESTAURANT"
+              ? "Paid swaps on this line are held on the buyer's card until you seat them. Capture a hold to collect it, or release it to give the buyer their money back. Settle holds the same evening, since card holds lapse after a few days."
+              : "Paid swaps on this line are collected and paid out the moment they happen, so there's nothing to capture or release. Anything listed as pending below couldn't be collected automatically."}
+          </p>
         </div>
       </div>
 

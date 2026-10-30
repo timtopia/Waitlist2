@@ -19,6 +19,7 @@ const mockPrisma = {
     updateMany: vi.fn(),
     count: vi.fn(),
     aggregate: vi.fn().mockResolvedValue({ _max: { updatedAt: null }, _count: 0 }),
+    groupBy: vi.fn().mockResolvedValue([]),
   },
   transaction: {
     findMany: vi.fn(),
@@ -154,6 +155,10 @@ describe("Lines API", () => {
       mockPrisma.line.findMany.mockResolvedValue([
         { id: "line-1", maxCapacity: 3, hideCapacity: true, createdById: "creator-1", _count: { positions: 3 } },
         { id: "line-2", maxCapacity: 50, hideCapacity: false, createdById: "creator-1", _count: { positions: 3 } },
+      ])
+      mockPrisma.linePosition.groupBy.mockResolvedValue([
+        { lineId: "line-1", _sum: { partySize: 3 } },
+        { lineId: "line-2", _sum: { partySize: 3 } },
       ])
 
       const { GET } = await import("@/app/api/lines/route")
@@ -454,6 +459,60 @@ describe("Join Line API", () => {
     expect(response.status).toBe(500)
     const data = await response.json()
     expect(data.error).not.toContain("constraint")
+  })
+
+  describe("party sizes", () => {
+    function joinAs(userId: string, body: unknown) {
+      mockAuth.mockResolvedValue({ user: { id: userId } })
+      mockPrisma.$transaction.mockImplementation(async (fn: (tx: typeof mockPrisma) => Promise<unknown>) => fn(mockPrisma))
+      mockPrisma.linePosition.findUnique.mockResolvedValue(null)
+      mockPrisma.linePosition.findFirst.mockResolvedValue({ position: 3 })
+      mockPrisma.linePosition.create.mockImplementation(async ({ data }: { data: unknown }) => data)
+      return import("@/app/api/lines/[lineId]/join/route").then(({ POST }) =>
+        POST(
+          new Request("http://localhost/api/lines/line-1/join", { method: "POST", body: JSON.stringify(body) }),
+          { params: Promise.resolve({ lineId: "line-1" }) }
+        )
+      )
+    }
+
+    it("a restaurant line records the party size the guest gave", async () => {
+      mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdById: "owner", isActive: true, kind: "RESTAURANT", maxCapacity: null })
+
+      const response = await joinAs("guest-1", { partySize: 4 })
+
+      expect(response.status).toBe(200)
+      expect(mockPrisma.linePosition.create.mock.calls[0][0].data).toMatchObject({ position: 4, partySize: 4 })
+    })
+
+    it("capacity counts guests: a party of 4 doesn't fit when only 3 seats are left", async () => {
+      mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdById: "owner", isActive: true, kind: "RESTAURANT", maxCapacity: 20 })
+      mockPrisma.linePosition.aggregate.mockResolvedValueOnce({ _sum: { partySize: 17 } })
+
+      const response = await joinAs("guest-1", { partySize: 4 })
+
+      expect(response.status).toBe(400)
+      expect((await response.json()).error).toBe("There's only room for 3 more guests in this line")
+      expect(mockPrisma.linePosition.create).not.toHaveBeenCalled()
+    })
+
+    it("rejects a party bigger than the line seats from one spot", async () => {
+      mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdById: "owner", isActive: true, kind: "RESTAURANT", maxCapacity: null })
+
+      const response = await joinAs("guest-1", { partySize: 21 })
+
+      expect(response.status).toBe(400)
+      expect(mockPrisma.linePosition.create).not.toHaveBeenCalled()
+    })
+
+    it("a standard line ignores any party size: everyone holds one spot", async () => {
+      mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdById: "owner", isActive: true, kind: "STANDARD", maxCapacity: null })
+
+      const response = await joinAs("fan-1", { partySize: 6 })
+
+      expect(response.status).toBe(200)
+      expect(mockPrisma.linePosition.create.mock.calls[0][0].data).toMatchObject({ partySize: 1 })
+    })
   })
 })
 

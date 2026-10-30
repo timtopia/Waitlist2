@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { rateLimit } from "@/lib/rate-limit"
 import { lockLine } from "@/lib/queue-exit"
+import { capacityUnit, parsePartySize } from "@/lib/capacity"
 
 /** A reason the join was refused, safe to show the user. */
 class JoinRefusedError extends Error {}
@@ -25,6 +26,7 @@ export async function POST(
   }
 
   const { lineId } = await params
+  const body = await req.json().catch(() => ({}))
 
   try {
     const position = await prisma.$transaction(async (tx) => {
@@ -63,13 +65,26 @@ export async function POST(
         throw new JoinRefusedError("Already in this line")
       }
 
-      // Check capacity
+      const partySize = parsePartySize(line.kind, body?.partySize)
+      if (typeof partySize !== "number") {
+        throw new JoinRefusedError(partySize.error)
+      }
+
+      // Capacity counts guests, so a party only fits if all of it does
       if (line.maxCapacity) {
-        const currentCount = await tx.linePosition.count({
+        const { _sum } = await tx.linePosition.aggregate({
           where: { lineId },
+          _sum: { partySize: true },
         })
-        if (currentCount >= line.maxCapacity) {
+        const taken = _sum.partySize ?? 0
+        if (taken >= line.maxCapacity) {
           throw new JoinRefusedError("This line is full")
+        }
+        if (taken + partySize > line.maxCapacity) {
+          const left = line.maxCapacity - taken
+          throw new JoinRefusedError(
+            `There's only room for ${left} more ${capacityUnit(line.kind, left)} in this line`
+          )
         }
       }
 
@@ -86,6 +101,7 @@ export async function POST(
           lineId,
           userId: result.userId,
           position: nextPosition,
+          partySize,
         },
         include: {
           user: { select: { id: true, name: true, image: true } },

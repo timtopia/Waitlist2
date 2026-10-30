@@ -168,7 +168,9 @@ export function MemberStatusCard({
           <div className="mt-3 pt-3 border-t border-rule">
             <div className="flex items-center justify-between font-mono text-xs uppercase tracking-widest text-ink/40 tabular-nums">
               <span>Position {position} of {totalPositions} in line</span>
-              <span>{maxCapacity} spot{maxCapacity !== 1 ? "s" : ""} available</span>
+              <span>
+                {Math.max(maxCapacity - totalPositions, 0)} spot{maxCapacity - totalPositions !== 1 ? "s" : ""} left
+              </span>
             </div>
             <div className="mt-1.5 w-full bg-ink/10 h-1.5">
               <div

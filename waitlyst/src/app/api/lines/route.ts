@@ -21,7 +21,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { name, description, isPublic = true, opensAt, closesAt, maxCapacity, ownerFeePercent = 0, productName, productImage, productPrice, productUrl, allowResale = false, maxAskingPrice, hideCapacity = false } = await req.json()
+    const { name, description, isPublic = true, opensAt, closesAt, maxCapacity, ownerFeePercent = 0, productName, productImage, productPrice, productUrl, allowResale = false, maxAskingPrice, hideCapacity = false, kind = "STANDARD" } = await req.json()
 
     // Validate name (required, 1-100 chars)
     const nameErr = validateString(name, "Name", { min: 1, max: 100 })
@@ -35,6 +35,10 @@ export async function POST(req: Request) {
       if (descErr) {
         return NextResponse.json({ error: descErr }, { status: 400 })
       }
+    }
+
+    if (kind !== "STANDARD" && kind !== "RESTAURANT") {
+      return NextResponse.json({ error: "Line type must be STANDARD or RESTAURANT" }, { status: 400 })
     }
 
     // Validate capacity (optional, positive integer)
@@ -91,6 +95,7 @@ export async function POST(req: Request) {
         opensAt: opensAt ? new Date(opensAt) : null,
         closesAt: closesAt ? new Date(closesAt) : null,
         maxCapacity: maxCapacity || null,
+        kind,
         ownerFeePercent: feePercent,
         productName: productName?.trim() || null,
         productImage: productImage?.trim() || null,
@@ -132,8 +137,20 @@ export async function GET(req: Request) {
       orderBy: { createdAt: "desc" },
     })
 
+    // Capacity counts guests, which only differs from the number of spots on
+    // restaurant lines
+    const guestSums = await prisma.linePosition.groupBy({
+      by: ["lineId"],
+      where: { lineId: { in: lines.map((l) => l.id) } },
+      _sum: { partySize: true },
+    })
+    const guestsIn = new Map(guestSums.map((g) => [g.lineId, g._sum.partySize ?? 0]))
+
     // Cached publicly, so every viewer gets the anonymous view of capacity
-    const visible = lines.map((line) => ({ ...line, ...capacityView(line, line._count.positions) }))
+    const visible = lines.map((line) => {
+      const guests = guestsIn.get(line.id) ?? 0
+      return { ...line, guestCount: guests, ...capacityView(line, guests) }
+    })
 
     return NextResponse.json(visible, {
       headers: {

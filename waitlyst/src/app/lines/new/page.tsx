@@ -41,6 +41,7 @@ function CreateLineForm() {
   const [hideCapacity, setHideCapacity] = useState(false)
   const [showResaleControls, setShowResaleControls] = useState(false)
   const [allowResale, setAllowResale] = useState(false)
+  const [kind, setKind] = useState<"STANDARD" | "RESTAURANT">("STANDARD")
   const [maxAskingPrice, setMaxAskingPrice] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -59,6 +60,7 @@ function CreateLineForm() {
         setHideCapacity(false)
         setDescription("Join the waitlist and we'll let you know when your table is ready.")
         setShowResaleControls(false)
+        setKind("RESTAURANT")
       },
     },
     {
@@ -73,6 +75,7 @@ function CreateLineForm() {
         setHideCapacity(true)
         setDescription("Limited release drop")
         setShowResaleControls(true)
+        setKind("STANDARD")
       },
     },
     {
@@ -87,6 +90,7 @@ function CreateLineForm() {
         setHideCapacity(false)
         setDescription("Event waitlist. If your plans change, you can swap spots with the person next to you.")
         setShowResaleControls(true)
+        setKind("STANDARD")
       },
     },
     {
@@ -210,6 +214,7 @@ function CreateLineForm() {
           allowResale,
           maxAskingPrice: maxAskingPrice ? parseFloat(maxAskingPrice) : null,
           hideCapacity: maxCapacity ? hideCapacity : false,
+          kind,
         }),
       })
 
@@ -309,10 +314,28 @@ function CreateLineForm() {
               </div>
             </div>
 
+            {/* Line type */}
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                checked={kind === "RESTAURANT"}
+                onChange={(e) => setKind(e.target.checked ? "RESTAURANT" : "STANDARD")}
+                className="w-4 h-4 mt-0.5 accent-ink"
+              />
+              <span>
+                <span className="block text-sm text-ink">Restaurant waitlist</span>
+                <span className="block text-xs text-ink/50 mt-0.5">
+                  {kind === "RESTAURANT"
+                    ? "Guests give a party size, capacity counts guests, and you can call any party. Paid swaps are held until the guest is seated, so you can still refund them that evening."
+                    : "Everyone holds one spot and is called in order. Paid swaps are collected and paid out as soon as they happen."}
+                </span>
+              </span>
+            </label>
+
             {/* Capacity */}
             <div>
               <label htmlFor="maxCapacity" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
-                Max Capacity (optional)
+                {kind === "RESTAURANT" ? "Max Guests (optional)" : "Max Capacity (optional)"}
               </label>
               <input
                 id="maxCapacity"
@@ -324,7 +347,7 @@ function CreateLineForm() {
                 className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
               />
               <p className="text-xs text-ink/50 mt-1">
-                Leave empty for unlimited spots
+                {kind === "RESTAURANT" ? "Total guests across all parties. Leave empty for no limit" : "Leave empty for unlimited spots"}
               </p>
               {maxCapacity && (
                 <label className="flex items-center gap-2 mt-2">

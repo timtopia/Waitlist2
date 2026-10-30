@@ -20,7 +20,7 @@ export default async function SettlementPage({ params }: Props) {
 
   const line = await prisma.line.findUnique({
     where: { id: lineId },
-    select: { id: true, name: true, createdById: true },
+    select: { id: true, name: true, createdById: true, kind: true },
   })
 
   if (!line) {
@@ -40,6 +40,7 @@ export default async function SettlementPage({ params }: Props) {
     <SettlementClient
       lineId={line.id}
       lineName={line.name}
+      kind={line.kind}
       stripeConnectOnboarded={owner?.stripeConnectOnboarded ?? false}
       stripeEnabled={!!getStripe()}
     />

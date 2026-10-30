@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { formatTimeLeft } from "@/lib/format"
+import { capacityUnit } from "@/lib/capacity"
 
 interface LineStatusBannerProps {
   opensAt: string | null
@@ -12,6 +13,8 @@ interface LineStatusBannerProps {
   isFull: boolean
   /** The line has a limit this viewer isn't shown */
   hideCapacity?: boolean
+  /** Restaurant lines count capacity in guests rather than spots */
+  kind?: "STANDARD" | "RESTAURANT"
 }
 
 type LineStatus =
@@ -42,7 +45,7 @@ function getLineStatus(
   return { state: "open", closesAt: closesAt ? new Date(closesAt) : null }
 }
 
-export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount, isFull, hideCapacity = false }: LineStatusBannerProps) {
+export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount, isFull, hideCapacity = false, kind = "STANDARD" }: LineStatusBannerProps) {
   const [now, setNow] = useState(new Date())
 
   useEffect(() => {
@@ -143,7 +146,7 @@ export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount,
         <div className="border border-rule border-l-2 border-l-accent bg-white px-4 py-3">
           <p className="font-mono text-xs uppercase tracking-widest text-accent">Line is Full</p>
           <p className="text-sm text-ink/60 mt-1">
-            {maxCapacity === null ? "All spots have been taken." : `All ${maxCapacity} spots have been taken.`}
+            {maxCapacity === null ? `All ${capacityUnit(kind, 2)} have been taken.` : `All ${maxCapacity} ${capacityUnit(kind, maxCapacity)} have been taken.`}
           </p>
         </div>
       )}
@@ -152,7 +155,7 @@ export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount,
       {maxCapacity !== null && status.state !== "closed" && (
         <div className="bg-white border border-rule px-4 py-3">
           <div className="flex items-center justify-between mb-2">
-            <p className="font-mono text-xs uppercase tracking-widest text-ink/50">Spots Filled</p>
+            <p className="font-mono text-xs uppercase tracking-widest text-ink/50">{kind === "RESTAURANT" ? "Guests" : "Spots Filled"}</p>
             <p className="font-mono text-sm tabular-nums text-ink">
               {currentCount} / {maxCapacity}
             </p>
@@ -171,7 +174,7 @@ export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount,
           </div>
           {currentCount < maxCapacity && (
             <p className="text-xs text-ink/40 mt-1.5">
-              {maxCapacity - currentCount} spot{maxCapacity - currentCount !== 1 ? "s" : ""} remaining
+              {maxCapacity - currentCount} {capacityUnit(kind, maxCapacity - currentCount)} remaining
             </p>
           )}
         </div>
