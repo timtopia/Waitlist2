@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, fireEvent, waitFor } from "@testing-library/react"
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react"
 import { QueueDisplay } from "@/components/QueueDisplay"
 import { useSession } from "next-auth/react"
 
@@ -631,9 +631,51 @@ describe("QueueDisplay", () => {
       const removeButtons = screen.getAllByText("Remove")
       fireEvent.click(removeButtons[0])
 
+      // Nothing to refund: a single plain Remove, no refund option
       await waitFor(() => {
-        expect(screen.getByText("Payout (Keep Transactions Final)")).toBeInTheDocument()
+        expect(screen.getByText(/Remove Alice/)).toBeInTheDocument()
       })
+      expect(screen.queryByText(/Remove and refund/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Payout/)).not.toBeInTheDocument()
+    })
+
+    it("offers no refund when purchases were already paid out", async () => {
+      ;(useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+        data: { user: { id: "creator-1" } },
+        status: "authenticated",
+      })
+
+      ;(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          asBuyer: [{ id: "txn-1", amount: 50, status: "COMPLETED" }],
+          asSeller: [],
+          totalPaid: 50,
+          totalReceived: 0,
+          totalRefundedToBuyer: 0,
+          totalRefundedAsSeller: 0,
+          netAmount: -50,
+          refundableCount: 0,
+          refundableAmount: 0,
+          downstreamBuyers: [],
+        }),
+      })
+
+      render(
+        <QueueDisplay
+          lineId="line-1"
+          positions={mockPositions}
+          onRefresh={mockOnRefresh}
+          isCreator={true}
+        />
+      )
+
+      fireEvent.click(screen.getAllByText("Remove")[0])
+
+      await waitFor(() => {
+        expect(screen.getByText(/already been paid out/)).toBeInTheDocument()
+      })
+      expect(screen.queryByText(/Remove and refund/)).not.toBeInTheDocument()
     })
 
     it("shows refund button when user has purchases", async () => {
@@ -652,6 +694,8 @@ describe("QueueDisplay", () => {
           totalRefundedToBuyer: 0,
           totalRefundedAsSeller: 0,
           netAmount: -50,
+          refundableCount: 1,
+          refundableAmount: 57.5,
           downstreamBuyers: [],
         }),
       })
@@ -668,9 +712,11 @@ describe("QueueDisplay", () => {
       const removeButtons = screen.getAllByText("Remove")
       fireEvent.click(removeButtons[0])
 
+      // The refund is what the buyer was charged, fees included
       await waitFor(() => {
-        expect(screen.getByText("Refund ($50.00 to buyer)")).toBeInTheDocument()
+        expect(screen.getByText("Remove and refund $57.50")).toBeInTheDocument()
       })
+      expect(screen.getByText("Remove and keep purchase")).toBeInTheDocument()
     })
 
     it("calls remove-position API with payout action", async () => {
@@ -713,10 +759,13 @@ describe("QueueDisplay", () => {
       fireEvent.click(removeButtons[0])
 
       await waitFor(() => {
-        expect(screen.getByText("Payout (Keep Transactions Final)")).toBeInTheDocument()
+        expect(screen.getByText(/Remove Alice/)).toBeInTheDocument()
       })
 
-      fireEvent.click(screen.getByText("Payout (Keep Transactions Final)"))
+      const modal = screen.getByText(/Remove Alice/).parentElement!
+      const modalRemove = within(modal).getByRole("button", { name: "Remove" })
+      await waitFor(() => expect(modalRemove).not.toBeDisabled())
+      fireEvent.click(modalRemove)
 
       await waitFor(() => {
         expect(fetch).toHaveBeenCalledWith(
@@ -747,9 +796,11 @@ describe("QueueDisplay", () => {
           totalRefundedToBuyer: 0,
           totalRefundedAsSeller: 0,
           netAmount: -50,
+          refundableCount: 1,
+          refundableAmount: 50,
           downstreamBuyers: [],
         },
-        "remove-position": { success: true, refundedAmount: 50, refundedCount: 1 },
+        "remove-position": { success: true, refundedAmount: 50, refundedCount: 1, refundFailedCount: 0 },
       }
       ;(fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
         const key = Object.keys(fetchResponses).find(k => url.includes(k))
@@ -772,10 +823,10 @@ describe("QueueDisplay", () => {
       fireEvent.click(removeButtons[0])
 
       await waitFor(() => {
-        expect(screen.getByText("Refund ($50.00 to buyer)")).toBeInTheDocument()
+        expect(screen.getByText("Remove and refund $50.00")).toBeInTheDocument()
       })
 
-      fireEvent.click(screen.getByText("Refund ($50.00 to buyer)"))
+      fireEvent.click(screen.getByText("Remove and refund $50.00"))
 
       await waitFor(() => {
         expect(fetch).toHaveBeenCalledWith(

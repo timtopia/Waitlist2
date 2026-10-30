@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
-import { releaseAndSettle, cancelAuthorization, abandonPendingTransaction } from "@/lib/stripe"
+import { releaseAndSettle, returnBuyerFunds, abandonPendingTransaction } from "@/lib/stripe"
 import { rateLimit } from "@/lib/rate-limit"
 
 const settlementLimiter = rateLimit({ interval: 60000, limit: 20 })
@@ -60,22 +60,21 @@ export async function POST(
           (t) => !fulfilledMap.get(t.buyerId)
         )
 
-        let cancelledCount = 0
-        for (const txn of unfulfilledTxns) {
-          if (txn.stripePaymentId) {
-            await cancelAuthorization(txn.stripePaymentId)
-          }
-          await prisma.transaction.update({
-            where: { id: txn.id },
-            data: { status: "REFUNDED", settledAt: new Date() },
+        // Release the hold, or refund it if it was already collected. Only
+        // purchases whose money really went back are closed out.
+        const returnedIds = await returnBuyerFunds(unfulfilledTxns)
+        if (returnedIds.length > 0) {
+          await prisma.transaction.updateMany({
+            where: { id: { in: returnedIds } },
+            data: { settledAt: new Date() },
           })
-          cancelledCount++
         }
 
         return NextResponse.json({
           success: true,
           action: "cancel-all-unfulfilled",
-          count: cancelledCount,
+          count: returnedIds.length,
+          failedCount: unfulfilledTxns.length - returnedIds.length,
         })
       }
 
@@ -166,12 +165,16 @@ export async function POST(
     }
 
     if (action === "cancel") {
-      if (transaction.stripePaymentId) {
-        await cancelAuthorization(transaction.stripePaymentId)
+      const [returnedId] = await returnBuyerFunds([transaction])
+      if (!returnedId) {
+        return NextResponse.json(
+          { error: "Couldn't return this payment to the buyer. Nothing was changed -- please try again, or check it in Stripe." },
+          { status: 502 }
+        )
       }
       await prisma.transaction.update({
         where: { id: transactionId },
-        data: { status: "REFUNDED", settledAt: new Date() },
+        data: { settledAt: new Date() },
       })
 
       return NextResponse.json({

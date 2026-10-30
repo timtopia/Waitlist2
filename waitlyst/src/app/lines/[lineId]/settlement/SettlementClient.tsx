@@ -262,11 +262,14 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
 
       if (res.ok) {
         const result = await res.json()
+        const failed = result.failedCount > 0
+          ? ` ${result.failedCount} couldn't be ${action === "capture-all" ? "collected" : "returned"} and are still listed.`
+          : ""
         addToast(
-          action === "capture-all"
-            ? `Captured ${result.count} transaction(s)`
-            : `Cancelled ${result.count} unfulfilled transaction(s)`,
-          "success"
+          (action === "capture-all"
+            ? `Captured ${result.count} transaction(s).`
+            : `Returned ${result.count} payment(s) to buyers.`) + failed,
+          result.failedCount > 0 ? "info" : "success"
         )
         // Refresh to get accurate server state
         await fetchData()
@@ -477,7 +480,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
           </h1>
           <p className="text-sm text-ink/60 mt-1 max-w-2xl">
             {kind === "RESTAURANT"
-              ? "Paid swaps on this line are held on the buyer's card until you seat them. Capture a hold to collect it, or release it to give the buyer their money back. Settle holds the same evening, since card holds lapse after a few days."
+              ? "Paid swaps on this line are held on the buyer's card until you seat them. Seating a guest collects their payment automatically, and so does the guest leaving. Anything still held below you can capture, or release to give the buyer their money back. Settle holds the same evening, since card holds lapse after about a week."
               : "Paid swaps on this line are collected and paid out the moment they happen, so there's nothing to capture or release. Anything listed as pending below couldn't be collected automatically."}
           </p>
         </div>

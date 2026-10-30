@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
+import { buyerTotal } from "@/lib/fees"
 
 // Get transaction info for a specific user in a line
 export async function GET(
@@ -65,6 +66,12 @@ export async function GET(
     const refundedBuyer = asBuyer.filter((t) => t.status === "REFUNDED")
     const refundedSeller = asSeller.filter((t) => t.status === "REFUNDED")
 
+    // Purchases still held on the buyer's card (not yet paid out) are the
+    // only ones removing someone can refund; anything paid out is final.
+    const openPurchases = completedBuyer.filter((t) => !t.settledAt)
+    const refundableCount = openPurchases.length
+    const refundableAmount = openPurchases.reduce((sum, t) => sum + buyerTotal(t), 0)
+
     const totalPaid = completedBuyer.reduce((sum, t) => sum + t.amount, 0)
     const totalReceived = completedSales.reduce((sum, t) => sum + t.amount, 0)
     const totalRefundedToBuyer = refundedBuyer.reduce((sum, t) => sum + t.amount, 0)
@@ -78,6 +85,8 @@ export async function GET(
       totalRefundedToBuyer,
       totalRefundedAsSeller,
       netAmount: totalReceived - totalPaid,
+      refundableCount,
+      refundableAmount,
       downstreamBuyers,
     })
   } catch (error) {

@@ -66,37 +66,36 @@ interface Transaction {
 }
 
 /**
- * Refund transactions via Stripe.
- * If Stripe is not configured, just marks them as REFUNDED in the database.
- * If Stripe IS configured, issues actual refunds through the Stripe API.
+ * Refund transactions via Stripe and mark them REFUNDED -- but only the ones
+ * whose money really went back (or was never taken). A refund Stripe rejects
+ * leaves the transaction as it was, so the organizer still sees it as open
+ * rather than being told the buyer has their money.
+ * Without Stripe (dev mode) nothing was charged, so they're just marked.
  *
  * NOTE: This only changes the status to REFUNDED. It does NOT set settledAt.
  * Settlement (settledAt) is a separate concern — it is set when both parties
  * have left the line, via settleTransactionsForUser().
+ *
+ * Returns the ids of the transactions that were refunded.
  */
-export async function refundTransactions(transactions: Transaction[]): Promise<number> {
-  let refundedCount = 0
+export async function refundTransactions(transactions: Transaction[]): Promise<string[]> {
+  const refunded: string[] = []
   const stripe = getStripe()
 
   for (const txn of transactions) {
     try {
-      // If Stripe is configured and we have a session ID, issue a real refund
       if (stripe && txn.stripePaymentId) {
-        try {
-          // Retrieve the checkout session to get the payment intent
-          const session = await stripe.checkout.sessions.retrieve(txn.stripePaymentId)
-
-          const paymentIntentId = paymentIntentIdOf(session)
-          if (paymentIntentId) {
-
-            await stripe.refunds.create({
-              payment_intent: paymentIntentId,
-            })
+        const session = await stripe.checkout.sessions.retrieve(txn.stripePaymentId)
+        const paymentIntentId = paymentIntentIdOf(session)
+        // No PaymentIntent means the buyer never paid, so there's nothing to
+        // give back.
+        if (paymentIntentId) {
+          try {
+            await stripe.refunds.create({ payment_intent: paymentIntentId })
+          } catch (stripeError) {
+            const code = (stripeError as { code?: string }).code
+            if (code !== "charge_already_refunded") throw stripeError
           }
-        } catch (stripeError) {
-          console.error(`Stripe refund failed for transaction ${txn.id}:`, stripeError)
-          // Still mark as refunded in DB even if Stripe refund fails
-          // (may have already been refunded, or payment never completed)
         }
       }
 
@@ -104,13 +103,13 @@ export async function refundTransactions(transactions: Transaction[]): Promise<n
         where: { id: txn.id },
         data: { status: "REFUNDED" },
       })
-      refundedCount++
+      refunded.push(txn.id)
     } catch (error) {
-      console.error(`Failed to refund transaction ${txn.id}:`, error)
+      console.error(`Refund failed for transaction ${txn.id}:`, error)
     }
   }
 
-  return refundedCount
+  return refunded
 }
 
 /**
@@ -627,25 +626,27 @@ export async function payOutstandingPayouts(userId: string): Promise<void> {
 }
 
 /**
- * Give an unfulfilled buyer their money back: release the hold if it was
- * never captured (no fees), otherwise issue a real refund.
+ * Give a buyer their money back: release the hold if it was never captured
+ * (no fees), otherwise issue a real refund. Returns the ids of the purchases
+ * that were actually returned; any others are left untouched for the
+ * organizer to retry.
  */
-export async function returnBuyerFunds(purchases: Transaction[]): Promise<number> {
+export async function returnBuyerFunds(purchases: Transaction[]): Promise<string[]> {
   const needsRefund: Transaction[] = []
-  let returned = 0
+  const returned: string[] = []
   for (const purchase of purchases) {
     if (purchase.stripePaymentId && await cancelAuthorization(purchase.stripePaymentId)) {
       await prisma.transaction.update({
         where: { id: purchase.id },
         data: { status: "REFUNDED" },
       })
-      returned++
+      returned.push(purchase.id)
       continue
     }
     needsRefund.push(purchase)
   }
   if (needsRefund.length > 0) {
-    returned += await refundTransactions(needsRefund)
+    returned.push(...await refundTransactions(needsRefund))
   }
   return returned
 }
@@ -664,7 +665,7 @@ async function notifySellerOfSale(transaction: {
       where: { lineId_userId: { lineId: transaction.lineId, userId: transaction.sellerId } },
       select: { position: true },
     }),
-    prisma.line.findUnique({ where: { id: transaction.lineId }, select: { name: true } }),
+    prisma.line.findUnique({ where: { id: transaction.lineId }, select: { name: true, kind: true } }),
   ])
   if (!seller?.email || !seller.emailNotifications || !sellerPosition || !line) return
 
@@ -673,7 +674,8 @@ async function notifySellerOfSale(transaction: {
     line.name,
     transaction.amount,
     sellerPosition.position,
-    `${getBaseUrl()}/lines/${transaction.lineId}`
+    `${getBaseUrl()}/lines/${transaction.lineId}`,
+    line.kind === "RESTAURANT"
   )
   await sendEmail(seller.email, subject, html)
 }
