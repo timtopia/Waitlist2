@@ -6,6 +6,7 @@ import { getPlatformFeePercent } from "@/lib/fees"
 import { rateLimit } from "@/lib/rate-limit"
 import { capacityView, guestCount } from "@/lib/capacity"
 import { auth } from "@/auth"
+import { lineViewer, shortName } from "@/lib/privacy"
 import { createHash } from "crypto"
 import { sendEmail } from "@/lib/email"
 import { lineDeletedEmail } from "@/lib/email-templates"
@@ -44,11 +45,12 @@ export async function GET(
     if (!head) {
       return NextResponse.json({ error: "Line not found" }, { status: 404 })
     }
+    const viewer = await lineViewer(lineId, head.createdById, viewerId)
     const etag = `"${createHash("sha1").update([
       head.updatedAt.getTime(),
       positionStats._max.updatedAt?.getTime() ?? 0,
       positionStats._count,
-      viewerId === head.createdById, // the owner's view differs (hidden capacity)
+      viewer, // owners, members and the public each see different detail
       getPlatformFeePercent(),
     ].join("|")).digest("base64url")}"`
     const cacheHeaders = { "Cache-Control": "no-store, no-cache, must-revalidate", ETag: etag }
@@ -73,7 +75,22 @@ export async function GET(
 
     const capacity = capacityView(line, guestCount(line.positions), viewerId)
 
-    return NextResponse.json({ ...line, ...capacity, platformFeePercent: getPlatformFeePercent() }, {
+    // The owner sees full names. People in the line see each other as
+    // "First L.". Anyone else sees the queue's shape but not who is in it.
+    const positions = viewer === "owner"
+      ? line.positions
+      : line.positions.map((p) => {
+          if (p.userId === viewerId) return p
+          if (viewer === "member") return { ...p, user: { ...p.user, name: shortName(p.user.name) } }
+          return {
+            ...p,
+            userId: `anon-${p.id}`,
+            lockedBy: null,
+            user: { id: `anon-${p.id}`, name: null, image: null },
+          }
+        })
+
+    return NextResponse.json({ ...line, positions, ...capacity, platformFeePercent: getPlatformFeePercent() }, {
       headers: cacheHeaders,
     })
   } catch (error) {

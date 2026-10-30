@@ -3,7 +3,7 @@ import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { rateLimit } from "@/lib/rate-limit"
 import { capacityView } from "@/lib/capacity"
-import { validateString, validateNumber, validateUrl } from "@/lib/validate"
+import { validateString, validateNumber, validateUrl, validateImageUrl } from "@/lib/validate"
 
 const createLimiter = rateLimit({ interval: 60_000, limit: 5 })
 const browseLimiter = rateLimit({ interval: 60_000, limit: 30 })
@@ -46,6 +46,16 @@ export async function POST(req: Request) {
       if (typeof maxCapacity !== "number" || maxCapacity < 1 || !Number.isInteger(maxCapacity)) {
         return NextResponse.json({ error: "Capacity must be a positive whole number" }, { status: 400 })
       }
+    }
+
+    for (const [value, label] of [[opensAt, "Opening"], [closesAt, "Closing"]] as const) {
+      if (value && isNaN(new Date(value).getTime())) {
+        return NextResponse.json({ error: `${label} time isn't a valid date` }, { status: 400 })
+      }
+    }
+    if (typeof productImage === "string" && productImage.trim()) {
+      const imageErr = validateImageUrl(productImage.trim())
+      if (imageErr) return NextResponse.json({ error: imageErr }, { status: 400 })
     }
 
     if (opensAt && closesAt && new Date(opensAt) >= new Date(closesAt)) {

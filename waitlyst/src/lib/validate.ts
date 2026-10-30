@@ -64,6 +64,18 @@ export function validateUrl(value: unknown, name: string): string | null {
   return null
 }
 
+/** A product image link: any https URL to an image host. */
+export function validateImageUrl(value: string): string | null {
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    return "Please enter a valid URL for the product image"
+  }
+  if (url.protocol !== "https:") return "The product image link must start with https://"
+  return null
+}
+
 /**
  * Validates a client-supplied "return to this page after redirect" path
  * (e.g. for Stripe Connect onboarding). Only an internal relative path is

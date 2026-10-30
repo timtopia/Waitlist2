@@ -89,7 +89,7 @@ describe("GET /api/lines/[lineId]/export", () => {
     expect(response.headers.get("Content-Type")).toBe("text/csv")
 
     const csv = await response.text()
-    expect(csv).toBe("Position,Name,Email,Joined At,Asking Price,Status")
+    expect(csv).toBe("Position,Name,Email,Joined At,Called At,Served At,Asking Price,Status")
   })
 
   it("should return CSV with position data", async () => {
@@ -128,9 +128,9 @@ describe("GET /api/lines/[lineId]/export", () => {
 
     const csv = await response.text()
     const lines = csv.split("\n")
-    expect(lines[0]).toBe("Position,Name,Email,Joined At,Asking Price,Status")
+    expect(lines[0]).toBe("Position,Name,Email,Joined At,Called At,Served At,Asking Price,Status")
     expect(lines[1]).toContain("1,Alice,alice@test.com,")
-    expect(lines[1]).toContain(",In Line")
+    expect(lines[1]).toContain(",Waiting")
     expect(lines[2]).toContain("2,Bob,bob@test.com,")
     expect(lines[2]).toContain("$25.00,Open to Swap")
   })
@@ -160,6 +160,27 @@ describe("GET /api/lines/[lineId]/export", () => {
     const csv = await response.text()
     const dataRow = csv.split("\n")[1]
     expect(dataRow).toContain('"Last, First"')
+  })
+
+  it("neutralises names that a spreadsheet would run as a formula", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", name: "Test Line", createdById: "owner-1" })
+    mockPrisma.linePosition.findMany.mockResolvedValue([
+      {
+        id: "pos-1",
+        position: 1,
+        joinedAt: new Date("2025-01-15T10:00:00Z"),
+        askingPrice: null,
+        lockedUntil: null,
+        user: { name: "=HYPERLINK(\"http://evil\")", email: "x@test.com" },
+      },
+    ])
+
+    const { GET } = await import("@/app/api/lines/[lineId]/export/route")
+    const response = await GET(new Request("http://localhost/api/lines/line-1/export"), { params: Promise.resolve({ lineId: "line-1" }) })
+    const dataRow = (await response.text()).split("\n")[1]
+
+    expect(dataRow).toContain(`"'=HYPERLINK(""http://evil"")"`)
   })
 })
 
@@ -286,6 +307,8 @@ describe("GET /api/lines/[lineId]/wait-time", () => {
 describe("GET /api/lines/[lineId]/activity", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // The owner sees names; the signed-out view is tested separately below
+    mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
   })
 
   it("should return 404 if line not found", async () => {
@@ -299,7 +322,7 @@ describe("GET /api/lines/[lineId]/activity", () => {
   })
 
   it("should return empty array when no activity", async () => {
-    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1" })
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdById: "owner-1" })
     mockPrisma.transaction.findMany.mockResolvedValue([])
     mockPrisma.linePosition.findMany.mockResolvedValue([])
     mockPrisma.user.findMany.mockResolvedValue([])
@@ -314,7 +337,7 @@ describe("GET /api/lines/[lineId]/activity", () => {
   })
 
   it("should return mixed join and transaction activity sorted by date", async () => {
-    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1" })
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdById: "owner-1" })
 
     mockPrisma.transaction.findMany.mockResolvedValue([
       {
@@ -362,7 +385,7 @@ describe("GET /api/lines/[lineId]/activity", () => {
     // receive), not the buyer's total. The line-activity feed used to show
     // "bought a spot ... for $90.00" when the buyer actually paid $103.50 --
     // misleading since it looked like the full price paid.
-    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1" })
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdById: "owner-1" })
     mockPrisma.transaction.findMany.mockResolvedValue([
       {
         id: "txn-1",
@@ -391,7 +414,7 @@ describe("GET /api/lines/[lineId]/activity", () => {
   })
 
   it("should include refund activities", async () => {
-    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1" })
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdById: "owner-1" })
 
     mockPrisma.transaction.findMany.mockResolvedValue([
       {
@@ -399,6 +422,8 @@ describe("GET /api/lines/[lineId]/activity", () => {
         buyerId: "user-1",
         sellerId: "user-2",
         amount: 20.0,
+        ownerFee: 2.0,
+        platformFee: 1.0,
         status: "REFUNDED",
         createdAt: new Date("2025-06-01T14:00:00Z"),
       },
@@ -418,7 +443,8 @@ describe("GET /api/lines/[lineId]/activity", () => {
     const data = await response.json()
     expect(data.length).toBe(1)
     expect(data[0].type).toBe("refund")
-    expect(data[0].description).toContain("$20.00")
+    // The buyer gets back everything they paid, fees included
+    expect(data[0].description).toContain("$23.00")
   })
 })
 
@@ -709,5 +735,33 @@ describe("GET /api/activity", () => {
     // Join at 14:00 should come before purchase at 12:00
     expect(data[0].type).toBe("joined")
     expect(data[1].type).toBe("purchase")
+  })
+})
+
+describe("GET /api/lines/[lineId]/activity -- who sees names", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdById: "owner-1" })
+    mockPrisma.transaction.findMany.mockResolvedValue([])
+    mockPrisma.linePosition.findMany.mockResolvedValue([
+      { id: "pos-1", joinedAt: new Date("2025-06-01T10:00:00Z"), user: { id: "user-1", name: "Alice Walker" } },
+    ])
+    mockPrisma.user.findMany.mockResolvedValue([])
+  })
+
+  it("shows no names to someone who isn't signed in", async () => {
+    mockAuth.mockResolvedValue(null)
+    const { GET } = await import("@/app/api/lines/[lineId]/activity/route")
+    const res = await GET(new Request("http://localhost/api/lines/line-1/activity"), { params: Promise.resolve({ lineId: "line-1" }) })
+    const data = await res.json()
+    expect(data[0].description).toBe("Someone joined the line")
+  })
+
+  it("shows the owner full names", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
+    const { GET } = await import("@/app/api/lines/[lineId]/activity/route")
+    const res = await GET(new Request("http://localhost/api/lines/line-1/activity"), { params: Promise.resolve({ lineId: "line-1" }) })
+    const data = await res.json()
+    expect(data[0].description).toBe("Alice Walker joined the line")
   })
 })

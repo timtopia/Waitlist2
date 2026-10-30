@@ -1,17 +1,21 @@
 import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
-import { validateString, validateNumber, validateUrl } from "@/lib/validate"
+import { validateString, validateNumber, validateUrl, validateImageUrl } from "@/lib/validate"
 
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ lineId: string }> }
 ) {
   const { lineId } = await params
-  const updates = await req.json()
 
   const result = await requireLineOwner(lineId)
   if (result instanceof NextResponse) return result
+
+  const updates = await req.json().catch(() => null)
+  if (!updates || typeof updates !== "object") {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 })
+  }
 
   try {
     // Only allow updating specific fields
@@ -42,12 +46,28 @@ export async function PATCH(
         ? updates.description.trim() || null
         : null
     }
-    // Schedule fields
-    if (updates.opensAt !== undefined) {
-      allowedUpdates.opensAt = updates.opensAt ? new Date(updates.opensAt) : null
+    // Schedule fields. An unparseable date used to reach the database and
+    // fail there as a 500.
+    for (const field of ["opensAt", "closesAt"] as const) {
+      if (updates[field] === undefined) continue
+      if (!updates[field]) {
+        allowedUpdates[field] = null
+        continue
+      }
+      const date = new Date(updates[field])
+      if (isNaN(date.getTime())) {
+        return NextResponse.json(
+          { error: `${field === "opensAt" ? "Opening" : "Closing"} time isn't a valid date` },
+          { status: 400 }
+        )
+      }
+      allowedUpdates[field] = date
     }
-    if (updates.closesAt !== undefined) {
-      allowedUpdates.closesAt = updates.closesAt ? new Date(updates.closesAt) : null
+    // Compare against what's stored for whichever end wasn't sent
+    const opens = "opensAt" in allowedUpdates ? allowedUpdates.opensAt as Date | null : result.line.opensAt
+    const closes = "closesAt" in allowedUpdates ? allowedUpdates.closesAt as Date | null : result.line.closesAt
+    if (opens && closes && closes <= opens) {
+      return NextResponse.json({ error: "The line must close after it opens" }, { status: 400 })
     }
     // Capacity field
     if (updates.maxCapacity !== undefined) {
@@ -64,7 +84,11 @@ export async function PATCH(
         const currentCount = _sum.partySize ?? 0
         if (cap < currentCount) {
           return NextResponse.json(
-            { error: `Capacity cannot be less than the ${currentCount} people currently in line` },
+            {
+              error: result.line.kind === "RESTAURANT"
+                ? `Capacity cannot be less than the ${currentCount} guests currently in line`
+                : `Capacity cannot be less than the ${currentCount} people currently in line`,
+            },
             { status: 400 }
           )
         }
@@ -98,9 +122,13 @@ export async function PATCH(
         : null
     }
     if (updates.productImage !== undefined) {
-      allowedUpdates.productImage = typeof updates.productImage === "string" && updates.productImage.trim()
-        ? updates.productImage.trim()
-        : null
+      if (typeof updates.productImage === "string" && updates.productImage.trim()) {
+        const imageErr = validateImageUrl(updates.productImage.trim())
+        if (imageErr) return NextResponse.json({ error: imageErr }, { status: 400 })
+        allowedUpdates.productImage = updates.productImage.trim()
+      } else {
+        allowedUpdates.productImage = null
+      }
     }
     // Product price (positive number, max $10,000)
     if (updates.productPrice !== undefined) {

@@ -296,7 +296,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
       })
       if (res.ok) {
         const newLine = await res.json()
-        addToast("Line duplicated!", "success")
+        addToast("Line duplicated. It starts paused -- resume it when it's ready.", "success")
         router.push(`/lines/${newLine.id}/edit`)
       } else {
         const data = await res.json()
@@ -328,9 +328,12 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
 
   async function handleTogglePause(lineId: string) {
     setLoadingAction(`pause-${lineId}`)
+    const current = lines.find((l) => l.id === lineId)
     try {
       const res = await fetch(`/api/lines/${lineId}/pause`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: !current?.isActive }),
       })
       if (res.ok) {
         const data = await res.json()
