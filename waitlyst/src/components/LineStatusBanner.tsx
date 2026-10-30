@@ -79,7 +79,7 @@ export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount,
 
         const labelClasses = "font-mono text-xs uppercase tracking-widest text-ink/40 mt-0.5"
 
-        const prefix = isUnder30Min ? "Drop starts in..." : "Line Not Yet Open"
+        const prefix = isUnder30Min ? "Opens in..." : "Line Not Yet Open"
 
         return (
           <div className={bannerClasses}>

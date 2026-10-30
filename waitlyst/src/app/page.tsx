@@ -9,33 +9,33 @@ const steps = [
   {
     n: "01",
     title: "Create a line",
-    body: "Set up a virtual queue for your drop, event, or service. Cap the spots, schedule when it opens, and share one link.",
+    body: "Set up a virtual waitlist for your restaurant, shop, or event. Put a QR code by the door or share one link.",
   },
   {
     n: "02",
-    title: "People take a number",
-    body: "Everyone who joins gets a numbered position. The line moves in real time — no refreshing, no guessing.",
+    title: "Guests take a number",
+    body: "Everyone who joins gets a numbered spot and can wait wherever they like. The line moves in real time, with no refreshing and no guessing.",
   },
   {
     n: "03",
-    title: "Positions trade hands",
-    body: "In a hurry? Buy the spot directly ahead of you. Not in one? Name a price and let the person behind you pay to move up.",
+    title: "You call them in",
+    body: "Call the next guest with one tap and they get a heads-up that it's their turn. If plans change, guests can swap spots with the person beside them, if you allow it.",
   },
 ]
 
 const useCases = [
-  ["Sneaker drops", "Queue up before the release goes live, then trade up if you need the W."],
-  ["Limited releases", "Merch, collectibles, exclusive collabs — cap the line and let it fill."],
-  ["Product launches", "Build the waitlist before launch day and watch positions gain value."],
-  ["Pop-up events", "Tastings, openings, experiences. First come, first served — negotiable."],
+  ["Restaurants", "Put walk-ins on a waitlist so they can grab a drink down the street instead of crowding your doorway."],
+  ["Cafés & bakeries", "Weekend brunch, the morning rush, the batch that sells out by ten."],
+  ["Shops & services", "Barbers, salons, repair counters, pickup windows: anywhere people wait their turn."],
+  ["Pop-ups & events", "Tastings, openings, signings. Cap the line and open it on a schedule."],
 ]
 
 const features = [
   ["Scheduled lines", "Open and close times with live countdowns"],
   ["Real-time movement", "Joins, leaves, and trades appear instantly"],
-  ["Secure payments", "Trades settle through Stripe, not handshakes"],
+  ["Turn alerts", "Guests get a heads-up when it's their turn"],
   ["Capacity limits", "Cap the line and show how full it is"],
-  ["Owner earnings", "Take a cut of every trade in your line"],
+  ["Optional swaps", "Let guests trade spots, or keep it strictly in order"],
   ["Owner controls", "Call next, remove no-shows, pause the line"],
 ]
 
@@ -56,14 +56,14 @@ export default async function HomePage() {
             Now serving — anyone with a link
           </p>
           <h1 className="text-5xl sm:text-6xl lg:text-7xl font-semibold tracking-tight leading-[0.95] max-w-4xl">
-            Every place in line
+            Wait anywhere.
             <br />
-            has a price.
+            We&apos;ll call you.
           </h1>
           <p className="mt-8 text-lg sm:text-xl text-ink/70 max-w-2xl leading-relaxed">
-            Waitlyst is a queue where your spot is yours to keep — or to sell.
-            Create a line, hand out numbers, and let people trade positions with
-            the person directly ahead or behind them.
+            Waitlyst is a virtual line for restaurants, shops, and events.
+            Guests join from their phone, see exactly where they stand, and
+            find out the moment it&apos;s their turn.
           </p>
           <div className="mt-10 flex flex-col sm:flex-row gap-3">
             {session ? (
@@ -182,7 +182,7 @@ export default async function HomePage() {
                 Take a number.
               </h2>
               <p className="mt-2 text-paper/60">
-                Sign in with Google to start your first line or claim a spot in one.
+                Sign in with Google to start your first line or join one.
               </p>
             </div>
             <Link
