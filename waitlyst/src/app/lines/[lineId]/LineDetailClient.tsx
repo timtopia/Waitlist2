@@ -290,6 +290,13 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const userPosition = line?.positions.find((p) => p.user.id === session?.user?.id)
   const isRestaurant = line?.kind === "RESTAURANT"
   const guests = line ? guestCount(line.positions) : 0
+  // Don't offer party sizes that can't fit. When the owner hides capacity
+  // (maxCapacity is null for us) the server still refuses parties that don't fit.
+  const maxPartySize =
+    line?.maxCapacity != null
+      ? Math.max(1, Math.min(MAX_PARTY_SIZE, line.maxCapacity - guests))
+      : MAX_PARTY_SIZE
+  const joinPartySize = Math.min(partySize, maxPartySize)
   const hasProductInfo = !!(line?.productName || line?.productImage)
 
   // canJoin depends on the clock, but nothing re-rendered when opensAt or
@@ -329,7 +336,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         method: "POST",
         ...(line?.kind === "RESTAURANT" && {
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ partySize }),
+          body: JSON.stringify({ partySize: joinPartySize }),
         }),
       })
       if (res.ok) {
@@ -522,12 +529,12 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                 <label className="flex items-center gap-2 text-sm text-ink/60">
                   <span className="whitespace-nowrap">Party of</span>
                   <select
-                    value={partySize}
+                    value={joinPartySize}
                     onChange={(e) => setPartySize(Number(e.target.value))}
                     className="border border-rule bg-white px-2 py-2 text-ink"
                     aria-label="Party size"
                   >
-                    {Array.from({ length: MAX_PARTY_SIZE }, (_, i) => i + 1).map((n) => (
+                    {Array.from({ length: maxPartySize }, (_, i) => i + 1).map((n) => (
                       <option key={n} value={n}>{n}</option>
                     ))}
                   </select>
@@ -601,6 +608,24 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             </span>
           </div>
           </div>
+          {!isCreator && (
+            <p className="text-xs text-ink/50 mt-3">
+              {line.allowResale ? (
+                <>
+                  You can buy the spot of the person directly ahead of you if they list it
+                  {line.maxAskingPrice !== null && <> (for up to ${line.maxAskingPrice.toFixed(2)})</>}.
+                  Buyers pay the asking price
+                  {line.ownerFeePercent > 0 && <> + {line.ownerFeePercent}% to the line owner</>}
+                  {line.platformFeePercent > 0 && <> + a {line.platformFeePercent}% Waitlyst fee</>}.{" "}
+                  {isRestaurant
+                    ? "Payment is held until you're seated and can still be refunded that evening."
+                    : "Swaps are final and paid out to the seller right away."}
+                </>
+              ) : (
+                "Spots on this line can't be bought or swapped."
+              )}
+            </p>
+          )}
         </CardContent>
       </Card>
 

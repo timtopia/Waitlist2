@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { getStripe } from "@/lib/stripe"
 import { rateLimit } from "@/lib/rate-limit"
 import { validateString, validateBoolean } from "@/lib/validate"
+import { getPlatformFeePercent } from "@/lib/fees"
 
 const userUpdateLimiter = rateLimit({ interval: 60_000, limit: 10 })
 
@@ -29,7 +30,11 @@ export async function GET() {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
 
-    return NextResponse.json({ ...user, stripeEnabled: !!getStripe() })
+    return NextResponse.json({
+      ...user,
+      stripeEnabled: !!getStripe(),
+      platformFeePercent: getPlatformFeePercent(),
+    })
   } catch (error) {
     console.error("Get user error:", error)
     return NextResponse.json(

@@ -36,7 +36,13 @@ function toLocalDatetime(iso: string | null): string {
   return local.toISOString().slice(0, 16)
 }
 
-export function EditLineClient({ line }: { line: LineData }) {
+export function EditLineClient({
+  line,
+  platformFeePercent,
+}: {
+  line: LineData
+  platformFeePercent: number
+}) {
   const router = useRouter()
   const { addToast } = useToast()
 
@@ -298,7 +304,7 @@ export function EditLineClient({ line }: { line: LineData }) {
                     e.g. on a $10 swap, you earn ${(10 * parseFloat(ownerFeePercent) / 100).toFixed(2)}
                   </span>
                 ) : (
-                  <span> A 10% platform fee also applies to each swap.</span>
+                  <span> A {platformFeePercent}% platform fee also applies to each swap.</span>
                 )}
               </p>
               {parseFloat(ownerFeePercent) !== line.ownerFeePercent && (

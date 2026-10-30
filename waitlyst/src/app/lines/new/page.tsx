@@ -23,6 +23,7 @@ function CreateLineForm() {
   const { data: session, status } = useSession()
   const [connectOnboarded, setConnectOnboarded] = useState<boolean | null>(null)
   const [stripeEnabled, setStripeEnabled] = useState(false)
+  const [platformFeePercent, setPlatformFeePercent] = useState<number | null>(null)
   const [connectLoading, setConnectLoading] = useState(false)
   const [connectError, setConnectError] = useState<string | null>(null)
   const [name, setName] = useState("")
@@ -117,6 +118,7 @@ function CreateLineForm() {
       .then((user) => {
         setConnectOnboarded(user?.stripeConnectOnboarded ?? false)
         setStripeEnabled(!!user?.stripeEnabled)
+        if (typeof user?.platformFeePercent === "number") setPlatformFeePercent(user.platformFeePercent)
       })
       .catch(() => setConnectOnboarded(false))
   }, [session])
@@ -391,9 +393,9 @@ function CreateLineForm() {
                   <span className="text-accent ml-1">
                     e.g. on a $10 swap, you earn ${(10 * parseFloat(ownerFeePercent) / 100).toFixed(2)}
                   </span>
-                ) : (
-                  <span> A 10% platform fee also applies to each swap.</span>
-                )}
+                ) : platformFeePercent !== null ? (
+                  <span> A {platformFeePercent}% platform fee also applies to each swap.</span>
+                ) : null}
               </p>
               {ownerFeePercent && parseFloat(ownerFeePercent) > 0 && stripeEnabled && connectOnboarded === false && (
                 <div className="mt-2 flex items-center justify-between gap-3 bg-accent/5 border border-accent/30 px-3 py-2">
@@ -599,6 +601,13 @@ function CreateLineForm() {
                           ? "People can swap their positions with the person next to them"
                           : "Swapping is disabled — no one can swap positions"}
                       </p>
+                      {allowResale && (
+                        <p className="text-xs text-ink/50 mt-1">
+                          {kind === "RESTAURANT"
+                            ? "Paid swaps are held until the buyer is seated. You capture or refund them from the Settlement page."
+                            : "Paid swaps are final: the buyer is charged and the seller is paid out right away, with no refunds later."}
+                        </p>
+                      )}
                     </div>
                   </div>
                   {allowResale && (

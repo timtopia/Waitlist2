@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { getPlatformFeePercent } from "@/lib/fees"
 import { EditLineClient } from "./EditLineClient"
 
 export const dynamic = "force-dynamic"
@@ -53,6 +54,7 @@ export default async function EditLinePage({ params }: Props) {
         maxAskingPrice: line.maxAskingPrice,
         hideCapacity: line.hideCapacity,
       }}
+      platformFeePercent={getPlatformFeePercent()}
     />
   )
 }
