@@ -62,16 +62,16 @@ function CreateLineForm() {
       },
     },
     {
-      id: "live-queue",
-      icon: "\uD83C\uDFAB",
-      name: "Walk-in Queue",
-      desc: "First come, first served",
+      id: "product-drop",
+      icon: "\uD83C\uDFAF",
+      name: "Product Drop",
+      desc: "Limited release, tradable spots",
       apply: () => {
-        setMaxCapacity("")
-        setOwnerFeePercent("0")
-        setAllowResale(false)
-        setHideCapacity(false)
-        setDescription("First come, first served.")
+        setMaxCapacity("100")
+        setOwnerFeePercent("10")
+        setAllowResale(true)
+        setHideCapacity(true)
+        setDescription("Limited release drop")
         setShowResaleControls(true)
       },
     },
@@ -483,7 +483,7 @@ function CreateLineForm() {
                     <input
                       id="productName"
                       type="text"
-                      placeholder="e.g., Chef's tasting menu"
+                      placeholder={`e.g., Air Max 1 "Chicago" or Chef's tasting menu`}
                       value={productName}
                       onChange={(e) => setProductName(e.target.value)}
                       className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"

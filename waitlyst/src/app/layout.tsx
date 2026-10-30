@@ -20,15 +20,15 @@ export const metadata: Metadata = {
     process.env.NEXT_PUBLIC_APP_URL || "https://waitlyst.app"
   ),
   title: {
-    default: "Waitlyst - Virtual Waitlists",
+    default: "Waitlyst - Virtual Lines",
     template: "%s | Waitlyst",
   },
   description:
-    "Virtual waitlists for restaurants, shops, and events. Join from your phone, wait anywhere, and get a heads-up when it's your turn.",
+    "Virtual lines for restaurants, shops, product drops, and events. Join from your phone, wait anywhere, and trade spots with the person beside you.",
   openGraph: {
-    title: "Waitlyst - Virtual Waitlists",
+    title: "Waitlyst - Virtual Lines",
     description:
-      "Virtual waitlists for restaurants, shops, and events. Join from your phone, wait anywhere, and get a heads-up when it's your turn.",
+      "Virtual lines for restaurants, shops, product drops, and events. Join from your phone, wait anywhere, and trade spots with the person beside you.",
     siteName: "Waitlyst",
     type: "website",
   },

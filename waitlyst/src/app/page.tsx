@@ -9,23 +9,23 @@ const steps = [
   {
     n: "01",
     title: "Create a line",
-    body: "Set up a virtual waitlist for your restaurant, shop, or event. Put a QR code by the door or share one link.",
+    body: "Set up a virtual line for your restaurant, shop, product drop, or event. Put a QR code by the door or share one link.",
   },
   {
     n: "02",
-    title: "Guests take a number",
+    title: "People take a number",
     body: "Everyone who joins gets a numbered spot and can wait wherever they like. The line moves in real time, with no refreshing and no guessing.",
   },
   {
     n: "03",
     title: "You call them in",
-    body: "Call the next guest with one tap and they get a heads-up that it's their turn. If plans change, guests can swap spots with the person beside them, if you allow it.",
+    body: "Call the next person with one tap and they get a heads-up that it's their turn. If you allow it, people can buy or sell a spot with the person beside them, at a price you cap.",
   },
 ]
 
 const useCases = [
   ["Restaurants", "Put walk-ins on a waitlist so they can grab a drink down the street instead of crowding your doorway."],
-  ["Cafés & bakeries", "Weekend brunch, the morning rush, the batch that sells out by ten."],
+  ["Product drops", "Queue up before the release goes live. Spots can change hands at a price you cap."],
   ["Shops & services", "Barbers, salons, repair counters, pickup windows: anywhere people wait their turn."],
   ["Pop-ups & events", "Tastings, openings, signings. Cap the line and open it on a schedule."],
 ]
@@ -35,7 +35,7 @@ const features = [
   ["Real-time movement", "Joins, leaves, and trades appear instantly"],
   ["Turn alerts", "Guests get a heads-up when it's their turn"],
   ["Capacity limits", "Cap the line and show how full it is"],
-  ["Optional swaps", "Let guests trade spots, or keep it strictly in order"],
+  ["Paid swaps", "Let people trade spots through Stripe, with an optional cut for you"],
   ["Owner controls", "Call next, remove no-shows, pause the line"],
 ]
 
@@ -58,12 +58,13 @@ export default async function HomePage() {
           <h1 className="text-5xl sm:text-6xl lg:text-7xl font-semibold tracking-tight leading-[0.95] max-w-4xl">
             Wait anywhere.
             <br />
-            We&apos;ll call you.
+            Keep your place.
           </h1>
           <p className="mt-8 text-lg sm:text-xl text-ink/70 max-w-2xl leading-relaxed">
-            Waitlyst is a virtual line for restaurants, shops, and events.
-            Guests join from their phone, see exactly where they stand, and
-            find out the moment it&apos;s their turn.
+            Waitlyst runs virtual lines for restaurants, shops, product drops,
+            and events. People join from their phone, see exactly where they
+            stand, and can trade spots with the person beside them when the
+            owner allows it.
           </p>
           <div className="mt-10 flex flex-col sm:flex-row gap-3">
             {session ? (
