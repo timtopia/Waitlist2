@@ -43,6 +43,8 @@ export function LineCard({ line }: LineCardProps) {
   const status = getStatusBadge(line)
   const statusKey = getLineStatus(line)
   const [now, setNow] = useState(() => new Date())
+  const kindLabel =
+    line.kind === "RESTAURANT" ? "Restaurant" : line.productName ? "Drop" : null
 
   // Determine if we need a live countdown (opensAt in future and < 24h away)
   const opensAtDate = line.opensAt ? new Date(line.opensAt) : null
@@ -91,12 +93,21 @@ export function LineCard({ line }: LineCardProps) {
                 {line.productName ||
                   line.description ||
                   `Started by ${line.createdBy.name || "Anonymous"}`}
-                {line.productPrice != null && (
-                  <span className="font-mono text-xs ml-2">
-                    Retail ${line.productPrice.toFixed(2)}
-                  </span>
-                )}
               </p>
+              {(kindLabel || line.productPrice != null) && (
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
+                  {kindLabel && (
+                    <span className="font-mono text-[10px] uppercase tracking-widest text-ink/60 border border-rule px-1.5 py-0.5">
+                      {kindLabel}
+                    </span>
+                  )}
+                  {line.productPrice != null && (
+                    <span className="font-mono text-xs text-ink/50 whitespace-nowrap">
+                      Retail ${line.productPrice.toFixed(2)}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

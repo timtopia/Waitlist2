@@ -18,7 +18,7 @@ export default function TermsOfServicePage() {
             Terms of Service
           </h1>
           <p className="font-mono text-xs uppercase tracking-widest text-ink/40">
-            Last updated: April 15, 2026
+            Last updated: October 30, 2026
           </p>
         </div>
 
@@ -90,20 +90,22 @@ export default function TermsOfServicePage() {
             4. Position Swapping
           </h2>
           <p className="text-ink/70 leading-relaxed mb-3">
-            When you initiate a position swap, you agree to pay the listed swap
-            price. <strong>All swaps are final.</strong> Once a swap is
-            completed, it cannot be reversed or refunded.
+            When you buy a position, you agree to pay the listed price plus the
+            fees shown before you confirm. When your payment method is
+            authorized, the swap happens straight away.
           </p>
           <p className="text-ink/70 leading-relaxed mb-3">
-            Waitlyst uses an authorize-then-capture payment model. When you
-            request a swap, your payment method is authorized for the swap
-            amount. The charge is only captured once the swap is confirmed and
-            completed.
+            <strong>Standard lines:</strong> the payment is collected and paid
+            out to the person who gave up their position as soon as the swap
+            happens. These swaps are final and are not refunded, even if you
+            later leave or are removed from the line.
           </p>
           <p className="text-ink/70 leading-relaxed">
-            Payouts to the person who gave up their position are conditional on
-            fulfillment. This means the line creator must confirm that service
-            has been delivered before payouts are released.
+            <strong>Restaurant waitlists:</strong> the payment is held, not
+            collected, until you are seated. The line creator collects it once
+            you are seated, or releases it if you are not, in which case you are
+            not charged. A hold that is never collected lapses after about seven
+            days and is not charged.
           </p>
         </section>
 

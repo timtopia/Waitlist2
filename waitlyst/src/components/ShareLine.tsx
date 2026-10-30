@@ -241,7 +241,7 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
                     </div>
                   ) : qrSvg ? (
                     <div
-                      className="w-[200px] h-[200px] overflow-hidden border border-rule"
+                      className="w-[200px] h-[200px] border border-rule [&>svg]:block [&>svg]:w-full [&>svg]:h-full"
                       dangerouslySetInnerHTML={{ __html: qrSvg }}
                     />
                   ) : (
