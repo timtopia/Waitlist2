@@ -128,8 +128,9 @@ export default function TermsOfServicePage() {
               fee that they earn from each swap within their line.
             </li>
             <li>
-              <strong>Stripe processing fee:</strong> Standard payment processing
-              fees are applied by Stripe to each transaction.
+              <strong>Payment processing:</strong> Stripe&apos;s card processing
+              fees are paid by Waitlyst out of the platform fee, not charged to
+              you on top.
             </li>
           </ul>
           <p className="text-ink/70 leading-relaxed">

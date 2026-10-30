@@ -636,6 +636,11 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             </span>
           </div>
           </div>
+          {!isCreator && isRestaurant && (
+            <p className="text-xs text-ink/50 mt-3">
+              The host seats parties as tables free up, so a smaller party behind you may be seated first. You keep your place.
+            </p>
+          )}
           {!isCreator && (
             <p className="text-xs text-ink/50 mt-3">
               {line.allowResale ? (
@@ -670,6 +675,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
           onDismissCreated={() => setJustCreated(false)}
           onChanged={refreshAll}
           isRestaurant={isRestaurant}
+          allowResale={line.allowResale}
         />
       )}
 

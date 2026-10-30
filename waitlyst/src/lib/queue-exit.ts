@@ -2,7 +2,10 @@ import type { LinePosition, Prisma } from "@prisma/client"
 import { prisma } from "./prisma"
 import { settleTransactionsForUser } from "./settle-transactions"
 import { buyerTotal } from "./fees"
-import { expireCheckoutSession, releaseAndSettle, returnBuyerFunds } from "./stripe"
+import { expireCheckoutSession, getBaseUrl, releaseAndSettle, returnBuyerFunds } from "./stripe"
+import { runAfterResponse } from "./after-response"
+import { sendEmail } from "./email"
+import { removedFromLineEmail } from "./email-templates"
 
 export class PositionNotFoundError extends Error {
   constructor() {
@@ -62,6 +65,29 @@ export async function removeByOrganizer(
   }
 
   const refunded = openPurchases.filter((p) => refundedIds.includes(p.id))
+
+  // Someone removed while waiting would otherwise only find out if they had
+  // the page open. Served people leaving the list don't need telling.
+  if (!position.fulfilled) {
+    runAfterResponse(async () => {
+      const [user, line] = await Promise.all([
+        prisma.user.findUnique({
+          where: { id: position.userId },
+          select: { name: true, email: true, emailNotifications: true },
+        }),
+        prisma.line.findUnique({ where: { id: lineId }, select: { name: true } }),
+      ])
+      if (!user?.email || !user.emailNotifications || !line) return
+      const { subject, html } = removedFromLineEmail(
+        user.name || "there",
+        line.name,
+        refunded.length > 0,
+        `${getBaseUrl()}/lines/${lineId}`
+      )
+      await sendEmail(user.email, subject, html)
+    })
+  }
+
   return {
     fulfilled: position.fulfilled,
     refundedCount: refunded.length,

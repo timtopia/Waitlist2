@@ -29,11 +29,28 @@ interface OwnerConsoleProps {
   onDismissCreated?: () => void
   onChanged: () => void
   isRestaurant?: boolean
+  /** Paid swaps are on, so there can be payments to review even with no owner fee */
+  allowResale?: boolean
 }
 
 interface Earnings {
   earned: number
   pending: number
+}
+
+interface Pace {
+  medianWaitMinutes: number | null
+  servedLastHour: number
+}
+
+/** "4 × 2, 1 × 6" -- the waiting parties by size, biggest group first */
+function partyMix(parties: ConsolePosition[]): string {
+  const bySize = new Map<number, number>()
+  for (const p of parties) bySize.set(p.partySize ?? 1, (bySize.get(p.partySize ?? 1) ?? 0) + 1)
+  return [...bySize.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([size, count]) => `${count} × ${size}`)
+    .join(", ")
 }
 
 export function OwnerConsole({
@@ -46,6 +63,7 @@ export function OwnerConsole({
   hasPayoutSetup,
   justCreated = false,
   onDismissCreated,
+  allowResale = false,
   onChanged,
   isRestaurant = false,
 }: OwnerConsoleProps) {
@@ -53,6 +71,8 @@ export function OwnerConsole({
   const [busy, setBusy] = useState<string | null>(null)
   const [earnings, setEarnings] = useState<Earnings | null>(null)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
+  const [closeChoice, setCloseChoice] = useState(false)
+  const [pace, setPace] = useState<Pace | null>(null)
   const [copied, setCopied] = useState(false)
 
   const waiting = positions.filter((p) => !p.fulfilled)
@@ -68,15 +88,20 @@ export function OwnerConsole({
       if (res.ok) {
         const data = await res.json()
         setEarnings({ earned: data.ownerFeeEarned ?? 0, pending: data.ownerFeePending ?? 0 })
+        if (data.service) {
+          setPace({ medianWaitMinutes: data.service.medianWaitMinutes, servedLastHour: data.service.servedLastHour })
+        }
       }
     } catch {
       // Non-critical
     }
   }, [lineId])
 
+  // A swap changes the order but not the counts, and it's what earns a fee
+  const order = positions.map((p) => p.user.id).join(",")
   useEffect(() => {
     fetchEarnings()
-  }, [fetchEarnings, positions.length, served.length])
+  }, [fetchEarnings, positions.length, served.length, order])
 
   async function post(path: string, body?: unknown) {
     const res = await fetch(`/api/lines/${lineId}/${path}`, {
@@ -167,6 +192,41 @@ export function OwnerConsole({
     }
   }
 
+  /**
+   * End of the night: stop new joins and empty the list in one step. Payments
+   * still on hold are kept (collected) or refunded, as the owner chooses.
+   */
+  async function handleClose(action: "payout" | "refund") {
+    setCloseChoice(false)
+    setBusy("close")
+    try {
+      const paused = isActive ? await post("pause", { isActive: false }) : { ok: true, data: {} }
+      if (!paused.ok) {
+        addToast(paused.data.error || "Failed to close the line", "error")
+        return
+      }
+      if (positions.length > 0) {
+        const { ok, data } = await post("batch-remove", { positionIds: positions.map((p) => p.id), action })
+        if (!ok) {
+          addToast(data.error || "The line is paused, but clearing it failed", "error")
+          return
+        }
+        const moneyProblems = (data.refundFailedCount ?? 0) + (data.collectFailedCount ?? 0)
+        addToast(
+          moneyProblems > 0
+            ? `Closed. ${moneyProblems} payment(s) need attention on the settlement page.`
+            : `Closed for now: the line is paused and empty.`,
+          moneyProblems > 0 ? "info" : "success"
+        )
+      } else {
+        addToast("Closed for now: the line is paused.", "success")
+      }
+    } finally {
+      setBusy(null)
+      onChanged()
+    }
+  }
+
   async function handleConnectPayouts() {
     setBusy("connect")
     try {
@@ -194,7 +254,8 @@ export function OwnerConsole({
   }
 
   const hasEarnings = !!earnings && (earnings.earned > 0 || earnings.pending > 0)
-  const showMoney = ownerFeePercent > 0 || hasEarnings
+  // Restaurant holds need the settlement page even when the owner takes no fee
+  const showMoney = ownerFeePercent > 0 || hasEarnings || allowResale
   const needsPayoutSetup = stripeEnabled && !hasPayoutSetup && showMoney
 
   return (
@@ -208,6 +269,34 @@ export function OwnerConsole({
         onConfirm={handleClearServed}
         onCancel={() => setShowClearConfirm(false)}
       />
+
+      {closeChoice && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true" aria-label="Close the line">
+          <div className="bg-white border border-ink max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold tracking-tight text-ink mb-2">
+              {isRestaurant ? "Close for the night?" : "Close the line?"}
+            </h3>
+            <p className="text-sm text-ink/60 mb-4">
+              This pauses the line so no one new can join, and removes all {positions.length}{" "}
+              {positions.length === 1 ? "person" : "people"} still on it. Everyone still waiting is told they&apos;re no longer in line.
+              {allowResale && " Choose what happens to swap payments still on hold:"}
+            </p>
+            <div className="flex flex-col space-y-2">
+              <Button onClick={() => handleClose("payout")} isLoading={busy === "close"} className="w-full">
+                {allowResale ? "Close and keep payments" : "Close the line"}
+              </Button>
+              {allowResale && (
+                <Button variant="danger" onClick={() => handleClose("refund")} isLoading={busy === "close"} className="w-full">
+                  Close and refund held payments
+                </Button>
+              )}
+              <Button variant="ghost" onClick={() => setCloseChoice(false)} className="w-full">
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {justCreated && (
         <div className="border-b border-rule bg-paper px-4 py-4">
@@ -253,9 +342,16 @@ export function OwnerConsole({
             {isActive ? "Open" : "Paused"}
           </span>
         </div>
-        <Button size="sm" variant="ghost" onClick={handleTogglePause} isLoading={busy === "pause"}>
-          {isActive ? "Pause" : "Resume"}
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button size="sm" variant="ghost" onClick={handleTogglePause} isLoading={busy === "pause"}>
+            {isActive ? "Pause" : "Resume"}
+          </Button>
+          {(isActive || positions.length > 0) && (
+            <Button size="sm" variant="ghost" onClick={() => setCloseChoice(true)} isLoading={busy === "close"}>
+              {isRestaurant ? "Close for the night" : "Close"}
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="px-4 py-4">
@@ -323,6 +419,23 @@ export function OwnerConsole({
           </div>
         )}
 
+        {(isRestaurant && waiting.length > 0) || (pace && (pace.servedLastHour > 0 || pace.medianWaitMinutes !== null)) ? (
+          <p className="mt-3 text-xs text-ink/60">
+            {isRestaurant && waiting.length > 0 && (
+              <span>
+                Waiting parties by size: <span className="font-mono tabular-nums">{partyMix(waiting)}</span>
+              </span>
+            )}
+            {isRestaurant && waiting.length > 0 && pace && (pace.servedLastHour > 0 || pace.medianWaitMinutes !== null) && " · "}
+            {pace && (pace.servedLastHour > 0 || pace.medianWaitMinutes !== null) && (
+              <span>
+                {pace.servedLastHour} {isRestaurant ? "seated" : "served"} in the last hour
+                {pace.medianWaitMinutes !== null && <>, typical wait {Math.round(pace.medianWaitMinutes)} min</>}
+              </span>
+            )}
+          </p>
+        ) : null}
+
         <div className="mt-3 flex items-center gap-3 font-mono text-xs uppercase tracking-widest text-ink/50 tabular-nums">
           <span>{waiting.length} waiting</span>
           <span className="text-ink/20">·</span>
@@ -343,7 +456,7 @@ export function OwnerConsole({
         <div className="px-4 py-3 border-t border-rule flex items-center justify-between gap-3 flex-wrap">
           <div>
             <p className="font-mono text-xs uppercase tracking-widest text-ink/50">
-              Your fees ({ownerFeePercent}% per swap)
+              {ownerFeePercent > 0 ? `Your fees (${ownerFeePercent}% per swap)` : "Paid swaps"}
             </p>
             <p className="font-mono tabular-nums text-green-700">
               {formatCurrency(earnings?.earned ?? 0)} earned

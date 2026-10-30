@@ -9,8 +9,12 @@ import { capacityUnit, parsePartySize } from "@/lib/capacity"
 class PartyRefusedError extends Error {}
 
 /**
- * Change your party size while you wait (someone dropped out, or a friend is
- * joining you). Restaurant lines only; capacity is re-checked in guests.
+ * Change a party size. Guests change their own while they wait (someone
+ * dropped out, or a friend is joining); capacity is re-checked in guests and
+ * the size locks once they're called. The host can change any party's size
+ * (pass positionId) at any point before seating -- "we're actually five" at
+ * the stand -- and decides for themselves whether the room has space.
+ * Restaurant lines only.
  */
 export async function PATCH(
   req: Request,
@@ -37,17 +41,25 @@ export async function PATCH(
       const partySize = parsePartySize(line.kind, body?.partySize)
       if (typeof partySize !== "number") throw new PartyRefusedError(partySize.error)
 
-      const mine = await tx.linePosition.findUnique({
-        where: { lineId_userId: { lineId, userId: result.userId } },
-      })
-      if (!mine) throw new PartyRefusedError("You're not in this line")
-      if (mine.fulfilled) throw new PartyRefusedError("You've already been seated")
+      const byHost = typeof body?.positionId === "string"
+      if (byHost && line.createdById !== result.userId) {
+        throw new PartyRefusedError("Only the host can change another party's size")
+      }
+      const mine = byHost
+        ? await tx.linePosition.findUnique({ where: { id: body.positionId, lineId } })
+        : await tx.linePosition.findUnique({
+            where: { lineId_userId: { lineId, userId: result.userId } },
+          })
+      if (!mine) throw new PartyRefusedError(byHost ? "That party isn't in this line any more" : "You're not in this line")
+      if (mine.fulfilled) {
+        throw new PartyRefusedError(byHost ? "That party has already been seated" : "You've already been seated")
+      }
       // The host picked this party for a table at this size
-      if (mine.calledAt) {
+      if (mine.calledAt && !byHost) {
         throw new PartyRefusedError("You've been called, so ask the host if your party size changed")
       }
 
-      if (line.maxCapacity && partySize > mine.partySize) {
+      if (!byHost && line.maxCapacity && partySize > mine.partySize) {
         const left = line.maxCapacity - await countCapacityUsed(line, tx)
         if (partySize - mine.partySize > left) {
           throw new PartyRefusedError(
