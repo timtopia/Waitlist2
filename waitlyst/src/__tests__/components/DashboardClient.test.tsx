@@ -35,7 +35,7 @@ const mockCreatedLines = [
     _count: { positions: 5 },
     frontPerson: {
       id: "pos-1",
-      position: 1,
+      position: 1, calledAt: null,
       user: { id: "user-1", name: "Alice" },
     },
   },
@@ -522,7 +522,7 @@ describe("DashboardClient", () => {
 
   describe("Call Next (Remove Front)", () => {
     it("hides the quick Remove when served people are still ahead of the next person", () => {
-      const lines = [{ ...mockCreatedLines[0], frontPerson: { id: "pos-3", position: 3, user: { id: "user-3", name: "Cara" } } }]
+      const lines = [{ ...mockCreatedLines[0], frontPerson: { id: "pos-3", position: 3, calledAt: null, user: { id: "user-3", name: "Cara" } } }]
       render(<DashboardClient createdLines={lines} positions={[]} />)
 
       expect(screen.getByText(/Next: Cara/)).toBeInTheDocument()

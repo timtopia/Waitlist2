@@ -3,7 +3,7 @@ import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { buyerTotal } from "@/lib/fees"
 import { expireCheckoutSession, returnBuyerFunds } from "@/lib/stripe"
-import { exitQueue } from "@/lib/queue-exit"
+import { exitQueue, removeByOrganizer, PositionNotFoundError } from "@/lib/queue-exit"
 
 export async function POST(
   req: Request,
@@ -13,6 +13,36 @@ export async function POST(
 
   const result = await requireLineOwner(lineId)
   if (result instanceof NextResponse) return result
+
+  // The dashboard names who it showed at the front. Removing "whoever is #1
+  // now" could hit someone else if the queue moved since the page loaded.
+  const body = await req.json().catch(() => ({}))
+  if (body?.positionId !== undefined) {
+    if (typeof body.positionId !== "string") {
+      return NextResponse.json({ error: "Position ID must be a string" }, { status: 400 })
+    }
+    const target = await prisma.linePosition.findUnique({ where: { id: body.positionId, lineId } })
+    if (!target) {
+      return NextResponse.json(
+        { error: "That person isn't in the line any more. Refresh to see who's at the front." },
+        { status: 409 }
+      )
+    }
+    try {
+      // Same money rule as before: someone removed without being served gets
+      // their held payments back; a served person's purchases stand.
+      const removed = await removeByOrganizer(lineId, target.id, target.fulfilled ? "payout" : "refund")
+      return NextResponse.json({ success: true, ...removed })
+    } catch (error) {
+      if (error instanceof PositionNotFoundError) {
+        return NextResponse.json(
+          { error: "That person isn't in the line any more. Refresh to see who's at the front." },
+          { status: 409 }
+        )
+      }
+      throw error
+    }
+  }
 
   try {
     const txResult = await prisma.$transaction(async (tx) => {

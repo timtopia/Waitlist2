@@ -52,6 +52,8 @@ export default async function EmbedPage({ params }: Props) {
       opensAt={line.opensAt ? line.opensAt.toISOString() : null}
       closesAt={line.closesAt ? line.closesAt.toISOString() : null}
       nowServing={line.nowServing}
+      isActive={line.isActive}
+      capacityUsed={capacity.capacityUsed}
       hideCapacity={capacity.hasCapacityLimit && capacity.maxCapacity === null}
     />
   )

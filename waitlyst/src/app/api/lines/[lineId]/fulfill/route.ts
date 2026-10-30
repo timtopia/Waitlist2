@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { runAfterResponse } from "@/lib/after-response"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { releaseAndSettle } from "@/lib/stripe"
@@ -105,7 +106,7 @@ export async function POST(
           line.name,
           lineUrl
         )
-        sendEmail(fulfilledUser.email, subject, html).catch(() => {})
+        runAfterResponse(() => sendEmail(fulfilledUser.email!, subject, html))
       }
     }
 

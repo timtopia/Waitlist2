@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 const mockPrisma = {
   line: {
     findUnique: vi.fn(),
+    findMany: vi.fn().mockResolvedValue([]),
   },
   linePosition: {
     findMany: vi.fn(),
@@ -547,6 +548,24 @@ describe("GET /api/lines/[lineId]/stats", () => {
 
 // ---------- User Activity API ----------
 
+describe("GET /api/activity -- only money that moved", () => {
+  it("asks only for completed and refunded transactions, not abandoned checkouts", async () => {
+    vi.clearAllMocks()
+    mockAuth.mockResolvedValue({ user: { id: "user-1" } })
+    mockPrisma.transaction.findMany.mockResolvedValue([])
+    mockPrisma.linePosition.findMany.mockResolvedValue([])
+
+    const { GET } = await import("@/app/api/activity/route")
+    await GET()
+
+    expect(mockPrisma.transaction.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: { in: ["COMPLETED", "REFUNDED"] } }),
+      })
+    )
+  })
+})
+
 describe("GET /api/activity", () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -688,6 +707,8 @@ describe("GET /api/activity", () => {
         buyerId: "user-1",
         sellerId: "user-2",
         amount: 15.0,
+        ownerFee: 1.5,
+        platformFee: 0.75,
         status: "REFUNDED",
         createdAt: new Date("2025-06-01T14:00:00Z"),
       },
@@ -701,7 +722,8 @@ describe("GET /api/activity", () => {
     const data = await response.json()
     expect(data.length).toBe(1)
     expect(data[0].type).toBe("refund")
-    expect(data[0].description).toContain("Received refund of $15.00")
+    // Everything the buyer paid comes back, fees included
+    expect(data[0].description).toContain("Received a refund of $17.25")
   })
 
   it("should combine and sort all activity types by date descending", async () => {

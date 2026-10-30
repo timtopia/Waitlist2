@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { runAfterResponse } from "@/lib/after-response"
 import { prisma } from "@/lib/prisma"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { expireCheckoutSession, getBaseUrl, returnBuyerFunds } from "@/lib/stripe"
@@ -168,7 +169,7 @@ export async function DELETE(
     for (const { user } of members) {
       if (!user.email || !user.emailNotifications) continue
       const { subject, html } = lineDeletedEmail(user.name || "there", result.line.name, buyers.has(user.id), browseUrl)
-      sendEmail(user.email, subject, html).catch(() => {})
+      runAfterResponse(() => sendEmail(user.email!, subject, html))
     }
 
     return NextResponse.json({ success: true, refundedCount, refundFailedCount })

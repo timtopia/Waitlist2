@@ -63,7 +63,9 @@ export default async function DashboardPage() {
         ...line,
         createdAt: line.createdAt.toISOString(),
         updatedAt: line.updatedAt.toISOString(),
-        frontPerson: line.positions[0] || null,
+        frontPerson: line.positions[0]
+          ? { ...line.positions[0], calledAt: line.positions[0].calledAt?.toISOString() ?? null }
+          : null,
       }))}
       positions={positions.map((pos, i) => ({
         ...pos,

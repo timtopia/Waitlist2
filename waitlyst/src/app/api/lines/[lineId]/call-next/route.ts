@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { runAfterResponse } from "@/lib/after-response"
 import { firstName } from "@/lib/privacy"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
@@ -107,7 +108,7 @@ export async function POST(
     const calledUser = frontPosition.user
     if (calledUser?.email && calledUser.emailNotifications) {
       const { subject, html } = positionCalledEmail(userName, line.name, lineUrl)
-      sendEmail(calledUser.email, subject, html).catch(() => {})
+      runAfterResponse(() => sendEmail(calledUser.email!, subject, html))
     }
 
     // Give whoever is now on deck a heads-up, but only the first time the
@@ -122,7 +123,7 @@ export async function POST(
       })
       if (onDeck?.user.email && onDeck.user.emailNotifications) {
         const { subject, html } = youreNextEmail(onDeck.user.name || "there", line.name, lineUrl)
-        sendEmail(onDeck.user.email, subject, html).catch(() => {})
+        runAfterResponse(() => sendEmail(onDeck.user.email!, subject, html))
       }
     }
 

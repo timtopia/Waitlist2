@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import { buyerTotal } from "@/lib/fees"
 import { redirect } from "next/navigation"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
@@ -102,6 +103,17 @@ export default async function ProfilePage() {
     .filter((t) => t.status === "PENDING")
     .reduce((sum, t) => sum + t.ownerFee, 0)
 
+  // The history lists money that actually moved: completed and refunded
+  // purchases. Abandoned or failed checkouts never charged anyone.
+  const history = transactions
+    .filter((t) => t.status === "COMPLETED" || t.status === "REFUNDED")
+    .slice(0, 20)
+  const historyLines = await prisma.line.findMany({
+    where: { id: { in: [...new Set(history.map((t) => t.lineId))] } },
+    select: { id: true, name: true },
+  })
+  const lineNames = new Map(historyLines.map((l) => [l.id, l.name]))
+
   return (
     <ProfileClient
       user={{
@@ -125,9 +137,11 @@ export default async function ProfilePage() {
         purchaseCount: completedAsBuyer.length,
         saleCount: completedAsSeller.length,
       }}
-      recentTransactions={transactions.slice(0, 20).map((t) => ({
+      recentTransactions={history.map((t) => ({
         id: t.id,
-        amount: t.amount,
+        // A buyer paid the asking price plus both fees; a seller gets the price
+        amount: t.buyerId === userId ? buyerTotal(t) : t.amount,
+        lineName: lineNames.get(t.lineId) ?? null,
         status: t.status,
         role: t.buyerId === userId ? "buyer" : "seller",
         createdAt: t.createdAt.toISOString(),
