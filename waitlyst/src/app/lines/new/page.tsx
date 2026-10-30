@@ -328,7 +328,7 @@ function CreateLineForm() {
                 <span className="block text-sm text-ink">Restaurant waitlist</span>
                 <span className="block text-xs text-ink/50 mt-0.5">
                   {kind === "RESTAURANT"
-                    ? "Guests give a party size, capacity counts guests, and you can call any party. Paid swaps are held until the guest is seated, so you can still refund them that evening."
+                    ? "Guests give a party size, capacity counts guests, and you can call any party. Paid swaps are held on the buyer's card until you seat them, so you can still release them if the evening goes wrong."
                     : "Everyone holds one spot and is called in order. Paid swaps are collected and paid out as soon as they happen."}
                 </span>
               </span>
@@ -604,7 +604,7 @@ function CreateLineForm() {
                       {allowResale && (
                         <p className="text-xs text-ink/50 mt-1">
                           {kind === "RESTAURANT"
-                            ? "Paid swaps are held until the buyer is seated. You capture or refund them from the Settlement page."
+                            ? "Paid swaps are held until the buyer is seated. Seating them collects the payment; before then you can release it."
                             : "Paid swaps are final: the buyer is charged and the seller is paid out right away, with no refunds later."}
                         </p>
                       )}

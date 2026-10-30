@@ -23,13 +23,7 @@ export async function POST(
   try {
     const result = await removeByOrganizer(lineId, positionId, action)
 
-    return NextResponse.json({
-      success: true,
-      action,
-      fulfilled: result.fulfilled,
-      refundedAmount: result.refundedAmount,
-      refundedCount: result.refundedCount,
-    })
+    return NextResponse.json({ success: true, action, ...result })
   } catch (error) {
     if (error instanceof PositionNotFoundError) {
       return NextResponse.json(

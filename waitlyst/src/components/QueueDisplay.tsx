@@ -55,6 +55,9 @@ interface TransactionInfo {
   totalPaid: number
   totalReceived: number
   netAmount: number
+  /** Purchases still held (not paid out): the only ones a removal can refund */
+  refundableCount: number
+  refundableAmount: number
   totalRefundedToBuyer: number
   totalRefundedAsSeller: number
   asBuyer: { id: string; amount: number; status: string }[]
@@ -438,8 +441,18 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
       })
       if (res.ok) {
         const data = await res.json()
-        if (action === "refund" && data.refundedCount > 0) {
-          addToast(`Refunded ${data.refundedCount} transaction(s) totaling ${formatCurrency(data.refundedAmount)}`, "success")
+        if (data.refundFailedCount > 0) {
+          addToast(
+            `Removed, but ${data.refundFailedCount} refund(s) didn't go through. They're still open on the settlement page.`,
+            "error"
+          )
+        } else if (data.collectFailedCount > 0) {
+          addToast(
+            `Removed, but ${data.collectFailedCount} payment(s) couldn't be collected. Review them on the settlement page.`,
+            "info"
+          )
+        } else if (data.refundedCount > 0) {
+          addToast(`Removed and refunded ${formatCurrency(data.refundedAmount)} to the buyer`, "success")
         } else {
           addToast("Person removed from line", "success")
         }
@@ -555,10 +568,13 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
       })
       if (res.ok) {
         const data = await res.json()
-        const msg = data.failed > 0
-          ? `Removed ${data.removed}, ${data.failed} failed`
-          : `Removed ${data.removed} ${data.removed === 1 ? "person" : "people"} from line`
-        addToast(msg, data.failed > 0 ? "info" : "success")
+        let msg = data.failed > 0
+          ? `Removed ${data.removed}, ${data.failed} failed.`
+          : `Removed ${data.removed} ${data.removed === 1 ? "person" : "people"} from line.`
+        if (data.refundedCount > 0) msg += ` Refunded ${formatCurrency(data.refundedAmount)}.`
+        const moneyProblems = (data.refundFailedCount ?? 0) + (data.collectFailedCount ?? 0)
+        if (moneyProblems > 0) msg += ` ${moneyProblems} payment(s) need attention on the settlement page.`
+        addToast(msg, data.failed > 0 || moneyProblems > 0 ? "info" : "success")
         cancelSelectMode()
         onRefresh()
       } else {
@@ -625,30 +641,42 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                   </div>
                 )}
 
-                <p className="text-sm text-ink/60">
-                  Choose how to handle their transactions:
-                </p>
+                {removalModal.transactionInfo.refundableCount > 0 ? (
+                  <p className="text-sm text-ink/60">
+                    {formatCurrency(removalModal.transactionInfo.refundableAmount)} they paid for spots is still on hold.
+                    Keep the purchase to collect it and pay the people they bought from, or refund it.
+                  </p>
+                ) : removalModal.transactionInfo.asBuyer.some(t => t.status === "COMPLETED") ? (
+                  <p className="text-sm text-ink/60">
+                    Their purchases have already been paid out and can&apos;t be refunded here.
+                  </p>
+                ) : null}
               </div>
             ) : (
-              <p className="text-sm text-ink/60 mb-4">No transaction history found.</p>
+              <p className="text-sm text-ink/60 mb-4">
+                Couldn&apos;t load their payments. Removing them now keeps any purchases they made.
+              </p>
             )}
 
             <div className="flex flex-col space-y-2">
               <Button
                 onClick={() => handleRemoveWithAction("payout")}
                 isLoading={loadingAction === `remove-${removalModal.positionId}`}
+                disabled={removalModal.loading}
                 className="w-full"
               >
-                Payout (Keep Transactions Final)
+                {removalModal.transactionInfo && removalModal.transactionInfo.refundableCount > 0
+                  ? "Remove and keep purchase"
+                  : "Remove"}
               </Button>
-              {removalModal.transactionInfo && removalModal.transactionInfo.asBuyer.filter(t => t.status === "COMPLETED").length > 0 && (
+              {removalModal.transactionInfo && removalModal.transactionInfo.refundableCount > 0 && (
                 <Button
                   variant="danger"
                   onClick={() => handleRemoveWithAction("refund")}
                   isLoading={loadingAction === `remove-${removalModal.positionId}`}
                   className="w-full"
                 >
-                  Refund ({formatCurrency(removalModal.transactionInfo.totalPaid)} to buyer)
+                  Remove and refund {formatCurrency(removalModal.transactionInfo.refundableAmount)}
                 </Button>
               )}
               <Button
@@ -674,7 +702,9 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
               </h3>
               <p className="text-sm text-ink/60 mb-4">
                 You&apos;ll swap places with {buyConfirm.sellerName || "the person in front of you"}.
-                {stripeEnabled && " Your card is only charged once you're served -- if you're removed before then, the hold is released."}
+                {stripeEnabled && (isRestaurant
+                  ? " Your card is held, not charged, until you're seated. It's charged when you're seated or if you leave; the host can release it if you aren't seated."
+                  : " This purchase is final: you're charged now and the seller is paid right away, even if you leave or are removed later.")}
               </p>
               <dl className="text-sm border border-rule divide-y divide-rule mb-4">
                 <div className="flex justify-between px-3 py-1.5">
@@ -731,7 +761,9 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
               Remove {selectedIds.size} {selectedIds.size === 1 ? "person" : "people"}?
             </h3>
             <p className="text-sm text-ink/60 mb-4">
-              Choose how to handle their transactions:
+              {isRestaurant
+                ? "Any of their payments still on hold can be kept (collected and paid out) or refunded. Payments already collected are final."
+                : "Swaps on this line are paid out as they happen, so purchases are final. Only a payment that couldn't be collected can still be refunded."}
             </p>
             <div className="flex flex-col space-y-2">
               <Button
@@ -739,7 +771,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                 isLoading={batchLoading}
                 className="w-full"
               >
-                Payout (Keep Transactions Final)
+                Remove and keep purchases
               </Button>
               <Button
                 variant="danger"
@@ -747,7 +779,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                 isLoading={batchLoading}
                 className="w-full"
               >
-                Refund All Purchases
+                Remove and refund held payments
               </Button>
               <Button
                 variant="ghost"

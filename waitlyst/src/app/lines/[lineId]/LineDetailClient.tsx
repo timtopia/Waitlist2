@@ -618,7 +618,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                   {line.ownerFeePercent > 0 && <> + {line.ownerFeePercent}% to the line owner</>}
                   {line.platformFeePercent > 0 && <> + a {line.platformFeePercent}% Waitlyst fee</>}.{" "}
                   {isRestaurant
-                    ? "Payment is held until you're seated and can still be refunded that evening."
+                    ? "Your card is held, not charged, until you're seated, and the host can release it if you aren't."
                     : "Swaps are final and paid out to the seller right away."}
                 </>
               ) : (

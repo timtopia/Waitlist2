@@ -1,7 +1,8 @@
 import type { LinePosition, Prisma } from "@prisma/client"
 import { prisma } from "./prisma"
 import { settleTransactionsForUser } from "./settle-transactions"
-import { expireCheckoutSession, returnBuyerFunds } from "./stripe"
+import { buyerTotal } from "./fees"
+import { expireCheckoutSession, releaseAndSettle, returnBuyerFunds } from "./stripe"
 
 export class PositionNotFoundError extends Error {
   constructor() {
@@ -9,26 +10,40 @@ export class PositionNotFoundError extends Error {
   }
 }
 
+export interface RemovalResult {
+  fulfilled: boolean
+  /** Purchases given back to the buyer, and what the buyer was charged for them */
+  refundedCount: number
+  refundedAmount: number
+  /** Refunds Stripe wouldn't do; those purchases are still open on the settlement page */
+  refundFailedCount: number
+  /** Held purchases collected and paid out instead */
+  collectedCount: number
+  collectFailedCount: number
+}
+
 /**
- * The organizer removes someone. Unless they were served (and the action
- * isn't an explicit refund), their unsettled purchases are returned first --
- * they never got what they paid to move up for.
+ * The organizer removes someone and decides what happens to purchases of
+ * theirs that are still open (held on their card, not yet paid out):
+ * - "payout": the trade stands, like when someone leaves. The people they
+ *   bought from gave up their places, so the payment is collected now.
+ * - "refund": the buyer gets the money back.
+ * Purchases already paid out are final either way; nothing here undoes them.
  */
 export async function removeByOrganizer(
   lineId: string,
   positionId: string,
   action: "payout" | "refund"
-): Promise<{ fulfilled: boolean; refundedCount: number; refundedAmount: number }> {
+): Promise<RemovalResult> {
   const position = await prisma.linePosition.findUnique({ where: { id: positionId, lineId } })
   if (!position) throw new PositionNotFoundError()
 
-  const purchasesToRefund = action === "refund" || !position.fulfilled
-    ? await prisma.transaction.findMany({
-        where: { lineId, buyerId: position.userId, status: "COMPLETED", settledAt: null },
-      })
-    : []
-  const refundedCount = await returnBuyerFunds(purchasesToRefund)
-  const refundedAmount = purchasesToRefund.reduce((sum, p) => sum + p.amount, 0)
+  const openPurchases = await prisma.transaction.findMany({
+    where: { lineId, buyerId: position.userId, status: "COMPLETED", settledAt: null },
+  })
+
+  let refundedIds: string[] = []
+  if (action === "refund") refundedIds = await returnBuyerFunds(openPurchases)
 
   // Re-read inside the transaction: the queue may have shifted while the
   // refunds were going through.
@@ -39,7 +54,22 @@ export async function removeByOrganizer(
   })
   await expireCheckoutSession(abandonedSessionId)
 
-  return { fulfilled: position.fulfilled, refundedCount, refundedAmount }
+  let collectedCount = 0
+  if (action === "payout") {
+    for (const purchase of openPurchases) {
+      if (await releaseAndSettle(purchase)) collectedCount++
+    }
+  }
+
+  const refunded = openPurchases.filter((p) => refundedIds.includes(p.id))
+  return {
+    fulfilled: position.fulfilled,
+    refundedCount: refunded.length,
+    refundedAmount: refunded.reduce((sum, p) => sum + buyerTotal(p), 0),
+    refundFailedCount: action === "refund" ? openPurchases.length - refunded.length : 0,
+    collectedCount,
+    collectFailedCount: action === "payout" ? openPurchases.length - collectedCount : 0,
+  }
 }
 
 /**

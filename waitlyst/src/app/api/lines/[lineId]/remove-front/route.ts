@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
+import { buyerTotal } from "@/lib/fees"
 import { expireCheckoutSession, returnBuyerFunds } from "@/lib/stripe"
 import { exitQueue } from "@/lib/queue-exit"
 
@@ -29,7 +30,7 @@ export async function POST(
         ? []
         : await tx.transaction.findMany({
             where: { lineId, buyerId: frontPosition.userId, status: "COMPLETED", settledAt: null },
-            select: { id: true, stripePaymentId: true, amount: true },
+            select: { id: true, stripePaymentId: true, amount: true, ownerFee: true, platformFee: true },
           })
 
       const { abandonedSessionId } = await exitQueue(tx, frontPosition, "REMOVED")
@@ -39,14 +40,17 @@ export async function POST(
     await expireCheckoutSession(txResult.abandonedSessionId)
 
     // Uncaptured holds are released (no fees); captured ones are refunded.
-    const refundedCount = await returnBuyerFunds(txResult.purchasesToRefund)
-    const refundedAmount = txResult.purchasesToRefund.reduce((sum, p) => sum + p.amount, 0)
+    const refundedIds = await returnBuyerFunds(txResult.purchasesToRefund)
+    const refunded = txResult.purchasesToRefund.filter((p) => refundedIds.includes(p.id))
+    const refundedCount = refunded.length
+    const refundedAmount = refunded.reduce((sum, p) => sum + buyerTotal(p), 0)
 
     return NextResponse.json({
       success: true,
       fulfilled: txResult.fulfilled,
       refundedCount,
       refundedAmount,
+      refundFailedCount: txResult.purchasesToRefund.length - refundedCount,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : ""

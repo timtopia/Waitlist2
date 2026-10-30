@@ -28,15 +28,23 @@ export async function POST(
 
   let removed = 0
   let failed = 0
+  let refundedCount = 0
+  let refundedAmount = 0
+  let refundFailedCount = 0
+  let collectFailedCount = 0
 
   for (const positionId of positionIds) {
     try {
-      await removeByOrganizer(lineId, positionId, action)
+      const result = await removeByOrganizer(lineId, positionId, action)
       removed++
+      refundedCount += result.refundedCount
+      refundedAmount += result.refundedAmount
+      refundFailedCount += result.refundFailedCount
+      collectFailedCount += result.collectFailedCount
     } catch {
       failed++
     }
   }
 
-  return NextResponse.json({ removed, failed })
+  return NextResponse.json({ removed, failed, refundedCount, refundedAmount, refundFailedCount, collectFailedCount })
 }

@@ -157,7 +157,8 @@ export function positionSoldEmail(
   lineName: string,
   amount: number,
   newPosition: number,
-  lineUrl: string
+  lineUrl: string,
+  heldUntilSeated = false
 ): { subject: string; html: string } {
   const safeName = escapeHtml(userName)
   const safeLine = escapeHtml(lineName)
@@ -166,7 +167,9 @@ export function positionSoldEmail(
   const body = `
     <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">Your spot sold, ${safeName}!</h2>
     <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">Someone bought your position in <strong>${safeLine}</strong> for <strong>${formattedAmount}</strong>. You traded places with them and are now <strong>#${newPosition}</strong>.</p>
-    <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Your earnings are released once the line owner settles the sale. Make sure a payout account is connected in your profile so the money can reach you.</p>
+    <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">${heldUntilSeated
+      ? "The buyer's payment is held until they're seated, and you're paid once it's collected."
+      : "You're paid right away."} Make sure a payout account is connected in your profile so the money can reach you.</p>
   `
   return { subject, html: wrapTemplate(subject, body, "View Line", lineUrl) }
 }

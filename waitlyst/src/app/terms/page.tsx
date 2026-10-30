@@ -102,10 +102,11 @@ export default function TermsOfServicePage() {
           </p>
           <p className="text-ink/70 leading-relaxed">
             <strong>Restaurant waitlists:</strong> the payment is held, not
-            collected, until you are seated. The line creator collects it once
-            you are seated, or releases it if you are not, in which case you are
-            not charged. A hold that is never collected lapses after about seven
-            days and is not charged.
+            collected, until you are seated. It is collected when you are seated
+            or if you leave the line. If the line creator removes you before you
+            are seated, they choose whether to collect it or release it; a
+            released payment is not charged. A hold that is never collected
+            lapses after about seven days and is not charged.
           </p>
         </section>
 

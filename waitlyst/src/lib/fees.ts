@@ -36,3 +36,8 @@ export function calcFees(price: number, ownerFeePercent: number, platformFeePerc
   const platformFee = Math.round(price * platformFeePercent) / 100
   return { ownerFee, platformFee, total: price + ownerFee + platformFee }
 }
+
+/** What the buyer was charged for a purchase: the asking price plus both fees. */
+export function buyerTotal(txn: { amount: number; ownerFee: number; platformFee: number }): number {
+  return Math.round((txn.amount + txn.ownerFee + txn.platformFee) * 100) / 100
+}

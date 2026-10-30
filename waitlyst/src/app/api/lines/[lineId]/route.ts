@@ -125,16 +125,17 @@ export async function DELETE(
     await Promise.all(abandonedSessions.map((id) => expireCheckoutSession(id)))
 
     // Release uncaptured holds (no fees), refund anything already captured.
-    const refundedCount = await returnBuyerFunds(transactionsToRefund)
+    const refundedCount = (await returnBuyerFunds(transactionsToRefund)).length
+    const refundFailedCount = transactionsToRefund.length - refundedCount
+    if (refundFailedCount > 0) {
+      console.error(`Delete line ${lineId}: ${refundFailedCount} refund(s) failed; left unsettled for follow-up`)
+    }
 
-    // Settle ALL unsettled transactions (COMPLETED and REFUNDED) and delete line
+    // Close out what was refunded. A purchase Stripe wouldn't refund stays
+    // unsettled, so it isn't recorded as handled when the buyer still paid.
     await prisma.$transaction(async (tx) => {
       await tx.transaction.updateMany({
-        where: {
-          lineId,
-          settledAt: null,
-          status: { in: ["COMPLETED", "REFUNDED"] },
-        },
+        where: { lineId, settledAt: null, status: "REFUNDED" },
         data: { settledAt: new Date() },
       })
       // Offers aren't tied to the line by a foreign key, so clear them here.
@@ -150,7 +151,7 @@ export async function DELETE(
       sendEmail(user.email, subject, html).catch(() => {})
     }
 
-    return NextResponse.json({ success: true, refundedCount })
+    return NextResponse.json({ success: true, refundedCount, refundFailedCount })
   } catch (error) {
     console.error("Delete line error:", error)
     const message = error instanceof Error ? error.message : "Something went wrong. Please try again."
