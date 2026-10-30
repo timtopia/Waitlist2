@@ -23,7 +23,7 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
   const embedUrl = `${origin}/lines/${lineId}/embed`
 
   const embedCode = `<iframe src="${embedUrl}" width="350" height="450" frameborder="0" style="border:1px solid #d8d4ca;"></iframe>`
-  const directLink = `<a href="${url}">Join the Drop on Waitlyst</a>`
+  const directLink = `<a href="${url}">Join the line on Waitlyst</a>`
 
   function handleCopy() {
     navigator.clipboard.writeText(url)

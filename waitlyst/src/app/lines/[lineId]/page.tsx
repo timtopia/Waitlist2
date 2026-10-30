@@ -56,13 +56,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const line = await getLine(lineId)
 
   if (!line) {
-    return { title: "Line Not Found - Waitlyst" }
+    return { title: "Line Not Found" }
   }
 
   const description = buildDescription(line)
 
   return {
-    title: `${line.name} - Waitlyst`,
+    title: line.name,
     description,
     openGraph: {
       title: `${line.name} - Waitlyst`,

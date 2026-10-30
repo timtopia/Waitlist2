@@ -53,7 +53,7 @@ export default function TermsOfServicePage() {
           </h2>
           <p className="text-ink/70 leading-relaxed mb-3">
             Waitlyst is a digital queue management platform. Creators can set up
-            virtual lines for product drops, events, and other purposes. Users
+            virtual lines for restaurants, shops, product drops, events, and other purposes. Users
             can join these lines to reserve a position.
           </p>
           <p className="text-ink/70 leading-relaxed">

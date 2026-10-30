@@ -40,7 +40,7 @@ function CreateLineForm() {
   const [productUrl, setProductUrl] = useState("")
   const [hideCapacity, setHideCapacity] = useState(false)
   const [showResaleControls, setShowResaleControls] = useState(false)
-  const [allowResale, setAllowResale] = useState(true)
+  const [allowResale, setAllowResale] = useState(false)
   const [maxAskingPrice, setMaxAskingPrice] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -48,10 +48,24 @@ function CreateLineForm() {
 
   const templates = [
     {
+      id: "restaurant-waitlist",
+      icon: "\uD83C\uDF7D\uFE0F",
+      name: "Restaurant Waitlist",
+      desc: "Walk-ins wait anywhere",
+      apply: () => {
+        setMaxCapacity("")
+        setOwnerFeePercent("0")
+        setAllowResale(false)
+        setHideCapacity(false)
+        setDescription("Join the waitlist and we'll let you know when your table is ready.")
+        setShowResaleControls(false)
+      },
+    },
+    {
       id: "product-drop",
       icon: "\uD83C\uDFAF",
       name: "Product Drop",
-      desc: "Limited release drop",
+      desc: "Limited release, tradable spots",
       apply: () => {
         setMaxCapacity("100")
         setOwnerFeePercent("10")
@@ -62,30 +76,16 @@ function CreateLineForm() {
       },
     },
     {
-      id: "live-queue",
-      icon: "\uD83C\uDFAB",
-      name: "Live Queue",
-      desc: "First come, first served",
-      apply: () => {
-        setMaxCapacity("")
-        setOwnerFeePercent("0")
-        setAllowResale(false)
-        setHideCapacity(false)
-        setDescription("Live queue - first come, first served")
-        setShowResaleControls(true)
-      },
-    },
-    {
       id: "event-waitlist",
       icon: "\uD83D\uDCCB",
       name: "Event Waitlist",
-      desc: "Waitlist with position swapping",
+      desc: "Capped list, guests can swap spots",
       apply: () => {
-        setMaxCapacity("500")
-        setOwnerFeePercent("5")
+        setMaxCapacity("200")
+        setOwnerFeePercent("0")
         setAllowResale(true)
         setHideCapacity(false)
-        setDescription("Event waitlist with position swapping")
+        setDescription("Event waitlist. If your plans change, you can swap spots with the person next to you.")
         setShowResaleControls(true)
       },
     },
@@ -268,7 +268,7 @@ function CreateLineForm() {
             <Input
               id="name"
               label="Line Name"
-              placeholder="e.g., Coffee Shop Queue"
+              placeholder="e.g., Friday dinner waitlist"
               value={name}
               onChange={(e) => setName(e.target.value)}
               error={error && !name.trim() ? "Name is required" : undefined}
@@ -483,7 +483,7 @@ function CreateLineForm() {
                     <input
                       id="productName"
                       type="text"
-                      placeholder='e.g., Nike Dunk Low Travis Scott'
+                      placeholder={`e.g., Air Max 1 "Chicago" or Chef's tasting menu`}
                       value={productName}
                       onChange={(e) => setProductName(e.target.value)}
                       className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"

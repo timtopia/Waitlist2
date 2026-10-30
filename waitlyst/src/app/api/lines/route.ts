@@ -21,7 +21,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { name, description, isPublic = true, opensAt, closesAt, maxCapacity, ownerFeePercent = 0, productName, productImage, productPrice, productUrl, allowResale = true, maxAskingPrice, hideCapacity = false } = await req.json()
+    const { name, description, isPublic = true, opensAt, closesAt, maxCapacity, ownerFeePercent = 0, productName, productImage, productPrice, productUrl, allowResale = false, maxAskingPrice, hideCapacity = false } = await req.json()
 
     // Validate name (required, 1-100 chars)
     const nameErr = validateString(name, "Name", { min: 1, max: 100 })
@@ -96,7 +96,7 @@ export async function POST(req: Request) {
         productImage: productImage?.trim() || null,
         productPrice: productPrice || null,
         productUrl: productUrl?.trim() || null,
-        allowResale: typeof allowResale === "boolean" ? allowResale : true,
+        allowResale: typeof allowResale === "boolean" ? allowResale : false,
         maxAskingPrice: maxAskingPrice || null,
         hideCapacity: typeof hideCapacity === "boolean" ? hideCapacity : false,
       },

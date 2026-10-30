@@ -20,15 +20,15 @@ export const metadata: Metadata = {
     process.env.NEXT_PUBLIC_APP_URL || "https://waitlyst.app"
   ),
   title: {
-    default: "Waitlyst - Queue Position Swapping",
+    default: "Waitlyst - Virtual Lines",
     template: "%s | Waitlyst",
   },
   description:
-    "Create and join virtual queues, swap spots with the person next to you, and never lose your place in line.",
+    "Virtual lines for restaurants, shops, product drops, and events. Join from your phone, wait anywhere, and trade spots with the person beside you.",
   openGraph: {
-    title: "Waitlyst - Queue Position Swapping",
+    title: "Waitlyst - Virtual Lines",
     description:
-      "Create and join virtual queues, swap spots with the person next to you, and never lose your place in line.",
+      "Virtual lines for restaurants, shops, product drops, and events. Join from your phone, wait anywhere, and trade spots with the person beside you.",
     siteName: "Waitlyst",
     type: "website",
   },
