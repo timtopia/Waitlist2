@@ -465,6 +465,24 @@ describe("PATCH /api/lines/[lineId]/price", () => {
     expect(mockPrisma.linePosition.update).not.toHaveBeenCalled()
   })
 
+  it("stores a price to the cent", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "user-1" } })
+    mockPrisma.line.findUnique.mockResolvedValue({ allowResale: true, maxAskingPrice: 250 })
+    mockPrisma.linePosition.findUnique.mockResolvedValue({ userId: "user-1", fulfilled: false, calledAt: null, lockedUntil: null })
+    mockPrisma.linePosition.update.mockResolvedValue({ id: "pos-1", askingPrice: 250, user: { id: "user-1", name: "User", image: null } })
+
+    const { PATCH } = await import("@/app/api/lines/[lineId]/price/route")
+    const response = await PATCH(
+      new Request("http://localhost/api/lines/line-1/price", { method: "PATCH", body: JSON.stringify({ price: 249.999 }) }),
+      { params: Promise.resolve({ lineId: "line-1" }) }
+    )
+
+    expect(response.status).toBe(200)
+    expect(mockPrisma.linePosition.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ askingPrice: 250 }) })
+    )
+  })
+
   it("still allows null (un-listing)", async () => {
     mockAuth.mockResolvedValue({ user: { id: "user-1" } })
     mockPrisma.linePosition.findUnique.mockResolvedValue({ lockedUntil: null })

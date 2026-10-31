@@ -54,7 +54,8 @@ export async function GET(
 
     // Perform the swap (idempotent — won't swap again if already completed by webhook).
     // Note: With auth-then-capture, the payment is authorized but NOT captured yet.
-    // Capture happens later when the creator fulfills the position.
+    // performPositionSwap collects it now on standard lines; restaurant
+    // lines hold it until the guest is seated.
     await recordPaymentIntent(transactionId, checkoutSession)
     await performPositionSwap(transactionId)
 

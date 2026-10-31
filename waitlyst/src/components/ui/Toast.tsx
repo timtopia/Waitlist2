@@ -28,9 +28,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const addToast = useCallback((message: string, type: ToastType = "info") => {
     const id = crypto.randomUUID()
     setToasts((prev) => [...prev, { id, message, type }])
+    // Errors need reading and acting on, so they stay up longer
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id))
-    }, 4000)
+    }, type === "error" ? 9000 : 5000)
   }, [])
 
   const removeToast = useCallback((id: string) => {
@@ -60,7 +61,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <div
             key={toast.id}
             className={`pointer-events-auto flex items-center gap-3 px-4 py-3 text-white text-sm font-medium animate-slide-in-right ${styles[toast.type]}`}
-            role="alert"
+            role={toast.type === "error" ? "alert" : "status"}
           >
             <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={icons[toast.type]} />
@@ -69,6 +70,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             <button
               onClick={() => removeToast(toast.id)}
               className="flex-shrink-0 ml-2 text-white/80 hover:text-white"
+              aria-label="Dismiss"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

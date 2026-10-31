@@ -2,6 +2,7 @@ import { redirect } from "next/navigation"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { getPlatformFeePercent } from "@/lib/fees"
+import { countCapacityUsed } from "@/lib/capacity-server"
 import { EditLineClient } from "./EditLineClient"
 
 export const dynamic = "force-dynamic"
@@ -46,6 +47,8 @@ export default async function EditLinePage({ params }: Props) {
         maxCapacity: line.maxCapacity,
         ownerFeePercent: line.ownerFeePercent,
         currentCount: line._count.positions,
+        kind: line.kind,
+        capacityUsed: await countCapacityUsed(line),
         productName: line.productName,
         productImage: line.productImage,
         productPrice: line.productPrice,

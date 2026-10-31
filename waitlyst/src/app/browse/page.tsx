@@ -61,7 +61,9 @@ export default function BrowsePage() {
         const q = search.toLowerCase()
         const matchesName = line.name.toLowerCase().includes(q)
         const matchesDesc = line.description?.toLowerCase().includes(q)
-        if (!matchesName && !matchesDesc) return false
+        // Cards show the product, so people search for it
+        const matchesProduct = line.productName?.toLowerCase().includes(q)
+        if (!matchesName && !matchesDesc && !matchesProduct) return false
       }
 
       // Status filter
@@ -121,6 +123,7 @@ export default function BrowsePage() {
           <input
             type="text"
             placeholder="Search lines…"
+            aria-label="Search lines"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full px-0 py-2 bg-transparent border-0 border-b border-rule text-base focus:outline-none focus:border-ink placeholder:text-ink/30"

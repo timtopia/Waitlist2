@@ -36,11 +36,12 @@ export async function POST(
       await lockLine(tx, lineId)
 
       // Check if line exists and is active
-      const line = await tx.line.findUnique({
-        where: { id: lineId, isActive: true },
-      })
+      const line = await tx.line.findUnique({ where: { id: lineId } })
       if (!line) {
-        throw new JoinRefusedError("Line not found or inactive")
+        throw new JoinRefusedError("Line not found")
+      }
+      if (!line.isActive) {
+        throw new JoinRefusedError("This line is paused. Try again when it reopens.")
       }
 
       // Check if line has opened yet

@@ -100,12 +100,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [activities, setActivities] = useState<ActivityItem[]>([])
   const [activitiesLoading, setActivitiesLoading] = useState(true)
   const [showAllActivity, setShowAllActivity] = useState(false)
-  const [showQrModal, setShowQrModal] = useState(false)
-  const [qrSvg, setQrSvg] = useState<string | null>(null)
-  const [qrLoading, setQrLoading] = useState(false)
   const [hasPayoutSetup, setHasPayoutSetup] = useState(false)
   const [stripeEnabled, setStripeEnabled] = useState(false)
-  const qrCanvasRef = useRef<HTMLCanvasElement>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
   const { requestPermission, sendNotification } = useNotifications()
@@ -299,7 +295,10 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const canJoin = !isInLine && !isCreator && !lineNotYetOpen && !lineClosed && !lineFull && !linePaused
   const userPosition = line?.positions.find((p) => p.user.id === session?.user?.id)
   const isRestaurant = line?.kind === "RESTAURANT"
-  const guests = line ? guestCount(line.positions) : 0
+  const waiting = line ? line.positions.filter((p) => !p.fulfilled) : []
+  const waitingCount = waiting.length
+  const waitingGuests = guestCount(waiting)
+  const servedCount = line ? line.positions.length - waitingCount : 0
   // Don't offer party sizes that can't fit. When the owner hides capacity
   // (maxCapacity is null for us) the server still refuses parties that don't fit.
   const maxPartySize =
@@ -487,7 +486,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       <ConfirmModal
         open={showDeleteConfirm}
         title="Delete Line"
-        message={`Are you sure you want to delete "${line.name}"? This will remove all positions and transaction history. This action cannot be undone.`}
+        message={`Delete "${line.name}"? Everyone in it is removed and emailed, any swap payment still on hold is refunded, and you lose access to its settlement page. Export it first if you need a record. This can't be undone.`}
         confirmLabel="Delete Line"
         variant="danger"
         isLoading={deleting}
@@ -544,14 +543,14 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
 
       <Card className="mb-6">
         <CardHeader>
-          <div className="flex items-start justify-between">
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-ink mb-2">{line.name}</h1>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 flex-1 basis-60">
+              <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-ink mb-2 break-words">{line.name}</h1>
               {line.description && (
                 <p className="text-ink/60">{line.description}</p>
               )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <ShareLine lineId={line.id} lineName={line.name} />
               {canJoin && line.kind === "RESTAURANT" && (
                 <label className="flex items-center gap-2 text-sm text-ink/60">
@@ -862,9 +861,10 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         <CardHeader>
           <div className="flex items-center justify-between flex-wrap gap-2">
             <h2 className="text-lg font-semibold tracking-tight text-ink">
-              Queue ({line.positions.length} {isRestaurant
-                ? `${line.positions.length === 1 ? "party" : "parties"}, ${guests} ${guests === 1 ? "guest" : "guests"}`
-                : line.positions.length === 1 ? "person" : "people"})
+              Queue ({waitingCount} {isRestaurant
+                ? `${waitingCount === 1 ? "party" : "parties"}, ${waitingGuests} ${waitingGuests === 1 ? "guest" : "guests"}`
+                : waitingCount === 1 ? "person" : "people"} waiting
+              {servedCount > 0 && `, ${servedCount} ${isRestaurant ? "seated" : "served"}`})
             </h2>
             {line.hasCapacityLimit && (
               <div className="flex items-center gap-3">

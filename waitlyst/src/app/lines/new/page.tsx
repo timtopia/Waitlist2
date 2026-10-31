@@ -8,6 +8,8 @@ import { Input, Textarea } from "@/components/ui/Input"
 import { Card, CardContent } from "@/components/ui/Card"
 import { useToast } from "@/components/ui/Toast"
 
+const DRAFT_KEY = "waitlyst:new-line-draft"
+
 export default function CreateLinePage() {
   return (
     <Suspense>
@@ -138,6 +140,32 @@ function CreateLineForm() {
     }
   }, [searchParams, router, addToast])
 
+  // Connecting a payout account leaves for Stripe and comes back here, which
+  // used to wipe everything typed so far. Keep a draft for the round trip.
+  const draft = {
+    name, description, isPublic, enableSchedule, opensAt, closesAt, maxCapacity, ownerFeePercent,
+    showProductDetails, productName, productImage, productPrice, productUrl, hideCapacity,
+    showResaleControls, allowResale, kind, maxAskingPrice, selectedTemplate,
+  }
+  useEffect(() => {
+    const saved = sessionStorage.getItem(DRAFT_KEY)
+    if (!saved) return
+    sessionStorage.removeItem(DRAFT_KEY)
+    try {
+      const d = JSON.parse(saved) as typeof draft
+      setName(d.name); setDescription(d.description); setIsPublic(d.isPublic)
+      setEnableSchedule(d.enableSchedule); setOpensAt(d.opensAt); setClosesAt(d.closesAt)
+      setMaxCapacity(d.maxCapacity); setOwnerFeePercent(d.ownerFeePercent)
+      setShowProductDetails(d.showProductDetails); setProductName(d.productName)
+      setProductImage(d.productImage); setProductPrice(d.productPrice); setProductUrl(d.productUrl)
+      setHideCapacity(d.hideCapacity); setShowResaleControls(d.showResaleControls)
+      setAllowResale(d.allowResale); setKind(d.kind); setMaxAskingPrice(d.maxAskingPrice)
+      setSelectedTemplate(d.selectedTemplate)
+    } catch {
+      // A damaged draft just means starting over
+    }
+  }, [])
+
   async function handleConnectSetup() {
     setConnectLoading(true)
     setConnectError(null)
@@ -149,6 +177,7 @@ function CreateLineForm() {
       })
       const data = await res.json()
       if (res.ok && data.url) {
+        sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
         window.location.href = data.url
       } else {
         setConnectError(data.error || "Failed to start payout setup")
@@ -293,6 +322,9 @@ function CreateLineForm() {
             <div className="flex items-center space-x-3">
               <button
                 type="button"
+                role="switch"
+                aria-checked={isPublic}
+                aria-label="Public line"
                 onClick={() => setIsPublic(!isPublic)}
                 className={`relative inline-flex h-6 w-11 items-center transition-colors ${
                   isPublic ? "bg-ink" : "bg-ink/20"
@@ -423,6 +455,9 @@ function CreateLineForm() {
             <div className="flex items-center space-x-3">
               <button
                 type="button"
+                role="switch"
+                aria-checked={enableSchedule}
+                aria-label="Schedule opening and closing times"
                 onClick={() => setEnableSchedule(!enableSchedule)}
                 className={`relative inline-flex h-6 w-11 items-center transition-colors ${
                   enableSchedule ? "bg-ink" : "bg-ink/20"
@@ -581,6 +616,9 @@ function CreateLineForm() {
                   <div className="flex items-center space-x-3">
                     <button
                       type="button"
+                      role="switch"
+                      aria-checked={allowResale}
+                      aria-label="Allow position swapping"
                       onClick={() => setAllowResale(!allowResale)}
                       className={`relative inline-flex h-6 w-11 items-center transition-colors ${
                         allowResale ? "bg-ink" : "bg-ink/20"
