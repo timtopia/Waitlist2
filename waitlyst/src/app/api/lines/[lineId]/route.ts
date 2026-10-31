@@ -8,11 +8,15 @@ import { rateLimit } from "@/lib/rate-limit"
 import { capacityUsed, capacityView } from "@/lib/capacity"
 import { auth } from "@/auth"
 import { lineViewer, shortName } from "@/lib/privacy"
+import { sendDueLineReminders } from "@/lib/line-reminders"
 import { createHash } from "crypto"
 import { sendEmail } from "@/lib/email"
 import { lineDeletedEmail } from "@/lib/email-templates"
 
 const getLimiter = rateLimit({ interval: 60_000, limit: 60 })
+
+/** Only check for unsent "it's open" emails this long after a line opens */
+const REMINDER_WINDOW_MS = 24 * 60 * 60 * 1000
 
 export const dynamic = "force-dynamic"
 
@@ -78,6 +82,12 @@ export async function GET(
       ? 0
       : await prisma.queueVisit.count({ where: { lineId, outcome: "SERVED" } })
     const capacity = capacityView(line, capacityUsed(line.kind, line.positions, servedAndCleared), viewerId)
+
+    // Someone looking at a line that has just opened is the quickest moment
+    // to email the people who asked to hear (the cron sweep is a backstop).
+    if (line.opensAt && line.opensAt <= new Date() && Date.now() - line.opensAt.getTime() < REMINDER_WINDOW_MS) {
+      runAfterResponse(() => sendDueLineReminders(lineId))
+    }
 
     // The owner sees full names. People in the line see each other as
     // "First L.". Anyone else sees the queue's shape but not who is in it.
