@@ -638,7 +638,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
       <ConfirmModal
         open={!!deleteConfirm}
         title="Delete Line"
-        message={`Delete "${deleteConfirm?.lineName || ""}"? Everyone in it is removed and emailed, any swap payment still on hold is refunded, and you lose access to its settlement page. Export it first if you need a record. This can't be undone.`}
+        message={`Delete "${deleteConfirm?.lineName || ""}"? Everyone in it is removed, any swap payment still on hold is refunded, and you lose access to its settlement page. Export it first if you need a record. This can't be undone.`}
         confirmLabel="Delete"
         variant="danger"
         isLoading={!!deleteConfirm && loadingAction === `delete-${deleteConfirm.lineId}`}

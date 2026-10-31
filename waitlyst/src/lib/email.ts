@@ -4,12 +4,15 @@ const resend = process.env.RESEND_API_KEY
   ? new Resend(process.env.RESEND_API_KEY)
   : null
 
-// Resend's shared onboarding@resend.dev sender only delivers to the Resend
-// account's own address, so real users get nothing until EMAIL_FROM is set
-// to an address on a domain verified in Resend.
-const FROM_ADDRESS = process.env.EMAIL_FROM || "Waitlyst <onboarding@resend.dev>"
-if (resend && !process.env.EMAIL_FROM) {
-  console.warn("EMAIL_FROM isn't set: emails go from onboarding@resend.dev and only reach the Resend account owner.")
+/**
+ * Email is on only when both RESEND_API_KEY and EMAIL_FROM are set.
+ * Resend's shared test sender only delivers to the Resend account's own
+ * address, so without a verified EMAIL_FROM nothing reaches real users --
+ * and anything that promises an email (reminders, "you'll be emailed") is
+ * hidden rather than promising what won't arrive.
+ */
+export function emailEnabled(): boolean {
+  return !!resend && !!process.env.EMAIL_FROM
 }
 
 /**
@@ -21,7 +24,7 @@ export async function sendEmail(
   subject: string,
   html: string
 ): Promise<boolean> {
-  if (!resend) {
+  if (!resend || !emailEnabled()) {
     return false
   }
 
@@ -29,7 +32,7 @@ export async function sendEmail(
     // The client reports API errors (unverified domain, bad address) in the
     // result rather than throwing
     const { error } = await resend.emails.send({
-      from: FROM_ADDRESS,
+      from: process.env.EMAIL_FROM!,
       to,
       subject,
       html,

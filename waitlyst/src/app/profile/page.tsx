@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import { emailEnabled } from "@/lib/email"
 import { buyerTotal } from "@/lib/fees"
 import { redirect } from "next/navigation"
 import { auth } from "@/auth"
@@ -122,6 +123,7 @@ export default async function ProfilePage() {
       }}
       stripeConnectOnboarded={user.stripeConnectOnboarded}
       emailNotifications={user.emailNotifications}
+      emailEnabled={emailEnabled()}
       stats={{
         linesCreated: ownedLineIds.length,
         activePositions,

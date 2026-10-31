@@ -40,6 +40,8 @@ interface Line {
   isFull: boolean
   /** Capacity used as the server counts it (see capacityUsed) */
   capacityUsed: number
+  /** Notification emails are set up on the server */
+  emailEnabled: boolean
   ownerFeePercent: number
   platformFeePercent: number
   announcement: string | null
@@ -404,12 +406,12 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
 
   // Whether they asked to be emailed when this scheduled line opens
   useEffect(() => {
-    if (!session || !lineNotYetOpen || isCreator) return
+    if (!session || !lineNotYetOpen || isCreator || !line?.emailEnabled) return
     fetch(`/api/lines/${lineId}/remind`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => setRemindMe(!!data?.subscribed))
       .catch(() => setRemindMe(false))
-  }, [session, lineNotYetOpen, isCreator, lineId])
+  }, [session, lineNotYetOpen, isCreator, lineId, line?.emailEnabled])
 
   async function toggleReminder(on = !remindMe) {
     setRemindBusy(true)
@@ -433,7 +435,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     if (searchParams.get("remind") !== "1" || !session || !line || remindAttempted.current) return
     remindAttempted.current = true
     router.replace(`/lines/${lineId}`, { scroll: false })
-    if (lineNotYetOpen && !isCreator) toggleReminder(true)
+    if (lineNotYetOpen && !isCreator && line.emailEnabled) toggleReminder(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, session, line])
 
@@ -547,7 +549,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       <ConfirmModal
         open={showDeleteConfirm}
         title="Delete Line"
-        message={`Delete "${line.name}"? Everyone in it is removed and emailed, any swap payment still on hold is refunded, and you lose access to its settlement page. Export it first if you need a record. This can't be undone.`}
+        message={`Delete "${line.name}"? Everyone in it is removed, any swap payment still on hold is refunded, and you lose access to its settlement page. Export it first if you need a record. This can't be undone.`}
         confirmLabel="Delete Line"
         variant="danger"
         isLoading={deleting}
@@ -644,11 +646,14 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                 </Button>
               )}
               {!session && status !== "loading" && lineNotYetOpen && !linePaused && (
-                <Button variant="secondary" onClick={() => signIn("google", { callbackUrl: `/lines/${lineId}?remind=1` })}>
-                  Sign in to get an email when it opens
+                <Button
+                  variant="secondary"
+                  onClick={() => signIn("google", { callbackUrl: line.emailEnabled ? `/lines/${lineId}?remind=1` : `/lines/${lineId}` })}
+                >
+                  {line.emailEnabled ? "Sign in to get an email when it opens" : "Sign in to get ready"}
                 </Button>
               )}
-              {session && lineNotYetOpen && !isCreator && !isInLine && remindMe !== null && (
+              {line.emailEnabled && session && lineNotYetOpen && !isCreator && !isInLine && remindMe !== null && (
                 <Button variant="secondary" onClick={() => toggleReminder()} isLoading={remindBusy}>
                   {remindMe ? "You'll get an email when it opens ✓" : "Email me when it opens"}
                 </Button>
@@ -1001,6 +1006,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             hideCapacity={!isCreator && line.hideCapacity}
             nowServingUserId={line.nowServingUserId}
             isRestaurant={isRestaurant}
+            emailEnabled={line.emailEnabled}
             onLeft={() => { leftHereRef.current = true }}
             responseWindowMinutes={line.responseWindowMinutes}
           />

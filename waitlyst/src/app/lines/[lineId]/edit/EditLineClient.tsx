@@ -194,7 +194,7 @@ export function EditLineClient({
       <ConfirmModal
         open={showDelete}
         title="Delete Line"
-        message={`Delete "${line.name}"? Everyone in it is removed and emailed, any swap payment still on hold is refunded, and you lose access to its settlement page. Export it first if you need a record. This can't be undone.`}
+        message={`Delete "${line.name}"? Everyone in it is removed, any swap payment still on hold is refunded, and you lose access to its settlement page. Export it first if you need a record. This can't be undone.`}
         confirmLabel="Delete Line"
         variant="danger"
         isLoading={deleting}

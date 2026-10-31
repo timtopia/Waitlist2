@@ -11,7 +11,7 @@ import { lineViewer, shortName } from "@/lib/privacy"
 import { expireMissedCalls } from "@/lib/missed-calls"
 import { sendDueLineReminders } from "@/lib/line-reminders"
 import { createHash } from "crypto"
-import { sendEmail } from "@/lib/email"
+import { emailEnabled, sendEmail } from "@/lib/email"
 import { lineDeletedEmail } from "@/lib/email-templates"
 
 const getLimiter = rateLimit({ interval: 60_000, limit: 60 })
@@ -97,7 +97,7 @@ export async function GET(
 
     // Someone looking at a line that has just opened is the quickest moment
     // to email the people who asked to hear (the cron sweep is a backstop).
-    if (line.opensAt && line.opensAt <= new Date() && Date.now() - line.opensAt.getTime() < REMINDER_WINDOW_MS) {
+    if (emailEnabled() && line.opensAt && line.opensAt <= new Date() && Date.now() - line.opensAt.getTime() < REMINDER_WINDOW_MS) {
       runAfterResponse(() => sendDueLineReminders(lineId))
     }
 
@@ -118,7 +118,13 @@ export async function GET(
           }
         })
 
-    return NextResponse.json({ ...line, positions, ...capacity, platformFeePercent: getPlatformFeePercent() }, {
+    return NextResponse.json({
+      ...line,
+      positions,
+      ...capacity,
+      platformFeePercent: getPlatformFeePercent(),
+      emailEnabled: emailEnabled(),
+    }, {
       headers: cacheHeaders,
     })
   } catch (error) {
