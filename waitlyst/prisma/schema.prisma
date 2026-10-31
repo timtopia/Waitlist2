@@ -44,6 +44,8 @@ model User {
   stripeConnectId        String?
   stripeConnectOnboarded Boolean        @default(false)
   emailNotifications     Boolean        @default(true)
+  // A guest the host added at the stand: no account, no email, can't sign in
+  isWalkIn               Boolean        @default(false)
   accounts               Account[]
   sessions               Session[]
   createdLines           Line[]         @relation("LineCreator")
@@ -99,21 +101,24 @@ model Line {
 }
 
 model LinePosition {
-  id          String    @id @default(cuid())
-  lineId      String
-  line        Line      @relation(fields: [lineId], references: [id], onDelete: Cascade)
-  userId      String
-  user        User      @relation(fields: [userId], references: [id])
-  position    Int // 1 = first in line
-  partySize   Int       @default(1) // Guests in this party; always 1 on STANDARD lines
-  askingPrice Float? // null = not for sale
-  lockedUntil DateTime? // Position is locked for swap until this time
-  lockedBy    String? // Transaction ID that locked this position
-  fulfilled   Boolean   @default(false) // Creator marks this when the person has purchased/received the item
-  calledAt    DateTime? // When the organizer last called them up
-  fulfilledAt DateTime? // When they were fulfilled
-  joinedAt    DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id            String    @id @default(cuid())
+  lineId        String
+  line          Line      @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  position      Int // 1 = first in line
+  partySize     Int       @default(1) // Guests in this party; always 1 on STANDARD lines
+  askingPrice   Float? // null = not for sale
+  lockedUntil   DateTime? // Position is locked for swap until this time
+  lockedBy      String? // Transaction ID that locked this position
+  fulfilled     Boolean   @default(false) // Creator marks this when the person has purchased/received the item
+  calledAt      DateTime? // When the organizer last called them up
+  note          String? // e.g. "high chair", "patio" -- seen by the guest and the owner only
+  quotedMinutes Int? // The host's own wait estimate for this party
+  quotedAt      DateTime? // When the host gave it
+  fulfilledAt   DateTime? // When they were fulfilled
+  joinedAt      DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@unique([lineId, userId]) // User can only be in a line once
   @@unique([lineId, position]) // Each position is unique per line
@@ -201,6 +206,7 @@ enum VisitOutcome {
   SERVED // Marked served before leaving the line
   LEFT // Left on their own
   REMOVED // Removed by the organizer without being served
+  NO_SHOW // Called (or due) but never turned up; removed by the organizer
 }
 
 enum LineKind {

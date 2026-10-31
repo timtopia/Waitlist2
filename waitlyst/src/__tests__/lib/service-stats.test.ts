@@ -23,6 +23,7 @@ describe("serviceStats", () => {
       served: 3,
       left: 1,
       removed: 1,
+      noShows: 0,
       waiting: 1,
       medianWaitMinutes: 20,
       servedLastHour: 2,

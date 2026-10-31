@@ -16,6 +16,7 @@ export interface ServiceStats {
   served: number
   left: number
   removed: number
+  noShows: number
   waiting: number
   /** Median time from joining to being served */
   medianWaitMinutes: number | null
@@ -53,6 +54,7 @@ export function serviceStats(visits: Visit[], positions: CurrentPosition[], now 
     served: visits.filter((v) => v.outcome === "SERVED").length + positions.filter((p) => p.fulfilled).length,
     left: visits.filter((v) => v.outcome === "LEFT").length,
     removed: visits.filter((v) => v.outcome === "REMOVED").length,
+    noShows: visits.filter((v) => v.outcome === "NO_SHOW").length,
     waiting: positions.filter((p) => !p.fulfilled).length,
     medianWaitMinutes,
     servedLastHour: servedTimes.filter((s) => now.getTime() - s.servedAt.getTime() < HOUR_MS).length,

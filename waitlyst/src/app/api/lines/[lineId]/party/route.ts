@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { lockLine } from "@/lib/queue-exit"
 import { capacityUnit, parsePartySize } from "@/lib/capacity"
+import { parseNote } from "@/lib/validate"
 
 /** A reason the change was refused, safe to show the user. */
 class PartyRefusedError extends Error {}
@@ -38,8 +39,14 @@ export async function PATCH(
         throw new PartyRefusedError("This line doesn't take party sizes")
       }
 
-      const partySize = parsePartySize(line.kind, body?.partySize)
-      if (typeof partySize !== "number") throw new PartyRefusedError(partySize.error)
+      // Either field may be sent alone
+      const sizeSent = body?.partySize !== undefined
+      const noteSent = body?.note !== undefined
+      if (!sizeSent && !noteSent) throw new PartyRefusedError("Nothing to change")
+      const parsedSize = sizeSent ? parsePartySize(line.kind, body.partySize) : null
+      if (parsedSize !== null && typeof parsedSize !== "number") throw new PartyRefusedError(parsedSize.error)
+      const note = noteSent ? parseNote(body.note) : null
+      if (note && typeof note === "object") throw new PartyRefusedError(note.error)
 
       const byHost = typeof body?.positionId === "string"
       if (byHost && line.createdById !== result.userId) {
@@ -54,8 +61,9 @@ export async function PATCH(
       if (mine.fulfilled) {
         throw new PartyRefusedError(byHost ? "That party has already been seated" : "You've already been seated")
       }
-      // The host picked this party for a table at this size
-      if (mine.calledAt && !byHost) {
+      const partySize = parsedSize ?? mine.partySize
+      // The host picked this party for a table at this size (notes can still change)
+      if (sizeSent && partySize !== mine.partySize && mine.calledAt && !byHost) {
         throw new PartyRefusedError("You've been called, so ask the host if your party size changed")
       }
 
@@ -72,11 +80,11 @@ export async function PATCH(
 
       return tx.linePosition.update({
         where: { id: mine.id },
-        data: { partySize },
+        data: { partySize, ...(noteSent && { note: note as string | null }) },
       })
     })
 
-    return NextResponse.json({ partySize: position.partySize })
+    return NextResponse.json({ partySize: position.partySize, note: position.note })
   } catch (error) {
     if (error instanceof PartyRefusedError) {
       return NextResponse.json({ error: error.message }, { status: 400 })

@@ -75,6 +75,10 @@ export function OwnerConsole({
   const [closeChoice, setCloseChoice] = useState(false)
   const closeDialogRef = useDialog(closeChoice, () => setCloseChoice(false))
   const [pace, setPace] = useState<Pace | null>(null)
+  const [walkInOpen, setWalkInOpen] = useState(false)
+  const [walkInName, setWalkInName] = useState("")
+  const [walkInSize, setWalkInSize] = useState(2)
+  const [walkInNote, setWalkInNote] = useState("")
   const [copied, setCopied] = useState(false)
 
   const waiting = positions.filter((p) => !p.fulfilled)
@@ -226,6 +230,31 @@ export function OwnerConsole({
     } finally {
       setBusy(null)
       onChanged()
+    }
+  }
+
+  /** Someone at the stand with no account or phone gets a place too */
+  async function handleAddWalkIn(e: React.FormEvent) {
+    e.preventDefault()
+    if (!walkInName.trim()) return
+    setBusy("walk-in")
+    try {
+      const { ok, data } = await post("walk-in", {
+        name: walkInName.trim(),
+        ...(isRestaurant && { partySize: walkInSize, note: walkInNote }),
+      })
+      if (ok) {
+        addToast(`Added ${walkInName.trim()} at #${data.position}`, "success")
+        setWalkInName("")
+        setWalkInNote("")
+        setWalkInSize(2)
+        setWalkInOpen(false)
+      } else {
+        addToast(data.error || "Failed to add the walk-in", "error")
+      }
+      onChanged()
+    } finally {
+      setBusy(null)
     }
   }
 
@@ -437,6 +466,61 @@ export function OwnerConsole({
             )}
           </p>
         ) : null}
+
+        {walkInOpen ? (
+          <form onSubmit={handleAddWalkIn} className="mt-3 flex flex-wrap items-end gap-2 border border-rule p-3">
+            <label className="flex flex-col text-xs text-ink/60">
+              Name
+              <input
+                autoFocus
+                value={walkInName}
+                onChange={(e) => setWalkInName(e.target.value)}
+                maxLength={50}
+                required
+                className="mt-1 border border-rule bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-ink"
+              />
+            </label>
+            {isRestaurant && (
+              <>
+                <label className="flex flex-col text-xs text-ink/60">
+                  Party of
+                  <select
+                    value={walkInSize}
+                    onChange={(e) => setWalkInSize(Number(e.target.value))}
+                    className="mt-1 border border-rule bg-white px-2 py-1.5 text-sm text-ink"
+                  >
+                    {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col text-xs text-ink/60 flex-1 min-w-[10rem]">
+                  Note (optional)
+                  <input
+                    value={walkInNote}
+                    onChange={(e) => setWalkInNote(e.target.value)}
+                    maxLength={140}
+                    placeholder="high chair, patio..."
+                    className="mt-1 border border-rule bg-white px-2 py-1.5 text-sm text-ink placeholder:text-ink/30 focus:outline-none focus:border-ink"
+                  />
+                </label>
+              </>
+            )}
+            <Button size="sm" type="submit" isLoading={busy === "walk-in"} disabled={!walkInName.trim()}>
+              Add to line
+            </Button>
+            <Button size="sm" variant="ghost" type="button" onClick={() => setWalkInOpen(false)}>
+              Cancel
+            </Button>
+          </form>
+        ) : (
+          <button
+            onClick={() => setWalkInOpen(true)}
+            className="mt-3 font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"
+          >
+            + Add walk-in
+          </button>
+        )}
 
         <div className="mt-3 flex items-center gap-3 font-mono text-xs uppercase tracking-widest text-ink/50 tabular-nums">
           <span>{waiting.length} waiting</span>

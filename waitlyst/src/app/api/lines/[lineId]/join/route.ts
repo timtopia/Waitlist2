@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { rateLimit } from "@/lib/rate-limit"
 import { lockLine } from "@/lib/queue-exit"
 import { capacityUnit, parsePartySize } from "@/lib/capacity"
+import { parseNote } from "@/lib/validate"
 
 /** A reason the join was refused, safe to show the user. */
 class JoinRefusedError extends Error {}
@@ -71,6 +72,8 @@ export async function POST(
       if (typeof partySize !== "number") {
         throw new JoinRefusedError(partySize.error)
       }
+      const note = line.kind === "RESTAURANT" ? parseNote(body?.note) : null
+      if (note && typeof note === "object") throw new JoinRefusedError(note.error)
 
       // Capacity counts guests, so a party only fits if all of it does
       if (line.maxCapacity) {
@@ -100,6 +103,7 @@ export async function POST(
           userId: result.userId,
           position: nextPosition,
           partySize,
+          note,
         },
         include: {
           user: { select: { id: true, name: true, image: true } },

@@ -20,10 +20,16 @@ interface Position {
   fulfilledAt?: string | null
   calledAt?: string | null
   partySize?: number
+  /** Only sent to the owner and to the party itself */
+  note?: string | null
+  quotedMinutes?: number | null
+  quotedAt?: string | null
   user: {
     id: string
     name: string | null
     image: string | null
+    /** Added by the host at the stand; has no account */
+    isWalkIn?: boolean
   }
 }
 
@@ -46,6 +52,9 @@ interface BuyConfirm {
   position: number
   askingPrice: number
 }
+
+/** Waits a host typically quotes at the stand, in minutes */
+const QUOTE_CHOICES = [5, 10, 15, 20, 25, 30, 45, 60, 75, 90, 120]
 
 function formatTimeLeft(iso: string): string {
   const minutes = Math.max(0, (new Date(iso).getTime() - Date.now()) / 60000)
@@ -442,7 +451,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
     }
   }
 
-  async function handleRemoveWithAction(action: "payout" | "refund") {
+  async function handleRemoveWithAction(action: "payout" | "refund", noShow = false) {
     if (!removalModal) return
 
     setLoadingAction(`remove-${removalModal.positionId}`)
@@ -453,6 +462,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
         body: JSON.stringify({
           positionId: removalModal.positionId,
           action,
+          ...(noShow && { noShow: true }),
         }),
       })
       if (res.ok) {
@@ -470,7 +480,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
         } else if (data.refundedCount > 0) {
           addToast(`Removed and refunded ${formatCurrency(data.refundedAmount)} to the buyer`, "success")
         } else {
-          addToast("Person removed from line", "success")
+          addToast(noShow ? "Marked as a no-show and removed" : "Person removed from line", "success")
         }
         setRemovalModal(null)
         onRefresh()
@@ -518,6 +528,46 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
       } else {
         const data = await res.json()
         addToast(data.error || "Failed to update your party size", "error")
+      }
+    } finally {
+      setLoadingAction(null)
+    }
+  }
+
+  async function handleNote(note: string, positionId?: string) {
+    setLoadingAction(positionId ? `note-${positionId}` : "note")
+    try {
+      const res = await fetch(`/api/lines/${lineId}/party`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(positionId ? { note, positionId } : { note }),
+      })
+      if (res.ok) {
+        addToast(note.trim() ? "Note saved" : "Note removed", "success")
+        onRefresh()
+      } else {
+        const data = await res.json()
+        addToast(data.error || "Failed to save the note", "error")
+      }
+    } finally {
+      setLoadingAction(null)
+    }
+  }
+
+  async function handleQuote(positionId: string, minutes: number | null) {
+    setLoadingAction(`quote-${positionId}`)
+    try {
+      const res = await fetch(`/api/lines/${lineId}/quote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ positionId, minutes }),
+      })
+      if (res.ok) {
+        addToast(minutes ? `Quoted about ${minutes} min` : "Quote cleared", "success")
+        onRefresh()
+      } else {
+        const data = await res.json()
+        addToast(data.error || "Failed to save the quote", "error")
       }
     } finally {
       setLoadingAction(null)
@@ -696,6 +746,16 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                   Remove and refund {formatCurrency(removalModal.transactionInfo.refundableAmount)}
                 </Button>
               )}
+              {/* Recorded separately from other removals; purchases are kept */}
+              <Button
+                variant="secondary"
+                onClick={() => handleRemoveWithAction("payout", true)}
+                isLoading={loadingAction === `remove-${removalModal.positionId}`}
+                disabled={removalModal.loading}
+                className="w-full"
+              >
+                No-show{removalModal.transactionInfo && removalModal.transactionInfo.refundableCount > 0 ? " (keep purchase)" : ""}
+              </Button>
               <Button
                 variant="ghost"
                 onClick={() => setRemovalModal(null)}
@@ -956,6 +1016,9 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                         {isCurrentUser && (
                           <span className="text-sm text-accent">(You)</span>
                         )}
+                        {pos.user.isWalkIn && (
+                          <span className="font-mono text-xs uppercase tracking-widest text-ink/50">Walk-in</span>
+                        )}
                         {isFront && !pos.fulfilled && !pos.calledAt && (
                           <span className="text-sm text-green-700">(Next up)</span>
                         )}
@@ -1004,6 +1067,42 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                         ) : (
                           <p className="text-xs text-ink/60 mt-0.5">Party of {pos.partySize ?? 1}</p>
                         )
+                      )}
+                      {isRestaurant && !pos.fulfilled && (isCurrentUser || isCreator) && (
+                        <NoteField
+                          key={`${pos.id}-${pos.note ?? ""}`}
+                          initial={pos.note ?? ""}
+                          label={isCurrentUser ? "Note for the host" : `Note for ${pos.user.name || "this party"}`}
+                          saving={loadingAction === (isCurrentUser ? "note" : `note-${pos.id}`)}
+                          onSave={(note) => handleNote(note, isCurrentUser ? undefined : pos.id)}
+                        />
+                      )}
+                      {isRestaurant && pos.fulfilled && pos.note && (isCurrentUser || isCreator) && (
+                        <p className="text-xs text-ink/50 mt-0.5">Note: {pos.note}</p>
+                      )}
+                      {isCreator && !isCurrentUser && !pos.fulfilled && (
+                        <label className="flex items-center gap-1.5 text-xs text-ink/60 mt-0.5">
+                          Quote
+                          <select
+                            value={pos.quotedMinutes ?? ""}
+                            onChange={(e) => handleQuote(pos.id, e.target.value ? Number(e.target.value) : null)}
+                            disabled={loadingAction === `quote-${pos.id}`}
+                            className="border border-rule bg-white px-1 py-0.5 text-ink"
+                            aria-label={`Quoted wait for ${pos.user.name || "this party"}`}
+                          >
+                            <option value="">--</option>
+                            {[...new Set([...QUOTE_CHOICES, ...(pos.quotedMinutes ? [pos.quotedMinutes] : [])])]
+                              .sort((a, b) => a - b)
+                              .map((m) => (
+                                <option key={m} value={m}>{m} min</option>
+                              ))}
+                          </select>
+                          {pos.quotedAt && (
+                            <span className="text-ink/40">
+                              at {new Date(pos.quotedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                            </span>
+                          )}
+                        </label>
                       )}
                       {isLocked && (
                         <p className="font-mono text-xs uppercase tracking-widest text-amber-600 flex items-center gap-1.5 mt-0.5">
@@ -1383,5 +1482,42 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
         </div>
       )}
     </div>
+  )
+}
+
+/** A short note for the host, saved when the field loses focus or on Enter. */
+function NoteField({
+  initial,
+  label,
+  saving,
+  onSave,
+}: {
+  initial: string
+  label: string
+  saving: boolean
+  onSave: (note: string) => void
+}) {
+  const [value, setValue] = useState(initial)
+  const save = () => {
+    if (value.trim() !== initial.trim()) onSave(value)
+  }
+  return (
+    <input
+      type="text"
+      value={value}
+      maxLength={140}
+      placeholder="Add a note (high chair, patio...)"
+      aria-label={label}
+      disabled={saving}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={save}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault()
+          ;(e.target as HTMLInputElement).blur()
+        }
+      }}
+      className="mt-1 w-full max-w-xs border border-rule bg-white px-2 py-1 text-xs text-ink placeholder:text-ink/30 focus:outline-none focus:border-ink disabled:opacity-50"
+    />
   )
 }

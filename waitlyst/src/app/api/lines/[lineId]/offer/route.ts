@@ -80,10 +80,18 @@ export async function POST(
     // Get the target user's position
     const toPosition = await prisma.linePosition.findUnique({
       where: { lineId_userId: { lineId, userId: toUserId } },
+      include: { user: { select: { isWalkIn: true } } },
     })
     if (!toPosition) {
       return NextResponse.json(
         { error: "Target user is not in this line" },
+        { status: 400 }
+      )
+    }
+    // Added by the host at the stand: no account, so no way to see or accept an offer
+    if (toPosition.user?.isWalkIn) {
+      return NextResponse.json(
+        { error: "The person in front of you was added by the host and can't take offers." },
         { status: 400 }
       )
     }

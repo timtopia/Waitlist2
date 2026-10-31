@@ -36,7 +36,9 @@ export interface RemovalResult {
 export async function removeByOrganizer(
   lineId: string,
   positionId: string,
-  action: "payout" | "refund"
+  action: "payout" | "refund",
+  /** Record it as a no-show rather than a plain removal */
+  noShow = false
 ): Promise<RemovalResult> {
   const position = await prisma.linePosition.findUnique({ where: { id: positionId, lineId } })
   if (!position) throw new PositionNotFoundError()
@@ -53,7 +55,7 @@ export async function removeByOrganizer(
   const { abandonedSessionId } = await prisma.$transaction(async (tx) => {
     const current = await tx.linePosition.findUnique({ where: { id: positionId, lineId } })
     if (!current) throw new PositionNotFoundError()
-    return exitQueue(tx, current, "REMOVED")
+    return exitQueue(tx, current, noShow ? "NO_SHOW" : "REMOVED")
   })
   await expireCheckoutSession(abandonedSessionId)
 
@@ -120,7 +122,7 @@ export async function lockLine(tx: Prisma.TransactionClient, lineId: string) {
 export async function exitQueue(
   tx: Prisma.TransactionClient,
   position: LinePosition,
-  reason: "LEFT" | "REMOVED"
+  reason: "LEFT" | "REMOVED" | "NO_SHOW"
 ): Promise<{ abandonedSessionId: string | null }> {
   const { lineId, userId } = position
   await lockLine(tx, lineId)
