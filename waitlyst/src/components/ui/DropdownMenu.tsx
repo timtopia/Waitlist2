@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
 export interface DropdownMenuItem {
   label: string
@@ -13,10 +13,21 @@ interface DropdownMenuProps {
   items: DropdownMenuItem[]
   /** Optional separator indices -- insert a divider before these items */
   separatorBefore?: number[]
+  /** What the "⋮" button is called for screen readers */
+  label?: string
 }
 
-export function DropdownMenu({ items, separatorBefore = [] }: DropdownMenuProps) {
+export function DropdownMenu({ items, separatorBefore = [], label = "More actions" }: DropdownMenuProps) {
   const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false)
+    }
+    document.addEventListener("keydown", onKeyDown)
+    return () => document.removeEventListener("keydown", onKeyDown)
+  }, [open])
 
   return (
     <div className="relative">
@@ -26,6 +37,10 @@ export function DropdownMenu({ items, separatorBefore = [] }: DropdownMenuProps)
           setOpen(!open)
         }}
         className="p-2 text-ink/40 hover:text-ink hover:bg-ink/5 transition-colors"
+        aria-label={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title={label}
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
@@ -37,13 +52,14 @@ export function DropdownMenu({ items, separatorBefore = [] }: DropdownMenuProps)
             className="fixed inset-0 z-10"
             onClick={() => setOpen(false)}
           />
-          <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-ink py-1 z-20">
+          <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-ink py-1 z-20" role="menu" aria-label={label}>
             {items.map((item, index) => (
               <div key={index}>
                 {separatorBefore.includes(index) && (
                   <div className="border-t border-rule my-1" />
                 )}
                 <button
+                  role="menuitem"
                   onClick={() => {
                     item.onClick()
                     setOpen(false)

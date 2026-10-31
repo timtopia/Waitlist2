@@ -6,6 +6,8 @@ import { calculateFees } from "@/lib/fees"
 import { rateLimit } from "@/lib/rate-limit"
 import { tradeBlocker } from "@/lib/trading"
 
+const MAX_ABANDONED_CHECKOUTS_PER_HOUR = 3
+
 const checkoutLimiter = rateLimit({ interval: 60_000, limit: 10 })
 
 const LOCK_DURATION_MS = 30 * 60 * 1000 // 30 minutes (Stripe minimum for checkout session expiry)
@@ -64,6 +66,25 @@ export async function POST(
       return NextResponse.json(
         { error: "You are already first in line" },
         { status: 400 }
+      )
+    }
+
+    // Starting a checkout locks both spots until Stripe's session expires
+    // (at least 30 minutes), so someone could keep the person ahead from
+    // selling by starting checkouts and abandoning them. A few tries are
+    // normal; past that, wait.
+    const recentAbandoned = await prisma.transaction.count({
+      where: {
+        lineId,
+        buyerId: result.userId,
+        status: "FAILED",
+        createdAt: { gt: new Date(Date.now() - 60 * 60 * 1000) },
+      },
+    })
+    if (recentAbandoned >= MAX_ABANDONED_CHECKOUTS_PER_HOUR) {
+      return NextResponse.json(
+        { error: "You've started and abandoned several purchases here recently. Please try again later." },
+        { status: 429 }
       )
     }
 
@@ -260,8 +281,11 @@ export async function POST(
             data: { status: "FAILED" },
           })
         })
-        const msg = stripeError instanceof Error ? stripeError.message : "Payment service error"
-        return NextResponse.json({ error: msg }, { status: 502 })
+        // Stripe's own message can be technical or leak account details
+        return NextResponse.json(
+          { error: "We couldn't start the payment. Please try again in a moment." },
+          { status: 502 }
+        )
       }
 
       // Store Stripe session ID on the transaction

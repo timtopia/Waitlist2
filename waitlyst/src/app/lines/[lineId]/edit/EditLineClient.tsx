@@ -19,6 +19,9 @@ interface LineData {
   maxCapacity: number | null
   ownerFeePercent: number
   currentCount: number
+  kind: "STANDARD" | "RESTAURANT"
+  /** Capacity used as the server counts it: waiting guests on restaurant lines */
+  capacityUsed: number
   productName: string | null
   productImage: string | null
   productPrice: number | null
@@ -45,6 +48,7 @@ export function EditLineClient({
 }) {
   const router = useRouter()
   const { addToast } = useToast()
+  const isRestaurant = line.kind === "RESTAURANT"
 
   const [name, setName] = useState(line.name)
   const [description, setDescription] = useState(line.description || "")
@@ -84,8 +88,8 @@ export function EditLineClient({
       return
     }
 
-    if (maxCapacity && parseInt(maxCapacity) < line.currentCount) {
-      setError(`Capacity cannot be less than current participants (${line.currentCount})`)
+    if (maxCapacity && parseInt(maxCapacity) < line.capacityUsed) {
+      setError(`Capacity cannot be less than the ${line.capacityUsed} ${isRestaurant ? "guests waiting" : "spots already taken"}`)
       return
     }
 
@@ -182,7 +186,7 @@ export function EditLineClient({
       <ConfirmModal
         open={showDelete}
         title="Delete Line"
-        message={`Are you sure you want to delete "${line.name}"? This will remove all positions and transaction history. This action cannot be undone.`}
+        message={`Delete "${line.name}"? Everyone in it is removed and emailed, any swap payment still on hold is refunded, and you lose access to its settlement page. Export it first if you need a record. This can't be undone.`}
         confirmLabel="Delete Line"
         variant="danger"
         isLoading={deleting}
@@ -196,7 +200,7 @@ export function EditLineClient({
             <div>
               <h1 className="text-2xl font-semibold tracking-tight">Edit Line</h1>
               <p className="text-sm text-ink/60 mt-1">
-                {line.currentCount} {line.currentCount === 1 ? "person" : "people"} currently in line
+                {line.currentCount} {isRestaurant ? (line.currentCount === 1 ? "party" : "parties") : line.currentCount === 1 ? "person" : "people"} currently in line
               </p>
             </div>
             <Button
@@ -232,6 +236,9 @@ export function EditLineClient({
             <div className="flex items-center space-x-3">
               <button
                 type="button"
+                role="switch"
+                aria-checked={isPublic}
+                aria-label="Public line"
                 onClick={() => setIsPublic(!isPublic)}
                 className={`relative inline-flex h-6 w-11 items-center transition-colors ${
                   isPublic ? "bg-ink" : "bg-rule"
@@ -255,6 +262,9 @@ export function EditLineClient({
             <div className="flex items-center space-x-3">
               <button
                 type="button"
+                role="switch"
+                aria-checked={isActive}
+                aria-label="Line open (not paused)"
                 onClick={() => setIsActive(!isActive)}
                 className={`relative inline-flex h-6 w-11 items-center transition-colors ${
                   isActive ? "bg-green-700" : "bg-rule"
@@ -277,21 +287,21 @@ export function EditLineClient({
             {/* Capacity */}
             <div>
               <label htmlFor="maxCapacity" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
-                Max Capacity (optional)
+                {isRestaurant ? "Max Guests (optional)" : "Max Capacity (optional)"}
               </label>
               <input
                 id="maxCapacity"
                 type="number"
-                min={line.currentCount || 1}
+                min={line.capacityUsed || 1}
                 placeholder="Unlimited"
                 value={maxCapacity}
                 onChange={(e) => setMaxCapacity(e.target.value)}
                 className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
               />
               <p className="text-xs text-ink/50 mt-1">
-                {line.currentCount > 0
-                  ? `Must be at least ${line.currentCount} (current participants)`
-                  : "Leave empty for unlimited spots"}
+                {line.capacityUsed > 0
+                  ? `Must be at least ${line.capacityUsed} (${isRestaurant ? "guests waiting" : "spots already taken"})`
+                  : isRestaurant ? "Total guests across all parties. Leave empty for no limit" : "Leave empty for unlimited spots"}
               </p>
               {maxCapacity && (
                 <label className="flex items-center gap-2 mt-2">
@@ -329,15 +339,14 @@ export function EditLineClient({
               />
               <p className="text-xs text-ink/50 mt-1">
                 Percentage you earn when someone swaps a position.
-                {ownerFeePercent && parseFloat(ownerFeePercent) > 0 ? (
+                {ownerFeePercent && parseFloat(ownerFeePercent) > 0 && (
                   <span className="text-accent ml-1">
-                    e.g. on a $10 swap, you earn ${(10 * parseFloat(ownerFeePercent) / 100).toFixed(2)}
+                    e.g. on a $10 swap, you earn ${(10 * parseFloat(ownerFeePercent) / 100).toFixed(2)}.
                   </span>
-                ) : (
-                  <span> A {platformFeePercent}% platform fee also applies to each swap.</span>
                 )}
+                <span> A {platformFeePercent}% platform fee also applies to each swap.</span>
               </p>
-              {parseFloat(ownerFeePercent) !== line.ownerFeePercent && (
+              {(parseFloat(ownerFeePercent) || 0) !== line.ownerFeePercent && (
                 <p className="text-xs text-amber-600 mt-1">
                   Changing the fee will update all displayed prices immediately. Purchases already in progress will keep their original fees.
                 </p>
@@ -348,6 +357,9 @@ export function EditLineClient({
             <div className="flex items-center space-x-3">
               <button
                 type="button"
+                role="switch"
+                aria-checked={enableSchedule}
+                aria-label="Schedule opening and closing times"
                 onClick={() => setEnableSchedule(!enableSchedule)}
                 className={`relative inline-flex h-6 w-11 items-center transition-colors ${
                   enableSchedule ? "bg-ink" : "bg-rule"
@@ -500,6 +512,9 @@ export function EditLineClient({
                   <div className="flex items-center space-x-3">
                     <button
                       type="button"
+                      role="switch"
+                      aria-checked={allowResale}
+                      aria-label="Allow position swapping"
                       onClick={() => setAllowResale(!allowResale)}
                       className={`relative inline-flex h-6 w-11 items-center transition-colors ${
                         allowResale ? "bg-ink" : "bg-rule"
@@ -520,6 +535,18 @@ export function EditLineClient({
                           ? "People can swap their positions with the person next to them"
                           : "Swapping is disabled — no one can swap positions"}
                       </p>
+                      {allowResale && (
+                        <p className="text-xs text-ink/50 mt-1">
+                          {isRestaurant
+                            ? "Paid swaps are held until the buyer is seated. Seating them collects the payment; before then you can release it."
+                            : "Paid swaps are final: the buyer is charged and the seller is paid out right away, with no refunds later."}
+                        </p>
+                      )}
+                      {line.allowResale && !allowResale && (
+                        <p className="text-xs text-amber-600 mt-1">
+                          Saving takes down every spot listed for sale and cancels pending offers.
+                        </p>
+                      )}
                     </div>
                   </div>
                   {allowResale && (

@@ -133,7 +133,7 @@ describe("QueueDisplay", () => {
     render(<QueueDisplay lineId="line-1" positions={positions} onRefresh={mockOnRefresh} />)
 
     const nextUp = screen.getByText("(Next up)")
-    expect(nextUp.closest("p")).toHaveTextContent("Bob")
+    expect(nextUp.parentElement).toHaveTextContent("Bob")
   })
 
   it("shows Offer to Swap button for position directly in front", () => {

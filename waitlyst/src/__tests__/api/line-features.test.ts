@@ -17,6 +17,7 @@ const mockPrisma = {
     findUnique: vi.fn(),
     findMany: vi.fn(),
     update: vi.fn(),
+    count: vi.fn().mockResolvedValue(0),
   },
   $transaction: vi.fn((fn) => fn(mockPrisma)),
 }
@@ -433,6 +434,29 @@ describe("POST /api/lines/[lineId]/checkout", () => {
 
     const data = await response.json()
     expect(data.error).toContain("already first")
+  })
+
+  it("refuses a new checkout after several abandoned ones in the last hour", async () => {
+    // Its own user: the route also rate-limits checkouts per user per minute
+    mockAuth.mockResolvedValue({ user: { id: "griefing-buyer" } })
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", isActive: true, allowResale: true })
+    mockPrisma.linePosition.findUnique.mockResolvedValue({
+      id: "pos-buyer",
+      lineId: "line-1",
+      userId: "buyer-1",
+      position: 2,
+      lockedUntil: null,
+    })
+    mockPrisma.transaction.count.mockResolvedValueOnce(3)
+
+    const { POST } = await import("@/app/api/lines/[lineId]/checkout/route")
+    const response = await POST(
+      new Request("http://localhost/api/lines/line-1/checkout", { method: "POST" }),
+      { params: Promise.resolve({ lineId: "line-1" }) }
+    )
+
+    expect(response.status).toBe(429)
+    expect(mockPrisma.linePosition.findFirst).not.toHaveBeenCalled()
   })
 
   it("should return 400 if no one is in front", async () => {

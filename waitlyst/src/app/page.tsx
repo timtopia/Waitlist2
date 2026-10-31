@@ -14,7 +14,7 @@ const steps = [
   {
     n: "02",
     title: "People take a number",
-    body: "Everyone who joins gets a numbered spot and can wait wherever they like. The line moves in real time, with no refreshing and no guessing.",
+    body: "Everyone who joins gets a numbered spot and can wait wherever they like. The line keeps itself up to date while you wait, so there's no need to refresh.",
   },
   {
     n: "03",
@@ -32,7 +32,7 @@ const useCases = [
 
 const features = [
   ["Scheduled lines", "Open and close times with live countdowns"],
-  ["Real-time movement", "Joins, leaves, and trades appear instantly"],
+  ["Live updates", "Joins, leaves, and trades show up within seconds"],
   ["Turn alerts", "Guests get a heads-up when it's their turn"],
   ["Capacity limits", "Cap the line and show how full it is"],
   ["Paid swaps", "Let people trade spots through Stripe, with an optional cut for you"],

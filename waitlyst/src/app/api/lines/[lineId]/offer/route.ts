@@ -26,7 +26,10 @@ export async function POST(
   }
 
   const { lineId } = await params
-  const { toUserId, amount } = await req.json()
+  const body = await req.json()
+  const toUserId = body?.toUserId
+  // Stored to the cent, so every place that shows or charges it agrees
+  const amount = typeof body?.amount === "number" ? Math.round(body.amount * 100) / 100 : body?.amount
 
   // Validate inputs
   if (!toUserId || typeof toUserId !== "string") {

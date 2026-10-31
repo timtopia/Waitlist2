@@ -303,8 +303,11 @@ export async function PATCH(
           })
         })
         await revertOffer()
-        const msg = stripeError instanceof Error ? stripeError.message : "Payment service error"
-        return NextResponse.json({ error: msg }, { status: 502 })
+        // Stripe's own message can be technical or leak account details
+        return NextResponse.json(
+          { error: "We couldn't start the payment. Please try again in a moment." },
+          { status: 502 }
+        )
       }
     }
 

@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useDialog } from "@/lib/use-dialog"
 import { useRouter } from "next/navigation"
 import { useState, useEffect, useMemo, useRef } from "react"
 import { Card, CardContent, CardHeader } from "@/components/ui/Card"
@@ -106,6 +107,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
   const [loadingAction, setLoadingAction] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [statsModal, setStatsModal] = useState<StatsModal | null>(null)
+  const statsDialogRef = useDialog(!!statsModal, () => setStatsModal(null))
   const [deleteConfirm, setDeleteConfirm] = useState<{ lineId: string; lineName: string } | null>(null)
   const [removeConfirm, setRemoveConfirm] = useState<{ lineId: string; positionId: string; name: string } | null>(null)
   const [onboardingDismissed, setOnboardingDismissed] = useState(false)
@@ -501,7 +503,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
       {/* Stats Modal */}
       {statsModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white border border-ink p-6 max-w-md w-full mx-4">
+          <div ref={statsDialogRef} className="bg-white border border-ink p-6 max-w-md w-full mx-4" role="dialog" aria-modal="true" aria-label={`${statsModal.lineName} stats`}>
             <h3 className="text-lg font-semibold tracking-tight mb-4">
               {statsModal.lineName} - Line Stats
             </h3>
@@ -636,7 +638,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
       <ConfirmModal
         open={!!deleteConfirm}
         title="Delete Line"
-        message={`Are you sure you want to delete "${deleteConfirm?.lineName || ""}"? This cannot be undone.`}
+        message={`Delete "${deleteConfirm?.lineName || ""}"? Everyone in it is removed and emailed, any swap payment still on hold is refunded, and you lose access to its settlement page. Export it first if you need a record. This can't be undone.`}
         confirmLabel="Delete"
         variant="danger"
         isLoading={!!deleteConfirm && loadingAction === `delete-${deleteConfirm.lineId}`}

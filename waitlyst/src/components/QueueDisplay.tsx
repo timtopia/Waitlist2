@@ -1,6 +1,7 @@
 "use client"
 
 import Image from "next/image"
+import { useDialog } from "@/lib/use-dialog"
 import { Button } from "./ui/Button"
 import { ConfirmModal } from "./ui/ConfirmModal"
 import { useToast } from "./ui/Toast"
@@ -112,6 +113,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
   const { addToast } = useToast()
   const [loadingAction, setLoadingAction] = useState<string | null>(null)
   const [removalModal, setRemovalModal] = useState<RemovalModal | null>(null)
+  const removalDialogRef = useDialog(!!removalModal, () => setRemovalModal(null))
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
   // Seating collects held payments and serving emails the person, and
   // neither can be undone, so the host confirms first.
@@ -126,6 +128,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
   const [offerAmount, setOfferAmount] = useState("")
   const [offerLoading, setOfferLoading] = useState(false)
   const [buyConfirm, setBuyConfirm] = useState<BuyConfirm | null>(null)
+  const buyDialogRef = useDialog(!!buyConfirm, () => setBuyConfirm(null))
 
   // Listing-for-sale state (the current user's own position)
   const [listPriceFormOpen, setListPriceFormOpen] = useState(false)
@@ -136,6 +139,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showBatchConfirm, setShowBatchConfirm] = useState(false)
+  const batchDialogRef = useDialog(showBatchConfirm, () => setShowBatchConfirm(false))
   const [batchLoading, setBatchLoading] = useState(false)
 
   const fetchWaitTime = useCallback(async () => {
@@ -174,11 +178,16 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
 
   // Poll for offer status changes (e.g. the person in front accepting your
   // offer) even when nothing else on the page has changed.
+  // Only people in the line can send or receive offers, and a hidden tab
+  // doesn't need them (each poll scans the line's positions).
+  const viewerInLine = !!session?.user?.id && positions.some((p) => p.user.id === session.user.id)
   useEffect(() => {
-    if (!session?.user?.id) return
-    const interval = setInterval(fetchOffers, 10000)
+    if (!viewerInLine) return
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") fetchOffers()
+    }, 10000)
     return () => clearInterval(interval)
-  }, [fetchOffers, session?.user?.id])
+  }, [fetchOffers, viewerInLine])
 
   /** What a buyer actually pays for a listed position, including owner + platform fees. */
   function buyerTotal(askingPrice: number): number {
@@ -599,7 +608,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
       {/* Removal Modal */}
       {removalModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white border border-ink p-6 max-w-md w-full mx-4">
+          <div ref={removalDialogRef} className="bg-white border border-ink p-6 max-w-md w-full mx-4" role="dialog" aria-modal="true" aria-label={`Remove ${removalModal.userName || "this person"}`}>
             <h3 className="text-lg font-semibold tracking-tight text-ink mb-4">
               Remove {removalModal.userName || "this person"}?
             </h3>
@@ -704,7 +713,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
         const breakdown = feeBreakdown(buyConfirm.askingPrice)
         return (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white border border-ink p-6 max-w-sm w-full mx-4" role="dialog" aria-label="Confirm purchase">
+            <div ref={buyDialogRef} className="bg-white border border-ink p-6 max-w-sm w-full mx-4" role="dialog" aria-modal="true" aria-label="Confirm purchase">
               <h3 className="text-lg font-semibold tracking-tight text-ink mb-2">
                 Buy spot #{buyConfirm.position}?
               </h3>
@@ -783,7 +792,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
       {/* Batch Remove Confirm Modal */}
       {showBatchConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white border border-ink p-6 max-w-sm w-full mx-4">
+          <div ref={batchDialogRef} className="bg-white border border-ink p-6 max-w-sm w-full mx-4" role="dialog" aria-modal="true" aria-label="Remove selected people">
             <h3 className="text-lg font-semibold tracking-tight text-ink mb-2">
               Remove {selectedIds.size} {selectedIds.size === 1 ? "person" : "people"}?
             </h3>
@@ -938,16 +947,23 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                       </div>
                     )}
                     <div className="min-w-0">
-                      <p className="font-medium text-ink truncate">
-                        {pos.user.name || "Anonymous"}
+                      {/* Only the name truncates; the labels wrap onto the next
+                          line on narrow screens instead of being cut off. */}
+                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
+                        <span className="font-medium text-ink truncate max-w-full">
+                          {pos.user.name || (isCreator ? "Anonymous" : "Someone")}
+                        </span>
                         {isCurrentUser && (
-                          <span className="ml-2 text-sm text-accent">(You)</span>
+                          <span className="text-sm text-accent">(You)</span>
                         )}
-                        {isFront && !pos.fulfilled && (
-                          <span className="ml-2 text-sm text-green-700">(Next up)</span>
+                        {isFront && !pos.fulfilled && !pos.calledAt && (
+                          <span className="text-sm text-green-700">(Next up)</span>
+                        )}
+                        {pos.calledAt && !pos.fulfilled && (
+                          <span className="font-mono text-xs uppercase tracking-widest text-green-700">Called</span>
                         )}
                         {pos.askingPrice != null && !isCurrentUser && (
-                          <span className="ml-2 font-mono text-xs uppercase tracking-widest text-accent">
+                          <span className="font-mono text-xs uppercase tracking-widest text-accent">
                             Listed {formatCurrency(pos.askingPrice)}
                           </span>
                         )}
@@ -956,17 +972,17 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                           !isDirectlyInFront &&
                           currentUserPosition &&
                           pos.position < currentUserPosition.position && (
-                            <span className="ml-2 text-xs text-ink/40 normal-case">
+                            <span className="text-xs text-ink/40 normal-case">
                               (only the person directly behind can buy this)
                             </span>
                           )}
                         {pos.fulfilled && (
-                          <span className="ml-2 inline-flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-green-700">
+                          <span className="inline-flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-green-700">
                             <span className="w-1.5 h-1.5 bg-green-600" aria-hidden />
                             {isRestaurant ? "Seated" : "Served"}
                           </span>
                         )}
-                      </p>
+                      </div>
                       {isRestaurant && (
                         // Guests change their own size until they're called;
                         // the host can change any party's size until it's seated.
@@ -1134,6 +1150,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                             max={maxAskingPrice ?? undefined}
                             step="0.01"
                             placeholder="0.00"
+                            aria-label="Asking price for your spot"
                             value={listPriceAmount}
                             onChange={(e) => setListPriceAmount(e.target.value)}
                             className={`w-full sm:w-28 pl-6 pr-2 py-1 border bg-white font-mono tabular-nums text-sm focus:outline-none focus:border-ink ${
@@ -1282,6 +1299,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                             max={maxAskingPrice ?? undefined}
                             step="0.01"
                             placeholder="0.00"
+                            aria-label="Your offer"
                             value={offerAmount}
                             onChange={(e) => setOfferAmount(e.target.value)}
                             className={`w-full sm:w-28 pl-6 pr-2 py-1 border bg-white font-mono tabular-nums text-sm focus:outline-none focus:border-ink ${

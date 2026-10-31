@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useDialog } from "@/lib/use-dialog"
 import { useCallback, useEffect, useState } from "react"
 import { Button } from "./ui/Button"
 import { ConfirmModal } from "./ui/ConfirmModal"
@@ -72,6 +73,7 @@ export function OwnerConsole({
   const [earnings, setEarnings] = useState<Earnings | null>(null)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [closeChoice, setCloseChoice] = useState(false)
+  const closeDialogRef = useDialog(closeChoice, () => setCloseChoice(false))
   const [pace, setPace] = useState<Pace | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -158,7 +160,7 @@ export function OwnerConsole({
     try {
       const { ok, data } = await post("pause", { isActive: !isActive })
       if (ok) {
-        addToast(data.isActive ? "Line resumed -- people can join again" : "Line paused -- no new joins or swaps", "success")
+        addToast(data.isActive ? "Line resumed -- people can join again" : "Line paused -- no new joins or swaps, and it's hidden from Browse until you resume", "success")
       } else {
         addToast(data.error || "Failed to update line", "error")
       }
@@ -272,7 +274,7 @@ export function OwnerConsole({
 
       {closeChoice && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true" aria-label="Close the line">
-          <div className="bg-white border border-ink max-w-md w-full p-6">
+          <div ref={closeDialogRef} className="bg-white border border-ink max-w-md w-full p-6">
             <h3 className="text-lg font-semibold tracking-tight text-ink mb-2">
               {isRestaurant ? "Close for the night?" : "Close the line?"}
             </h3>

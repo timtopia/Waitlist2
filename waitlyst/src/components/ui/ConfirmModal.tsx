@@ -1,6 +1,8 @@
 "use client"
 
+import { useId } from "react"
 import { Button } from "./Button"
+import { useDialog } from "@/lib/use-dialog"
 
 interface ConfirmModalProps {
   open: boolean
@@ -25,11 +27,22 @@ export function ConfirmModal({
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
+  const titleId = useId()
+  const messageId = useId()
+  const dialogRef = useDialog(open, () => {
+    if (!isLoading) onCancel()
+  })
+
   if (!open) return null
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div
+        ref={dialogRef}
+        role={variant === "danger" ? "alertdialog" : "dialog"}
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={messageId}
         className="bg-white border border-ink max-w-md w-full animate-scale-in"
         onClick={(e) => e.stopPropagation()}
       >
@@ -39,8 +52,8 @@ export function ConfirmModal({
               {variant === "danger" && (
                 <p className="font-mono text-xs uppercase tracking-widest text-accent mb-2">Warning</p>
               )}
-              <h3 className="text-lg font-semibold tracking-tight text-ink">{title}</h3>
-              <p className="mt-2 text-sm text-ink/60">{message}</p>
+              <h3 id={titleId} className="text-lg font-semibold tracking-tight text-ink">{title}</h3>
+              <p id={messageId} className="mt-2 text-sm text-ink/60">{message}</p>
             </div>
           </div>
         </div>
@@ -52,6 +65,7 @@ export function ConfirmModal({
             variant={variant === "danger" ? "danger" : "primary"}
             onClick={onConfirm}
             isLoading={isLoading}
+            data-autofocus
           >
             {confirmLabel}
           </Button>
