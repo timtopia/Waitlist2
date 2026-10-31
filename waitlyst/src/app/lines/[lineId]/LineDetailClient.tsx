@@ -15,6 +15,8 @@ import { DropdownMenu } from "@/components/ui/DropdownMenu"
 import { useToast } from "@/components/ui/Toast"
 import { useLineUpdates, LineUpdateEvent } from "@/hooks/useLineUpdates"
 import { useNotifications } from "@/hooks/useNotifications"
+import { useWakeLock } from "@/hooks/useWakeLock"
+import { alertTurn, primeChime } from "@/lib/attention"
 import { MemberStatusCard, NotificationState } from "@/components/MemberStatusCard"
 import { OwnerConsole } from "@/components/OwnerConsole"
 import { timeAgo } from "@/lib/format"
@@ -270,6 +272,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       }
       if (change.kind === "removed") setDeparture({ wasServed: change.wasServed })
       if (change.kind === "called" || change.kind === "next") setDeparture(null)
+      if (change.kind === "called") alertTurn()
       const alert = describeMemberEvent(change, next.name)
       if (!alert) continue
       sendNotification(alert.title, { body: alert.body, tag: `waitlyst-${lineId}` })
@@ -281,6 +284,17 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
 
   const memberStatus = line ? getMemberStatus(line, session?.user?.id) : null
   const nearFront = !!memberStatus && memberStatus.phase !== "served" && memberStatus.ahead <= 2
+
+  // Near the front: keep the screen on so the page keeps checking, and get
+  // the chime ready (it needs a tap first) for when they're called.
+  const awaitingTurn = !!memberStatus && memberStatus.phase !== "served" && (nearFront || memberStatus.phase === "called")
+  useWakeLock(awaitingTurn)
+  const inLine = !!memberStatus
+  useEffect(() => {
+    if (!inLine) return
+    document.addEventListener("pointerdown", primeChime, { once: true })
+    return () => document.removeEventListener("pointerdown", primeChime)
+  }, [inLine])
 
   useLineUpdates(lineId, handleLineUpdate, {
     intervalMs: nearFront ? 10000 : 30000,
@@ -297,7 +311,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     }
   }, [tabTitle])
 
-  const isInLine = !!memberStatus
+  const isInLine = inLine
   const isCreator = line?.createdBy.id === session?.user?.id
 
   const now = new Date()

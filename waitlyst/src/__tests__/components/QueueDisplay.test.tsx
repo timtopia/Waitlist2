@@ -153,6 +153,50 @@ describe("QueueDisplay", () => {
     expect(screen.getByText("Offer to Swap")).toBeInTheDocument()
   })
 
+  it("doesn't offer a swap with someone who has been called up", () => {
+    ;(useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      data: { user: { id: "user-2" } },
+      status: "authenticated",
+    })
+
+    // Restaurant hosts call parties out of order, so "now serving" may be someone else
+    const called = mockPositions.map((p) => (p.id === "pos-1" ? { ...p, calledAt: new Date().toISOString() } : p))
+    render(
+      <QueueDisplay
+        lineId="line-1"
+        positions={called}
+        onRefresh={mockOnRefresh}
+        nowServingUserId="user-3"
+      />
+    )
+
+    expect(screen.queryByText("Offer to Swap")).not.toBeInTheDocument()
+  })
+
+  it("shows the host how long each party has waited and flags ones past their quote", () => {
+    ;(useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      data: { user: { id: "creator-1" } },
+      status: "authenticated",
+    })
+
+    const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString()
+    render(
+      <QueueDisplay
+        lineId="line-1"
+        positions={[
+          { ...mockPositions[0], joinedAt: minutesAgo(75), quotedMinutes: 15, quotedAt: minutesAgo(30) },
+          { ...mockPositions[1], joinedAt: minutesAgo(12) },
+        ]}
+        onRefresh={mockOnRefresh}
+        isCreator={true}
+        isRestaurant={true}
+      />
+    )
+
+    expect(screen.getByText(/waiting 1 hr 15 min/)).toHaveTextContent("past quote")
+    expect(screen.getByText("waiting 12 min")).toBeInTheDocument()
+  })
+
   it("shows offer input when Offer to Swap is clicked", () => {
     ;(useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       data: { user: { id: "user-2" } },
