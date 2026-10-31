@@ -1,5 +1,5 @@
 import { prisma } from "./prisma"
-import { sendEmail } from "./email"
+import { emailEnabled, sendEmail } from "./email"
 import { lineOpeningEmail } from "./email-templates"
 import { getBaseUrl } from "./stripe"
 
@@ -11,6 +11,8 @@ import { getBaseUrl } from "./stripe"
  * Returns how many emails were sent.
  */
 export async function sendDueLineReminders(lineId?: string): Promise<number> {
+  // Leave reminders unsent (not used up) until email is set up
+  if (!emailEnabled()) return 0
   const now = new Date()
   const due = await prisma.lineReminder.findMany({
     where: {

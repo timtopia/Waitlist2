@@ -5,7 +5,11 @@ const mockPrisma = {
 }
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }))
 const sendEmail = vi.fn().mockResolvedValue(true)
-vi.mock("@/lib/email", () => ({ sendEmail: (...args: unknown[]) => sendEmail(...args) }))
+let emailOn = true
+vi.mock("@/lib/email", () => ({
+  sendEmail: (...args: unknown[]) => sendEmail(...args),
+  emailEnabled: () => emailOn,
+}))
 vi.mock("@/lib/stripe", () => ({ getBaseUrl: () => "https://waitlyst.test" }))
 
 const reminder = (id: string, overrides: Record<string, unknown> = {}) => ({
@@ -18,7 +22,17 @@ const reminder = (id: string, overrides: Record<string, unknown> = {}) => ({
 describe("sendDueLineReminders", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    emailOn = true
     mockPrisma.lineReminder.updateMany.mockResolvedValue({ count: 1 })
+  })
+
+  it("leaves reminders untouched while email isn't set up", async () => {
+    emailOn = false
+    const { sendDueLineReminders } = await import("@/lib/line-reminders")
+
+    expect(await sendDueLineReminders()).toBe(0)
+    expect(mockPrisma.lineReminder.findMany).not.toHaveBeenCalled()
+    expect(mockPrisma.lineReminder.updateMany).not.toHaveBeenCalled()
   })
 
   it("emails each person once the line has opened", async () => {

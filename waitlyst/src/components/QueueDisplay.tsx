@@ -110,6 +110,8 @@ interface QueueDisplayProps {
   isRestaurant?: boolean
   /** Called after the viewer leaves the line from this page */
   onLeft?: () => void
+  /** Notification emails are set up, so serving someone emails them */
+  emailEnabled?: boolean
   /** Minutes a called person has to show up (owner sees the countdown) */
   responseWindowMinutes?: number | null
 }
@@ -123,7 +125,7 @@ function formatWaitTime(minutes: number): string {
   return `~${Math.round(hours)} hrs`
 }
 
-export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, feeInfo, isPaused = false, hasPayoutSetup = false, stripeEnabled = false, allowResale = true, maxAskingPrice = null, hideCapacity = false, nowServingUserId = null, isRestaurant = false, onLeft, responseWindowMinutes = null }: QueueDisplayProps) {
+export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, feeInfo, isPaused = false, hasPayoutSetup = false, stripeEnabled = false, allowResale = true, maxAskingPrice = null, hideCapacity = false, nowServingUserId = null, isRestaurant = false, onLeft, responseWindowMinutes = null, emailEnabled = false }: QueueDisplayProps) {
   const { data: session } = useSession()
   const { addToast } = useToast()
   const [loadingAction, setLoadingAction] = useState<string | null>(null)
@@ -831,7 +833,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
         message={fulfillConfirm
           ? isRestaurant
             ? `Seat ${fulfillConfirm.name}? Any swap payment of theirs on hold is collected now. This can't be undone.`
-            : `Mark ${fulfillConfirm.name} as served? They'll get a "you've been served" email. This can't be undone.`
+            : `Mark ${fulfillConfirm.name} as served?${emailEnabled ? ` They'll get a "you've been served" email.` : ""} This can't be undone.`
           : ""}
         confirmLabel={isRestaurant ? "Seated" : "Served"}
         isLoading={!!fulfillConfirm && loadingAction === `fulfill-${fulfillConfirm.positionId}`}

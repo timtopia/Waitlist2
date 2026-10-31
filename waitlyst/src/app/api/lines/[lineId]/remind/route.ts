@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
+import { emailEnabled } from "@/lib/email"
 
 /** Whether the signed-in viewer asked to be emailed when this line opens. */
 export async function GET(
@@ -34,6 +35,9 @@ export async function POST(
   if (!line) return NextResponse.json({ error: "Line not found" }, { status: 404 })
   if (line.createdById === result.userId) {
     return NextResponse.json({ error: "This is your own line" }, { status: 400 })
+  }
+  if (!emailEnabled()) {
+    return NextResponse.json({ error: "Email reminders aren't available yet" }, { status: 503 })
   }
   if (!line.opensAt || line.opensAt <= new Date()) {
     return NextResponse.json({ error: "This line is already open" }, { status: 400 })

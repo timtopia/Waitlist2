@@ -49,6 +49,8 @@ interface ProfileClientProps {
   recentTransactions: Transaction[]
   stripeConnectOnboarded: boolean
   emailNotifications: boolean
+  /** Hide the email setting until the server can actually send email */
+  emailEnabled?: boolean
 }
 
 const statusColors: Record<string, string> = {
@@ -58,7 +60,7 @@ const statusColors: Record<string, string> = {
   REFUNDED: "text-ink/40",
 }
 
-export function ProfileClient({ user, stats, recentTransactions, stripeConnectOnboarded, emailNotifications }: ProfileClientProps) {
+export function ProfileClient({ user, stats, recentTransactions, stripeConnectOnboarded, emailNotifications, emailEnabled = true }: ProfileClientProps) {
   const [displayName, setDisplayName] = useState(user.name || "Anonymous")
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(user.name || "")
@@ -502,6 +504,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
       </Card>
 
       {/* Notification Settings */}
+      {emailEnabled && (
       <Card className="mb-6">
         <CardContent className="py-5">
           <h2 className="font-mono text-xs uppercase tracking-widest text-ink/60 mb-3">Notification Settings</h2>
@@ -530,6 +533,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* Transaction History */}
       <Card>

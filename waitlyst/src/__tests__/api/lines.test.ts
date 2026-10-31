@@ -72,6 +72,7 @@ vi.mock("@/lib/stripe", () => ({
 const mockSendEmail = vi.fn().mockResolvedValue(true)
 vi.mock("@/lib/email", () => ({
   sendEmail: (...args: unknown[]) => mockSendEmail(...args),
+  emailEnabled: () => true,
 }))
 
 // Mock settle-transactions
