@@ -89,6 +89,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [joining, setJoining] = useState(false)
   const [partySize, setPartySize] = useState(2)
   const [joinNote, setJoinNote] = useState("")
+  const [remindMe, setRemindMe] = useState<boolean | null>(null)
+  const [remindBusy, setRemindBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notificationPermission, setNotificationPermission] = useState<NotificationState>("unsupported")
   const notificationsEnabled = notificationPermission === "granted"
@@ -396,6 +398,41 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, session, line, canJoin])
 
+  // Whether they asked to be emailed when this scheduled line opens
+  useEffect(() => {
+    if (!session || !lineNotYetOpen || isCreator) return
+    fetch(`/api/lines/${lineId}/remind`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setRemindMe(!!data?.subscribed))
+      .catch(() => setRemindMe(false))
+  }, [session, lineNotYetOpen, isCreator, lineId])
+
+  async function toggleReminder(on = !remindMe) {
+    setRemindBusy(true)
+    try {
+      const res = await fetch(`/api/lines/${lineId}/remind`, { method: on ? "POST" : "DELETE" })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        setRemindMe(data.subscribed)
+        addToast(data.subscribed ? "We'll email you when it opens" : "Reminder cancelled", "success")
+      } else {
+        addToast(data.error || "Couldn't update the reminder", "error")
+      }
+    } finally {
+      setRemindBusy(false)
+    }
+  }
+
+  // Finish "sign in to get an email" after the sign-in redirect
+  const remindAttempted = useRef(false)
+  useEffect(() => {
+    if (searchParams.get("remind") !== "1" || !session || !line || remindAttempted.current) return
+    remindAttempted.current = true
+    router.replace(`/lines/${lineId}`, { scroll: false })
+    if (lineNotYetOpen && !isCreator) toggleReminder(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, session, line])
+
   async function handleDelete() {
     setDeleting(true)
     try {
@@ -588,8 +625,13 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                 </Button>
               )}
               {!session && status !== "loading" && lineNotYetOpen && !linePaused && (
-                <Button variant="secondary" onClick={() => signIn("google", { callbackUrl: `/lines/${lineId}` })}>
-                  Sign in to get ready
+                <Button variant="secondary" onClick={() => signIn("google", { callbackUrl: `/lines/${lineId}?remind=1` })}>
+                  Sign in to get an email when it opens
+                </Button>
+              )}
+              {session && lineNotYetOpen && !isCreator && !isInLine && remindMe !== null && (
+                <Button variant="secondary" onClick={() => toggleReminder()} isLoading={remindBusy}>
+                  {remindMe ? "You'll get an email when it opens ✓" : "Email me when it opens"}
                 </Button>
               )}
               {isCreator && (

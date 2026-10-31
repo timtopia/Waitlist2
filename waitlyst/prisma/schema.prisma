@@ -51,6 +51,7 @@ model User {
   createdLines           Line[]         @relation("LineCreator")
   positions              LinePosition[]
   queueVisits            QueueVisit[]
+  lineReminders          LineReminder[]
   createdAt              DateTime       @default(now())
 }
 
@@ -72,6 +73,7 @@ model Line {
   createdBy        User           @relation("LineCreator", fields: [createdById], references: [id])
   positions        LinePosition[]
   visits           QueueVisit[]
+  reminders        LineReminder[]
   isActive         Boolean        @default(true)
   isPublic         Boolean        @default(true)
   opensAt          DateTime? // When the line opens for joining (null = open immediately)
@@ -212,4 +214,18 @@ enum VisitOutcome {
 enum LineKind {
   STANDARD
   RESTAURANT
+}
+
+/// Someone asked to be emailed when a scheduled line opens
+model LineReminder {
+  id        String    @id @default(cuid())
+  lineId    String
+  line      Line      @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  sentAt    DateTime? // When the "it's open" email went out
+
+  @@unique([lineId, userId])
+  @@index([sentAt])
 }

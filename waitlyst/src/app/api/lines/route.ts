@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server"
+import { sendDueLineReminders } from "@/lib/line-reminders"
+import { runAfterResponse } from "@/lib/after-response"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { rateLimit } from "@/lib/rate-limit"
@@ -127,7 +129,14 @@ export async function POST(req: Request) {
   }
 }
 
+let lastReminderSweep = 0
+
 export async function GET(req: Request) {
+  if (Date.now() - lastReminderSweep > 60_000) {
+    lastReminderSweep = Date.now()
+    runAfterResponse(() => sendDueLineReminders())
+  }
+
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "anonymous"
   const { success: allowed } = browseLimiter.check(ip)
   if (!allowed) {

@@ -141,18 +141,17 @@ export function swapAcceptedEmail(
 export function lineOpeningEmail(
   userName: string,
   lineName: string,
-  opensAt: string,
   lineUrl: string
 ): { subject: string; html: string } {
   const safeName = escapeHtml(userName)
   const safeLine = escapeHtml(lineName)
-  const subject = `${lineName} opens in 30 minutes`
+  const subject = `${lineName} is open`
   const body = `
-    <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">Get ready, ${safeName}!</h2>
-    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;"><strong>${safeLine}</strong> opens at <strong>${opensAt}</strong>.</p>
-    <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Make sure you're ready to join when it opens.</p>
+    <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">It's open, ${safeName}!</h2>
+    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;"><strong>${safeLine}</strong> is now taking people.</p>
+    <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Join now to get a good place in line.</p>
   `
-  return { subject, html: wrapTemplate(subject, body, "View Line", lineUrl) }
+  return { subject, html: wrapTemplate(subject, body, "Join the Line", lineUrl) }
 }
 
 export function fulfilledEmail(
