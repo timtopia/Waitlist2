@@ -127,6 +127,13 @@ describe("diffMemberStatus", () => {
       .toEqual([{ kind: "removed", wasServed: false }])
   })
 
+  it("tells a seller their spot sold when they move back a place", () => {
+    const prev = makeLine([{ id: "a" }, { id: "me" }, { id: "buyer" }])
+    const next = makeLine([{ id: "a" }, { id: "buyer" }, { id: "me" }])
+    expect(diffMemberStatus(prev, next, "me")).toEqual([{ kind: "sold", to: 3 }])
+    expect(describeMemberEvent({ kind: "sold", to: 3 }, "Drop")).toMatchObject({ title: "Your spot sold", toast: true })
+  })
+
   it("reports pause and resume", () => {
     const active = makeLine([{ id: "a" }, { id: "me" }])
     const paused = makeLine([{ id: "a" }, { id: "me" }], { isActive: false })

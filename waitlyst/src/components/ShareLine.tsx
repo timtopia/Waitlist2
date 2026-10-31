@@ -92,9 +92,11 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
+    // A sign for the counter: the code, the line's name and what to do
     const pngSize = 600
+    const captionHeight = 120
     canvas.width = pngSize
-    canvas.height = pngSize
+    canvas.height = pngSize + captionHeight
 
     const img = new Image()
     const svgBlob = new Blob([qrSvg], { type: "image/svg+xml;charset=utf-8" })
@@ -102,8 +104,16 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
 
     img.onload = () => {
       ctx.fillStyle = "#ffffff"
-      ctx.fillRect(0, 0, pngSize, pngSize)
+      ctx.fillRect(0, 0, pngSize, pngSize + captionHeight)
       ctx.drawImage(img, 0, 0, pngSize, pngSize)
+      ctx.fillStyle = "#111111"
+      ctx.textAlign = "center"
+      ctx.font = "bold 34px sans-serif"
+      const title = lineName.length > 32 ? `${lineName.slice(0, 31)}…` : lineName
+      ctx.fillText(title, pngSize / 2, pngSize + 40)
+      ctx.font = "24px sans-serif"
+      ctx.fillStyle = "#555555"
+      ctx.fillText("Scan to join the line", pngSize / 2, pngSize + 85)
       URL.revokeObjectURL(svgUrl)
 
       canvas.toBlob((blob) => {

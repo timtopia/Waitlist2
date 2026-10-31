@@ -95,6 +95,40 @@ describe("PATCH /api/lines/[lineId]/party", () => {
     expect(mockPrisma.linePosition.update).not.toHaveBeenCalled()
   })
 
+  it("lets the host change a called party's size, without the guest capacity check", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
+    mockPrisma.line.findUnique.mockResolvedValue({ ...restaurant, createdById: "owner-1" })
+    mockPrisma.linePosition.findUnique.mockResolvedValue({ ...myParty, calledAt: new Date() })
+
+    const { PATCH } = await import("@/app/api/lines/[lineId]/party/route")
+    const res = await PATCH(
+      new Request("http://localhost/api/lines/line-1/party", {
+        method: "PATCH",
+        body: JSON.stringify({ partySize: 5, positionId: myParty.id }),
+      }),
+      { params: Promise.resolve({ lineId: "line-1" }) }
+    )
+
+    expect(res.status).toBe(200)
+    expect(mockPrisma.linePosition.update).toHaveBeenCalledWith({ where: { id: myParty.id }, data: { partySize: 5 } })
+  })
+
+  it("won't let a guest change someone else's party", async () => {
+    mockPrisma.line.findUnique.mockResolvedValue({ ...restaurant, createdById: "owner-1" })
+
+    const { PATCH } = await import("@/app/api/lines/[lineId]/party/route")
+    const res = await PATCH(
+      new Request("http://localhost/api/lines/line-1/party", {
+        method: "PATCH",
+        body: JSON.stringify({ partySize: 5, positionId: "someone-else" }),
+      }),
+      { params: Promise.resolve({ lineId: "line-1" }) }
+    )
+
+    expect(res.status).toBe(400)
+    expect(mockPrisma.linePosition.update).not.toHaveBeenCalled()
+  })
+
   it("rejects sizes that aren't a whole number from 1 to 20", async () => {
     mockPrisma.line.findUnique.mockResolvedValue(restaurant)
     mockPrisma.linePosition.findUnique.mockResolvedValue(myParty)

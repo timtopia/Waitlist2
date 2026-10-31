@@ -5,6 +5,7 @@ import {
   abandonPendingTransaction,
   isCheckoutAuthorized,
   recordPaymentIntent,
+  payOutstandingPayouts,
 } from "@/lib/stripe"
 import { prisma } from "@/lib/prisma"
 import type Stripe from "stripe"
@@ -160,6 +161,23 @@ export async function POST(req: Request) {
           console.warn(`Webhook: hold lapsed before collection for transaction ${transaction.id}`)
         }
 
+        break
+      }
+
+      case "account.updated": {
+        // Payout setup used to be recorded only when the person came back to
+        // our return page; closing the tab after finishing on Stripe left it
+        // unrecorded and their held payouts unsent. (Needs the endpoint to
+        // receive events from connected accounts.)
+        const account = event.data.object
+        if (!account.charges_enabled || !account.payouts_enabled) break
+        const user = await prisma.user.findFirst({
+          where: { stripeConnectId: account.id, stripeConnectOnboarded: false },
+          select: { id: true },
+        })
+        if (!user) break
+        await prisma.user.update({ where: { id: user.id }, data: { stripeConnectOnboarded: true } })
+        await payOutstandingPayouts(user.id)
         break
       }
 

@@ -61,6 +61,8 @@ export type MemberEvent =
   | { kind: "next" }
   | { kind: "served" }
   | { kind: "moved"; from: number; to: number }
+  /** Moved back a place: someone bought their spot */
+  | { kind: "sold"; to: number }
   | { kind: "removed"; wasServed: boolean }
   | { kind: "announcement"; text: string }
   | { kind: "paused" }
@@ -88,6 +90,10 @@ export function diffMemberStatus(prev: StatusLine, next: StatusLine, userId: str
     }
     if (after.position < before.position && after.phase === "waiting") {
       events.push({ kind: "moved", from: before.position, to: after.position })
+    }
+    // The only way back is a swap: the person behind bought this spot
+    if (after.position > before.position && after.phase !== "served") {
+      events.push({ kind: "sold", to: after.position })
     }
     if (prev.isActive && !next.isActive) events.push({ kind: "paused" })
     if (!prev.isActive && next.isActive) events.push({ kind: "resumed" })
@@ -125,6 +131,8 @@ export function describeMemberEvent(event: MemberEvent, lineName: string): Membe
       // Every shuffle in a long line would be noise; only alert near the front.
       if (event.to > MOVED_ALERT_THRESHOLD) return null
       return { title: `You're #${event.to}`, body: `You moved up in ${lineName}.`, toast: false, tone: "info" }
+    case "sold":
+      return { title: "Your spot sold", body: `Someone bought your place in ${lineName}. You're now #${event.to}.`, toast: true, tone: "success" }
     case "removed":
       return event.wasServed
         ? { title: "All done", body: `You've left ${lineName} after being served.`, toast: true, tone: "info" }

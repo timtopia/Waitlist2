@@ -17,6 +17,7 @@ interface Position {
   lockedUntil: string | null
   fulfilled?: boolean
   fulfilledAt?: string | null
+  calledAt?: string | null
   partySize?: number
   user: {
     id: string
@@ -112,6 +113,9 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
   const [loadingAction, setLoadingAction] = useState<string | null>(null)
   const [removalModal, setRemovalModal] = useState<RemovalModal | null>(null)
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
+  // Seating collects held payments and serving emails the person, and
+  // neither can be undone, so the host confirms first.
+  const [fulfillConfirm, setFulfillConfirm] = useState<{ positionId: string; name: string } | null>(null)
   const [waitTimeData, setWaitTimeData] = useState<{ estimatedMinutesPerPerson: number | null; basedOn: number } | null>(null)
   const [connectLoading, setConnectLoading] = useState(false)
 
@@ -490,13 +494,14 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
     }
   }
 
-  async function handlePartySize(partySize: number) {
-    setLoadingAction("party-size")
+  async function handlePartySize(partySize: number, positionId?: string) {
+    setLoadingAction(positionId ? `party-size-${positionId}` : "party-size")
     try {
       const res = await fetch(`/api/lines/${lineId}/party`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ partySize }),
+        // The host names the party; a guest changes their own
+        body: JSON.stringify(positionId ? { partySize, positionId } : { partySize }),
       })
       if (res.ok) {
         addToast(`Updated to a party of ${partySize}`, "success")
@@ -523,7 +528,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
         const payoutMsg = data.payoutsReleased > 0
           ? ` (${data.payoutsReleased} payout${data.payoutsReleased === 1 ? "" : "s"} released)`
           : ""
-        addToast(`Marked as fulfilled${payoutMsg}`, "success")
+        addToast(`${isRestaurant ? "Marked as seated" : "Marked as served"}${payoutMsg}`, "success")
         if (data.payoutsFailed > 0) {
           addToast(
             `${data.payoutsFailed} payment${data.payoutsFailed === 1 ? "" : "s"} couldn't be collected -- review on the settlement page.`,
@@ -744,6 +749,25 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
         )
       })()}
 
+      {/* Seat / serve confirmation */}
+      <ConfirmModal
+        open={!!fulfillConfirm}
+        title={isRestaurant ? "Mark as seated" : "Mark as served"}
+        message={fulfillConfirm
+          ? isRestaurant
+            ? `Seat ${fulfillConfirm.name}? Any swap payment of theirs on hold is collected now. This can't be undone.`
+            : `Mark ${fulfillConfirm.name} as served? They'll get a "you've been served" email. This can't be undone.`
+          : ""}
+        confirmLabel={isRestaurant ? "Seated" : "Served"}
+        isLoading={!!fulfillConfirm && loadingAction === `fulfill-${fulfillConfirm.positionId}`}
+        onConfirm={async () => {
+          if (!fulfillConfirm) return
+          await handleFulfill(fulfillConfirm.positionId)
+          setFulfillConfirm(null)
+        }}
+        onCancel={() => setFulfillConfirm(null)}
+      />
+
       {/* Leave Confirmation */}
       <ConfirmModal
         open={showLeaveConfirm}
@@ -939,20 +963,22 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                         {pos.fulfilled && (
                           <span className="ml-2 inline-flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-green-700">
                             <span className="w-1.5 h-1.5 bg-green-600" aria-hidden />
-                            Fulfilled
+                            {isRestaurant ? "Seated" : "Served"}
                           </span>
                         )}
                       </p>
                       {isRestaurant && (
-                        isCurrentUser && !pos.fulfilled ? (
+                        // Guests change their own size until they're called;
+                        // the host can change any party's size until it's seated.
+                        !pos.fulfilled && ((isCurrentUser && !pos.calledAt) || (isCreator && !isCurrentUser)) ? (
                           <label className="flex items-center gap-1.5 text-xs text-ink/60 mt-0.5">
                             Party of
                             <select
                               value={pos.partySize ?? 1}
-                              onChange={(e) => handlePartySize(Number(e.target.value))}
-                              disabled={loadingAction === "party-size"}
+                              onChange={(e) => handlePartySize(Number(e.target.value), isCurrentUser ? undefined : pos.id)}
+                              disabled={loadingAction === (isCurrentUser ? "party-size" : `party-size-${pos.id}`)}
                               className="border border-rule bg-white px-1 py-0.5 text-ink"
-                              aria-label="Your party size"
+                              aria-label={isCurrentUser ? "Your party size" : `Party size for ${pos.user.name || "this party"}`}
                             >
                               {Array.from({ length: MAX_PARTY_SIZE }, (_, i) => i + 1).map((n) => (
                                 <option key={n} value={n}>{n}</option>
@@ -993,17 +1019,17 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                         <button
                           onClick={() => handleCall(pos.id)}
                           disabled={loadingAction === `call-${pos.id}`}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 font-mono text-xs uppercase tracking-widest text-accent border border-rule hover:border-accent transition-colors disabled:opacity-50"
+                          className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[2.25rem] font-mono text-xs uppercase tracking-widest text-accent border border-rule hover:border-accent transition-colors disabled:opacity-50"
                           title={`Call this party of ${pos.partySize ?? 1}`}
                         >
-                          {pos.user.id === nowServingUserId ? "Call again" : "Call"}
+                          {pos.calledAt || pos.user.id === nowServingUserId ? "Call again" : "Call"}
                         </button>
                       )}
                       {isCreator && !isCurrentUser && !pos.fulfilled && (
                         <button
-                          onClick={() => handleFulfill(pos.id)}
+                          onClick={() => setFulfillConfirm({ positionId: pos.id, name: pos.user.name || (isRestaurant ? "this party" : "this person") })}
                           disabled={loadingAction === `fulfill-${pos.id}`}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 font-mono text-xs uppercase tracking-widest text-green-700 border border-rule hover:border-green-700 transition-colors disabled:opacity-50"
+                          className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[2.25rem] font-mono text-xs uppercase tracking-widest text-green-700 border border-rule hover:border-green-700 transition-colors disabled:opacity-50"
                           title={isRestaurant ? "Mark as seated" : "Mark as fulfilled"}
                         >
                           {loadingAction === `fulfill-${pos.id}` && (
@@ -1152,7 +1178,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                     {stripeEnabled && !hasPayoutSetup && (pos.askingPrice != null || listPriceFormOpen) && (
                       <div className="mt-2 flex items-center justify-between gap-3 bg-accent/5 border border-accent/30 px-3 py-2">
                         <p className="text-xs text-ink/70">
-                          You haven&apos;t connected a payout account yet -- without one, a sale here has nowhere to pay you.
+                          You haven&apos;t connected a payout account yet. If your spot sells, we hold your money until you connect one.
                         </p>
                         <Button
                           size="sm"
