@@ -1,6 +1,7 @@
 "use client"
 
 import Image from "next/image"
+import { callDeadline, timeLeft } from "@/lib/call-deadline"
 import { useDialog } from "@/lib/use-dialog"
 import { Button } from "./ui/Button"
 import { ConfirmModal } from "./ui/ConfirmModal"
@@ -20,6 +21,9 @@ interface Position {
   fulfilledAt?: string | null
   calledAt?: string | null
   partySize?: number
+  /** What they told the host after being called; owner and self only */
+  response?: "ON_MY_WAY" | "RUNNING_LATE" | null
+  respondedAt?: string | null
   /** Only sent to the owner and to the party itself */
   note?: string | null
   quotedMinutes?: number | null
@@ -106,6 +110,8 @@ interface QueueDisplayProps {
   isRestaurant?: boolean
   /** Called after the viewer leaves the line from this page */
   onLeft?: () => void
+  /** Minutes a called person has to show up (owner sees the countdown) */
+  responseWindowMinutes?: number | null
 }
 
 /** Format estimated wait time into a human-readable string */
@@ -117,7 +123,7 @@ function formatWaitTime(minutes: number): string {
   return `~${Math.round(hours)} hrs`
 }
 
-export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, feeInfo, isPaused = false, hasPayoutSetup = false, stripeEnabled = false, allowResale = true, maxAskingPrice = null, hideCapacity = false, nowServingUserId = null, isRestaurant = false, onLeft }: QueueDisplayProps) {
+export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, feeInfo, isPaused = false, hasPayoutSetup = false, stripeEnabled = false, allowResale = true, maxAskingPrice = null, hideCapacity = false, nowServingUserId = null, isRestaurant = false, onLeft, responseWindowMinutes = null }: QueueDisplayProps) {
   const { data: session } = useSession()
   const { addToast } = useToast()
   const [loadingAction, setLoadingAction] = useState<string | null>(null)
@@ -1025,6 +1031,15 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                         {pos.calledAt && !pos.fulfilled && (
                           <span className="font-mono text-xs uppercase tracking-widest text-green-700">Called</span>
                         )}
+                        {pos.calledAt && !pos.fulfilled && pos.response && (
+                          <span className={`font-mono text-xs uppercase tracking-widest ${pos.response === "ON_MY_WAY" ? "text-green-700" : "text-amber-600"}`}>
+                            {pos.response === "ON_MY_WAY" ? "On the way" : "Running late"}
+                          </span>
+                        )}
+                        {isCreator && pos.calledAt && !pos.fulfilled && responseWindowMinutes && (() => {
+                          const left = timeLeft(callDeadline(pos.calledAt, responseWindowMinutes, pos.response, pos.respondedAt))
+                          return left ? <span className="text-xs text-ink/50">{left} left to show up</span> : null
+                        })()}
                         {pos.askingPrice != null && !isCurrentUser && (
                           <span className="font-mono text-xs uppercase tracking-widest text-accent">
                             Listed {formatCurrency(pos.askingPrice)}

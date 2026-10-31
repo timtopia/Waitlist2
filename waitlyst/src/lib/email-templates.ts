@@ -89,14 +89,17 @@ export function removedFromLineEmail(
   userName: string,
   lineName: string,
   refunded: boolean,
-  lineUrl: string
+  lineUrl: string,
+  missedCall = false
 ): { subject: string; html: string } {
   const safeName = escapeHtml(userName)
   const safeLine = escapeHtml(lineName)
   const subject = `You're no longer in ${lineName}`
   const body = `
     <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">You're no longer in line, ${safeName}</h2>
-    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">The organizer of <strong>${safeLine}</strong> removed you from the line.</p>
+    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">${missedCall
+      ? `You were called in <strong>${safeLine}</strong> but didn't show up in time, so your place was given to the next person.`
+      : `The organizer of <strong>${safeLine}</strong> removed you from the line.`}</p>
     <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">${refunded
       ? "A payment of yours that was on hold for this line has been released or refunded."
       : "If you think this was a mistake, contact the organizer."}</p>

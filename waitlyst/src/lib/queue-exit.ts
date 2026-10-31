@@ -38,7 +38,9 @@ export async function removeByOrganizer(
   positionId: string,
   action: "payout" | "refund",
   /** Record it as a no-show rather than a plain removal */
-  noShow = false
+  noShow = false,
+  /** Skipped automatically for not showing up in time (changes the email) */
+  missedCall = false
 ): Promise<RemovalResult> {
   const position = await prisma.linePosition.findUnique({ where: { id: positionId, lineId } })
   if (!position) throw new PositionNotFoundError()
@@ -84,7 +86,8 @@ export async function removeByOrganizer(
         user.name || "there",
         line.name,
         refunded.length > 0,
-        `${getBaseUrl()}/lines/${lineId}`
+        `${getBaseUrl()}/lines/${lineId}`,
+        missedCall
       )
       await sendEmail(user.email, subject, html)
     })

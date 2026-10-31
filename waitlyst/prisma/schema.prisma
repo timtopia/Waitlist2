@@ -66,61 +66,65 @@ model VerificationToken {
 
 // Waitlyst app models
 model Line {
-  id               String         @id @default(cuid())
-  name             String
-  description      String?
-  createdById      String
-  createdBy        User           @relation("LineCreator", fields: [createdById], references: [id])
-  positions        LinePosition[]
-  visits           QueueVisit[]
-  reminders        LineReminder[]
-  isActive         Boolean        @default(true)
-  isPublic         Boolean        @default(true)
-  opensAt          DateTime? // When the line opens for joining (null = open immediately)
-  closesAt         DateTime? // When the line stops accepting new joins (null = never closes)
-  maxCapacity      Int? // Maximum number of positions allowed (null = unlimited)
-  ownerFeePercent  Float          @default(0) // Percentage the line owner earns on each sale (e.g. 10 = 10%)
-  announcement     String? // Owner announcement shown as banner (max ~280 chars)
-  announcementAt   DateTime? // When the announcement was last set
-  productName      String? // Product name (e.g. "Nike Dunk Low Travis Scott")
-  productImage     String? // URL to product image
-  productPrice     Float? // Retail / MSRP price in dollars
-  productUrl       String? // Link to official product page
-  allowResale      Boolean        @default(true) // Whether position trading is enabled
-  maxAskingPrice   Float? // Maximum resale price cap (null = no limit)
-  nowServing       String? // Name of the person currently being served (display only)
-  nowServingUserId String? // Who was called -- compare this, not the name
-  nowServingAt     DateTime? // When the current person was called
-  hideCapacity     Boolean        @default(false) // When true, don't show exact capacity to non-owners
+  id                    String         @id @default(cuid())
+  name                  String
+  description           String?
+  createdById           String
+  createdBy             User           @relation("LineCreator", fields: [createdById], references: [id])
+  positions             LinePosition[]
+  visits                QueueVisit[]
+  reminders             LineReminder[]
+  isActive              Boolean        @default(true)
+  isPublic              Boolean        @default(true)
+  opensAt               DateTime? // When the line opens for joining (null = open immediately)
+  closesAt              DateTime? // When the line stops accepting new joins (null = never closes)
+  maxCapacity           Int? // Maximum number of positions allowed (null = unlimited)
+  ownerFeePercent       Float          @default(0) // Percentage the line owner earns on each sale (e.g. 10 = 10%)
+  announcement          String? // Owner announcement shown as banner (max ~280 chars)
+  announcementAt        DateTime? // When the announcement was last set
+  productName           String? // Product name (e.g. "Nike Dunk Low Travis Scott")
+  productImage          String? // URL to product image
+  productPrice          Float? // Retail / MSRP price in dollars
+  productUrl            String? // Link to official product page
+  allowResale           Boolean        @default(true) // Whether position trading is enabled
+  maxAskingPrice        Float? // Maximum resale price cap (null = no limit)
+  nowServing            String? // Name of the person currently being served (display only)
+  nowServingUserId      String? // Who was called -- compare this, not the name
+  nowServingAt          DateTime? // When the current person was called
+  hideCapacity          Boolean        @default(false) // When true, don't show exact capacity to non-owners
+  purchaseLimit         Int? // "1 per person" on a drop: shown to customers and staff; null = no limit
+  responseWindowMinutes Int? // A called person who does not show within this many minutes is skipped as a no-show
   // RESTAURANT lines take party sizes (capacity counts guests) and hold swap
   // payments until the guest is served; STANDARD lines collect and pay out
   // the moment a swap completes.
-  kind             LineKind       @default(STANDARD)
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  kind                  LineKind       @default(STANDARD)
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
 
   @@index([createdById])
 }
 
 model LinePosition {
-  id            String    @id @default(cuid())
+  id            String        @id @default(cuid())
   lineId        String
-  line          Line      @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  line          Line          @relation(fields: [lineId], references: [id], onDelete: Cascade)
   userId        String
-  user          User      @relation(fields: [userId], references: [id])
+  user          User          @relation(fields: [userId], references: [id])
   position      Int // 1 = first in line
-  partySize     Int       @default(1) // Guests in this party; always 1 on STANDARD lines
+  partySize     Int           @default(1) // Guests in this party; always 1 on STANDARD lines
   askingPrice   Float? // null = not for sale
   lockedUntil   DateTime? // Position is locked for swap until this time
   lockedBy      String? // Transaction ID that locked this position
-  fulfilled     Boolean   @default(false) // Creator marks this when the person has purchased/received the item
+  fulfilled     Boolean       @default(false) // Creator marks this when the person has purchased/received the item
   calledAt      DateTime? // When the organizer last called them up
   note          String? // e.g. "high chair", "patio" -- seen by the guest and the owner only
   quotedMinutes Int? // The host's own wait estimate for this party
   quotedAt      DateTime? // When the host gave it
+  response      CallResponse? // What they said after being called; cleared on each new call
+  respondedAt   DateTime?
   fulfilledAt   DateTime? // When they were fulfilled
-  joinedAt      DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  joinedAt      DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   @@unique([lineId, userId]) // User can only be in a line once
   @@unique([lineId, position]) // Each position is unique per line
@@ -202,6 +206,11 @@ model QueueVisit {
 
   @@index([lineId, servedAt])
   @@index([userId])
+}
+
+enum CallResponse {
+  ON_MY_WAY
+  RUNNING_LATE
 }
 
 enum VisitOutcome {

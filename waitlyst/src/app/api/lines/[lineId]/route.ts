@@ -8,6 +8,7 @@ import { rateLimit } from "@/lib/rate-limit"
 import { capacityUsed, capacityView } from "@/lib/capacity"
 import { auth } from "@/auth"
 import { lineViewer, shortName } from "@/lib/privacy"
+import { expireMissedCalls } from "@/lib/missed-calls"
 import { sendDueLineReminders } from "@/lib/line-reminders"
 import { createHash } from "crypto"
 import { sendEmail } from "@/lib/email"
@@ -43,10 +44,21 @@ export async function GET(
     // response bumps the line's or a position's updatedAt (or the count, for
     // the last person leaving), so this cheap check lets an unchanged line
     // skip loading every position.
-    const [head, positionStats] = await Promise.all([
-      prisma.line.findUnique({ where: { id: lineId }, select: { updatedAt: true, createdById: true } }),
-      prisma.linePosition.aggregate({ where: { lineId }, _max: { updatedAt: true }, _count: true }),
+    const positionStatsQuery = () =>
+      prisma.linePosition.aggregate({ where: { lineId }, _max: { updatedAt: true }, _count: true })
+    const [head, initialStats] = await Promise.all([
+      prisma.line.findUnique({
+        where: { id: lineId },
+        select: { updatedAt: true, createdById: true, responseWindowMinutes: true },
+      }),
+      positionStatsQuery(),
     ])
+    let positionStats = initialStats
+    // Called people who ran out of time to show up are skipped first, so
+    // every viewer (and the ETag) sees the line as it now stands.
+    if (head?.responseWindowMinutes && await expireMissedCalls(lineId, head.responseWindowMinutes) > 0) {
+      positionStats = await positionStatsQuery()
+    }
     if (!head) {
       return NextResponse.json({ error: "Line not found" }, { status: 404 })
     }
@@ -96,7 +108,7 @@ export async function GET(
       : line.positions.map((p) => {
           if (p.userId === viewerId) return p
           // A party's note and the host's quote are between them and the host
-          p = { ...p, note: null, quotedMinutes: null, quotedAt: null }
+          p = { ...p, note: null, quotedMinutes: null, quotedAt: null, response: null, respondedAt: null }
           if (viewer === "member") return { ...p, user: { ...p.user, name: shortName(p.user.name) } }
           return {
             ...p,

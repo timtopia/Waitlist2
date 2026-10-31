@@ -55,6 +55,8 @@ interface Line {
   nowServingAt: string | null
   hideCapacity: boolean
   kind: "STANDARD" | "RESTAURANT"
+  purchaseLimit: number | null
+  responseWindowMinutes: number | null
   createdAt: string
   createdBy: {
     id: string
@@ -73,6 +75,8 @@ interface Line {
     note?: string | null
     quotedMinutes?: number | null
     quotedAt?: string | null
+    response?: "ON_MY_WAY" | "RUNNING_LATE" | null
+    respondedAt?: string | null
     user: {
       id: string
       name: string | null
@@ -433,6 +437,21 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, session, line])
 
+  async function handleRespond(response: "ON_MY_WAY" | "RUNNING_LATE") {
+    const res = await fetch(`/api/lines/${lineId}/respond`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ response }),
+    })
+    if (res.ok) {
+      addToast(response === "ON_MY_WAY" ? "Told the host you're on your way" : "Told the host you're running late", "success")
+      refreshAll()
+    } else {
+      const data = await res.json().catch(() => ({}))
+      addToast(data.error || "Couldn't send that to the host", "error")
+    }
+  }
+
   async function handleDelete() {
     setDeleting(true)
     try {
@@ -692,6 +711,14 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             </span>
           </div>
           </div>
+          {!isCreator && (line.purchaseLimit || line.responseWindowMinutes) && (
+            <p className="text-xs text-ink/50 mt-3">
+              {line.purchaseLimit && <>Limit {line.purchaseLimit} per person. </>}
+              {line.responseWindowMinutes && (
+                <>When you&apos;re called, you have {line.responseWindowMinutes} min to show up, or your place goes to the next person.</>
+              )}
+            </p>
+          )}
           {!isCreator && isRestaurant && (
             <p className="text-xs text-ink/50 mt-3">
               The host seats parties as tables free up, so a smaller party behind you may be seated first. You keep your place.
@@ -732,6 +759,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
           onChanged={refreshAll}
           isRestaurant={isRestaurant}
           allowResale={line.allowResale}
+          purchaseLimit={line.purchaseLimit}
         />
       )}
 
@@ -879,6 +907,11 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
           calledAt={userPosition?.calledAt ?? null}
           quotedMinutes={userPosition.quotedMinutes ?? null}
           quotedAt={userPosition.quotedAt ?? null}
+          response={userPosition.response ?? null}
+          respondedAt={userPosition.respondedAt ?? null}
+          responseWindowMinutes={line.responseWindowMinutes}
+          purchaseLimit={line.purchaseLimit}
+          onRespond={handleRespond}
           notificationPermission={notificationPermission}
           onEnableNotifications={enableNotifications}
         />
@@ -969,6 +1002,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             nowServingUserId={line.nowServingUserId}
             isRestaurant={isRestaurant}
             onLeft={() => { leftHereRef.current = true }}
+            responseWindowMinutes={line.responseWindowMinutes}
           />
         </CardContent>
       </Card>

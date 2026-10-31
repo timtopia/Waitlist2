@@ -179,6 +179,23 @@ export async function PATCH(
       }
     }
 
+    // Per-customer purchase limit (drops) and the time a called person has
+    // to show up. null turns either off.
+    for (const [field, label, max] of [
+      ["purchaseLimit", "Purchase limit", 99],
+      ["responseWindowMinutes", "Time to show up", 60],
+    ] as const) {
+      if (updates[field] === undefined) continue
+      if (updates[field] === null) {
+        allowedUpdates[field] = null
+        continue
+      }
+      if (!Number.isInteger(updates[field]) || updates[field] < 1 || updates[field] > max) {
+        return NextResponse.json({ error: `${label} must be a whole number from 1 to ${max}` }, { status: 400 })
+      }
+      allowedUpdates[field] = updates[field]
+    }
+
     const updatedLine = await prisma.line.update({
       where: { id: lineId },
       data: allowedUpdates,

@@ -90,7 +90,8 @@ export async function POST(
       }),
       prisma.linePosition.update({
         where: { id: frontPosition.id },
-        data: { calledAt, askingPrice: null },
+        // A new call: whatever they answered last time no longer applies
+        data: { calledAt, askingPrice: null, response: null, respondedAt: null },
       }),
       prisma.swapOffer.updateMany({
         where: {
