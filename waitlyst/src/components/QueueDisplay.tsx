@@ -1036,7 +1036,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                             {pos.response === "ON_MY_WAY" ? "On the way" : "Running late"}
                           </span>
                         )}
-                        {isCreator && pos.calledAt && !pos.fulfilled && responseWindowMinutes && (() => {
+                        {isCreator && pos.calledAt && !pos.fulfilled && responseWindowMinutes && !pos.user.isWalkIn && !isPaused && (() => {
                           const left = timeLeft(callDeadline(pos.calledAt, responseWindowMinutes, pos.response, pos.respondedAt))
                           return left ? <span className="text-xs text-ink/50">{left} left to show up</span> : null
                         })()}
