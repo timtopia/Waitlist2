@@ -546,6 +546,12 @@ export function OwnerConsole({
               Clear served
             </button>
           )}
+          <Link
+            href={`/lines/${lineId}/analytics`}
+            className="ml-auto text-accent hover:underline underline-offset-4"
+          >
+            Analytics &rarr;
+          </Link>
         </div>
       </div>
 
