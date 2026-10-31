@@ -70,10 +70,14 @@ interface Line {
     fulfilledAt: string | null
     calledAt: string | null
     partySize: number
+    note?: string | null
+    quotedMinutes?: number | null
+    quotedAt?: string | null
     user: {
       id: string
       name: string | null
       image: string | null
+      isWalkIn?: boolean
     }
   }[]
 }
@@ -84,6 +88,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [loading, setLoading] = useState(true)
   const [joining, setJoining] = useState(false)
   const [partySize, setPartySize] = useState(2)
+  const [joinNote, setJoinNote] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [notificationPermission, setNotificationPermission] = useState<NotificationState>("unsupported")
   const notificationsEnabled = notificationPermission === "granted"
@@ -348,7 +353,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         method: "POST",
         ...(line?.kind === "RESTAURANT" && {
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ partySize: size }),
+          body: JSON.stringify({ partySize: size, ...(joinNote.trim() && { note: joinNote.trim() }) }),
         }),
       })
       if (res.ok) {
@@ -566,6 +571,16 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                     ))}
                   </select>
                 </label>
+              )}
+              {canJoin && session && line.kind === "RESTAURANT" && (
+                <input
+                  value={joinNote}
+                  onChange={(e) => setJoinNote(e.target.value)}
+                  maxLength={140}
+                  placeholder="Note for the host (optional)"
+                  aria-label="Note for the host"
+                  className="border border-rule bg-white px-2 py-2 text-sm text-ink placeholder:text-ink/30 w-48"
+                />
               )}
               {canJoin && (
                 <Button onClick={() => handleJoin()} isLoading={joining}>
@@ -820,6 +835,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
           hideCapacity={!isCreator && line.hideCapacity}
           isPaused={linePaused}
           calledAt={userPosition?.calledAt ?? null}
+          quotedMinutes={userPosition.quotedMinutes ?? null}
+          quotedAt={userPosition.quotedAt ?? null}
           notificationPermission={notificationPermission}
           onEnableNotifications={enableNotifications}
         />

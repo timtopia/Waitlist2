@@ -17,6 +17,9 @@ interface MemberStatusCardProps {
   hideCapacity?: boolean
   isPaused?: boolean
   calledAt?: string | null
+  /** The host's own estimate for this party, and when they gave it */
+  quotedMinutes?: number | null
+  quotedAt?: string | null
   notificationPermission?: NotificationState
   onEnableNotifications?: () => void
 }
@@ -30,6 +33,8 @@ export function MemberStatusCard({
   hideCapacity = false,
   isPaused = false,
   calledAt = null,
+  quotedMinutes = null,
+  quotedAt = null,
   notificationPermission = "unsupported",
   onEnableNotifications,
 }: MemberStatusCardProps) {
@@ -83,7 +88,11 @@ export function MemberStatusCard({
     detail = "No one is ahead of you. Stay close; you'll be called soon."
   } else {
     headline = `${ahead} ${ahead === 1 ? "person" : "people"} ahead of you`
-    if (waitTimeLoading) detail = "Estimating your wait..."
+    if (quotedMinutes && quotedAt) {
+      // The host's word beats the app's estimate
+      const at = new Date(quotedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+      detail = `The host quoted about ${quotedMinutes} min at ${at}.`
+    } else if (waitTimeLoading) detail = "Estimating your wait..."
     else if (minutesPerPerson != null) detail = `Est. wait: ${formatWaitTime(minutesPerPerson * ahead)}`
     else detail = "Wait estimate appears once the organizer starts serving people."
   }

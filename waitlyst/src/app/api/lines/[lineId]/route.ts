@@ -64,7 +64,7 @@ export async function GET(
       include: {
         createdBy: { select: { id: true, name: true, image: true } },
         positions: {
-          include: { user: { select: { id: true, name: true, image: true } } },
+          include: { user: { select: { id: true, name: true, image: true, isWalkIn: true } } },
           orderBy: { position: "asc" },
         },
       },
@@ -85,12 +85,14 @@ export async function GET(
       ? line.positions
       : line.positions.map((p) => {
           if (p.userId === viewerId) return p
+          // A party's note and the host's quote are between them and the host
+          p = { ...p, note: null, quotedMinutes: null, quotedAt: null }
           if (viewer === "member") return { ...p, user: { ...p.user, name: shortName(p.user.name) } }
           return {
             ...p,
             userId: `anon-${p.id}`,
             lockedBy: null,
-            user: { id: `anon-${p.id}`, name: null, image: null },
+            user: { id: `anon-${p.id}`, name: null, image: null, isWalkIn: false },
           }
         })
 

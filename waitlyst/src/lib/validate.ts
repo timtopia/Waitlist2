@@ -98,3 +98,18 @@ export function validateBoolean(value: unknown, name: string): string | null {
   }
   return null
 }
+
+export const MAX_NOTE_LENGTH = 140
+
+/**
+ * A party's note for the host ("high chair", "patio"). Empty means no note.
+ * Returns the cleaned note, or an error to show.
+ */
+export function parseNote(value: unknown): string | null | { error: string } {
+  if (value === undefined || value === null) return null
+  if (typeof value !== "string") return { error: "Note must be text" }
+  const note = value.trim()
+  if (!note) return null
+  if (note.length > MAX_NOTE_LENGTH) return { error: `Notes can be at most ${MAX_NOTE_LENGTH} characters` }
+  return note
+}

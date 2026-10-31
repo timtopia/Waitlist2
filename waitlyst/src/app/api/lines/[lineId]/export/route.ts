@@ -29,7 +29,7 @@ export async function GET(
       where: { lineId },
       include: {
         user: {
-          select: { name: true, email: true },
+          select: { name: true, email: true, isWalkIn: true },
         },
       },
       orderBy: { position: "asc" },
@@ -38,12 +38,13 @@ export async function GET(
     // Build CSV
     const isRestaurant = result.line.kind === "RESTAURANT"
     const headers = [
-      "Position", "Name", "Email", ...(isRestaurant ? ["Party Size"] : []),
+      "Position", "Name", "Email", ...(isRestaurant ? ["Party Size", "Note"] : []),
       "Joined At", "Called At", "Served At", "Asking Price", "Status",
     ]
     const rows = positions.map((pos) => {
       const name = pos.user.name || "Anonymous"
-      const email = pos.user.email || ""
+      // Walk-ins were added by the host and have no email
+      const email = pos.user.isWalkIn ? "(walk-in)" : pos.user.email || ""
       const joinedAt = new Date(pos.joinedAt).toISOString()
       const askingPrice = pos.askingPrice !== null ? `$${pos.askingPrice.toFixed(2)}` : ""
       const isLocked = pos.lockedUntil && new Date(pos.lockedUntil) > new Date()
@@ -59,7 +60,7 @@ export async function GET(
         String(pos.position),
         escapeCsvField(name),
         escapeCsvField(email),
-        ...(isRestaurant ? [String(pos.partySize)] : []),
+        ...(isRestaurant ? [String(pos.partySize), escapeCsvField(pos.note ?? "")] : []),
         joinedAt,
         pos.calledAt ? new Date(pos.calledAt).toISOString() : "",
         pos.fulfilledAt ? new Date(pos.fulfilledAt).toISOString() : "",

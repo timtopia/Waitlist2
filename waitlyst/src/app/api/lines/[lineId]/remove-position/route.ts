@@ -7,7 +7,7 @@ export async function POST(
   { params }: { params: Promise<{ lineId: string }> }
 ) {
   const { lineId } = await params
-  const { positionId, action = "payout" } = await req.json()
+  const { positionId, action = "payout", noShow = false } = await req.json()
 
   if (!positionId || typeof positionId !== "string") {
     return NextResponse.json({ error: "Position ID is required" }, { status: 400 })
@@ -21,7 +21,9 @@ export async function POST(
   if (authResult instanceof NextResponse) return authResult
 
   try {
-    const result = await removeByOrganizer(lineId, positionId, action)
+    // A no-show keeps their purchases: the people they bought from gave up
+    // their places, the same as when someone leaves.
+    const result = await removeByOrganizer(lineId, positionId, noShow === true ? "payout" : action, noShow === true)
 
     return NextResponse.json({ success: true, action, ...result })
   } catch (error) {

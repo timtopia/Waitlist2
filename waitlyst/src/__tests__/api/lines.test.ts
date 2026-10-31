@@ -226,7 +226,7 @@ describe("GET /api/lines/[lineId]", () => {
       updatedAt: new Date(),
       createdBy: { id: "owner-1", name: "Creator", image: null },
       positions: [
-        { id: "p1", userId: "alice", lockedBy: null, partySize: 1, user: { id: "alice", name: "Alice Walker", image: "a.png" } },
+        { id: "p1", userId: "alice", lockedBy: null, partySize: 1, note: "high chair", quotedMinutes: 20, user: { id: "alice", name: "Alice Walker", image: "a.png" } },
         { id: "p2", userId: "member-1", lockedBy: null, partySize: 1, user: { id: "member-1", name: "Mia Chen", image: null } },
       ],
     })
@@ -237,17 +237,21 @@ describe("GET /api/lines/[lineId]", () => {
     }
 
     mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
-    expect((await first())[0].user.name).toBe("Alice Walker")
+    const asOwner = await first()
+    expect(asOwner[0].user.name).toBe("Alice Walker")
+    expect(asOwner[0].note).toBe("high chair")
 
     mockAuth.mockResolvedValue({ user: { id: "member-1" } })
     mockPrisma.linePosition.findUnique.mockResolvedValueOnce({ id: "p2" })
     const asMember = await first()
     expect(asMember[0].user).toMatchObject({ id: "alice", name: "Alice W." })
+    // Alice's note and quote are between her and the host
+    expect(asMember[0]).toMatchObject({ note: null, quotedMinutes: null })
     expect(asMember[1].user.name).toBe("Mia Chen") // their own entry is untouched
 
     mockAuth.mockResolvedValue(null)
     const asPublic = await first()
-    expect(asPublic[0].user).toEqual({ id: "anon-p1", name: null, image: null })
+    expect(asPublic[0].user).toEqual({ id: "anon-p1", name: null, image: null, isWalkIn: false })
     expect(asPublic[0].userId).toBe("anon-p1")
   })
 
@@ -793,7 +797,7 @@ describe("Stats API", () => {
     expect(data.pendingSettlement).toBe(50)
     expect(data.netRevenue).toBe(75)
     expect(data.service).toEqual({
-      served: 1, left: 1, removed: 0, waiting: 1, medianWaitMinutes: 12, servedLastHour: 1,
+      served: 1, left: 1, removed: 0, noShows: 0, waiting: 1, medianWaitMinutes: 12, servedLastHour: 1,
     })
   })
 })
