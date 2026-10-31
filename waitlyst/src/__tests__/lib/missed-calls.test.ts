@@ -42,6 +42,19 @@ describe("expireMissedCalls", () => {
     expect(removeByOrganizer).toHaveBeenCalledWith("line-1", "late", "payout", true, true)
     expect(removeByOrganizer).toHaveBeenCalledTimes(1)
   })
+
+  it("never skips walk-ins, and nobody while the line is paused", async () => {
+    mockPrisma.linePosition.findMany.mockResolvedValue([])
+    const { expireMissedCalls } = await import("@/lib/missed-calls")
+
+    await expireMissedCalls("line-1", 10, NOW)
+
+    expect(mockPrisma.linePosition.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ user: { isWalkIn: false }, line: { isActive: true } }),
+      })
+    )
+  })
 })
 
 describe("POST /respond", () => {

@@ -29,6 +29,11 @@ export async function expireMissedCalls(lineId: string, windowMinutes: number, n
       lineId,
       fulfilled: false,
       calledAt: { not: null, lt: new Date(now.getTime() - windowMinutes * 60_000) },
+      // Walk-ins were added by the host at the stand and have no way to say
+      // "on my way"; the host deals with them in person.
+      user: { isWalkIn: false },
+      // A paused line is stopped on purpose; nobody runs out of time
+      line: { isActive: true },
     },
     select: { id: true, calledAt: true, response: true, respondedAt: true },
   })
