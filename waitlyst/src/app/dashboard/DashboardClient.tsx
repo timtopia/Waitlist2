@@ -890,6 +890,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                         items={(() => {
                           const menuItems: DropdownMenuItem[] = [
                             { label: "View Stats", onClick: () => openStatsModal(line.id, line.name) },
+                            { label: "Analytics", onClick: () => router.push(`/lines/${line.id}/analytics`) },
                             { label: "Settlement", onClick: () => router.push(`/lines/${line.id}/settlement`) },
                             { label: copiedId === line.id ? "Copied!" : "Copy Link", onClick: () => handleCopyLink(line.id) },
                             { label: "Edit", onClick: () => router.push(`/lines/${line.id}/edit`) },

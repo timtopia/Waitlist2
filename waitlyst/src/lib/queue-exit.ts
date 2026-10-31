@@ -159,6 +159,7 @@ export async function exitQueue(
       userId,
       outcome: position.fulfilled ? "SERVED" : reason,
       position: position.position,
+      partySize: position.partySize,
       joinedAt: position.joinedAt,
       calledAt: position.calledAt,
       servedAt: position.fulfilledAt,
