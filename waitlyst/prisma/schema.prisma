@@ -192,17 +192,18 @@ enum OfferStatus {
 // deleted on exit, so this is the only lasting record of who was served and
 // how fast the line moved.
 model QueueVisit {
-  id       String       @id @default(cuid())
-  lineId   String
-  line     Line         @relation(fields: [lineId], references: [id], onDelete: Cascade)
-  userId   String
-  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  outcome  VisitOutcome
-  position Int // Place in line when they left
-  joinedAt DateTime
-  calledAt DateTime?
-  servedAt DateTime?
-  exitedAt DateTime     @default(now())
+  id        String       @id @default(cuid())
+  lineId    String
+  line      Line         @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  outcome   VisitOutcome
+  position  Int // Place in line when they left
+  partySize Int          @default(1) // Guests in the party (for wait-by-party-size analytics)
+  joinedAt  DateTime
+  calledAt  DateTime?
+  servedAt  DateTime?
+  exitedAt  DateTime     @default(now())
 
   @@index([lineId, servedAt])
   @@index([userId])
