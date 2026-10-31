@@ -56,6 +56,8 @@ export default async function EditLinePage({ params }: Props) {
         allowResale: line.allowResale,
         maxAskingPrice: line.maxAskingPrice,
         hideCapacity: line.hideCapacity,
+        purchaseLimit: line.purchaseLimit,
+        responseWindowMinutes: line.responseWindowMinutes,
       }}
       platformFeePercent={getPlatformFeePercent()}
     />

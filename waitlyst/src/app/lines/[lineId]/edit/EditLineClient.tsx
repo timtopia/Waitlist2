@@ -29,6 +29,8 @@ interface LineData {
   allowResale: boolean
   maxAskingPrice: number | null
   hideCapacity: boolean
+  purchaseLimit: number | null
+  responseWindowMinutes: number | null
 }
 
 function toLocalDatetime(iso: string | null): string {
@@ -68,6 +70,8 @@ export function EditLineClient({
   )
   const [allowResale, setAllowResale] = useState(line.allowResale)
   const [maxAskingPrice, setMaxAskingPrice] = useState(line.maxAskingPrice?.toString() || "")
+  const [purchaseLimit, setPurchaseLimit] = useState(line.purchaseLimit?.toString() || "")
+  const [responseWindow, setResponseWindow] = useState(line.responseWindowMinutes?.toString() || "")
   const [productName, setProductName] = useState(line.productName || "")
   const [productImage, setProductImage] = useState(line.productImage || "")
   const [productPrice, setProductPrice] = useState(line.productPrice?.toString() || "")
@@ -108,6 +112,8 @@ export function EditLineClient({
           productUrl: productUrl.trim() || null,
           allowResale,
           maxAskingPrice: maxAskingPrice ? parseFloat(maxAskingPrice) : null,
+          purchaseLimit: purchaseLimit && !isRestaurant ? parseInt(purchaseLimit, 10) : null,
+          responseWindowMinutes: responseWindow ? parseInt(responseWindow, 10) : null,
           hideCapacity: maxCapacity ? hideCapacity : false,
     }
     // Send only what was changed on this page. Sending everything wrote back
@@ -130,6 +136,8 @@ export function EditLineClient({
       allowResale: line.allowResale,
       maxAskingPrice: line.maxAskingPrice,
       hideCapacity: line.hideCapacity,
+      purchaseLimit: line.purchaseLimit,
+      responseWindowMinutes: line.responseWindowMinutes,
     }
     const changes = Object.fromEntries(
       Object.entries(values).filter(([key, value]) => JSON.stringify(value) !== JSON.stringify(original[key]))
@@ -351,6 +359,46 @@ export function EditLineClient({
                   Changing the fee will update all displayed prices immediately. Purchases already in progress will keep their original fees.
                 </p>
               )}
+            </div>
+
+            {/* Purchase limit (drops) and time to show up when called */}
+            <div className="grid sm:grid-cols-2 gap-4">
+              {!(isRestaurant) && (
+                <div>
+                  <label htmlFor="purchaseLimit" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
+                    Limit per customer (optional)
+                  </label>
+                  <input
+                    id="purchaseLimit"
+                    type="number"
+                    min="1"
+                    max="99"
+                    placeholder="No limit"
+                    value={purchaseLimit}
+                    onChange={(e) => setPurchaseLimit(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
+                  />
+                  <p className="text-xs text-ink/50 mt-1">e.g. 1 per person. Shown on the line page and when someone is called.</p>
+                </div>
+              )}
+              <div>
+                <label htmlFor="responseWindow" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
+                  Time to show up when called (optional)
+                </label>
+                <input
+                  id="responseWindow"
+                  type="number"
+                  min="1"
+                  max="60"
+                  placeholder="No limit"
+                  value={responseWindow}
+                  onChange={(e) => setResponseWindow(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
+                />
+                <p className="text-xs text-ink/50 mt-1">
+                  Minutes. Anyone who doesn&apos;t show up in time is skipped as a no-show and the next person moves up. Tapping &ldquo;On my way&rdquo; gives them one more window.
+                </p>
+              </div>
             </div>
 
             {/* Schedule Toggle */}

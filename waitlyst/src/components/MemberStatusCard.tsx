@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { callDeadline, timeLeft } from "@/lib/call-deadline"
+import { Button } from "./ui/Button"
 import { Card } from "@/components/ui/Card"
 import { formatCurrency, timeAgo } from "@/lib/format"
 import { formatWaitTime } from "@/lib/wait-time"
@@ -20,6 +22,14 @@ interface MemberStatusCardProps {
   /** The host's own estimate for this party, and when they gave it */
   quotedMinutes?: number | null
   quotedAt?: string | null
+  /** What they told the host after being called */
+  response?: "ON_MY_WAY" | "RUNNING_LATE" | null
+  respondedAt?: string | null
+  /** Minutes a called person has to show up before being skipped */
+  responseWindowMinutes?: number | null
+  /** "N per person" on a drop */
+  purchaseLimit?: number | null
+  onRespond?: (response: "ON_MY_WAY" | "RUNNING_LATE") => Promise<void>
   notificationPermission?: NotificationState
   onEnableNotifications?: () => void
 }
@@ -35,12 +45,28 @@ export function MemberStatusCard({
   calledAt = null,
   quotedMinutes = null,
   quotedAt = null,
+  response = null,
+  respondedAt = null,
+  responseWindowMinutes = null,
+  purchaseLimit = null,
+  onRespond,
   notificationPermission = "unsupported",
   onEnableNotifications,
 }: MemberStatusCardProps) {
   const { phase, position, ahead } = status
   const [minutesPerPerson, setMinutesPerPerson] = useState<number | null>(null)
   const [waitTimeLoading, setWaitTimeLoading] = useState(true)
+  const [responding, setResponding] = useState<string | null>(null)
+  // Tick once a second while called, for the countdown
+  const [now, setNow] = useState(() => Date.now())
+  const deadline = phase === "called" ? callDeadline(calledAt, responseWindowMinutes, response, respondedAt) : null
+  const deadlineMs = deadline?.getTime() ?? null
+  useEffect(() => {
+    if (deadlineMs === null) return
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [deadlineMs])
+  const left = timeLeft(deadline, now)
 
   // Refetch as the line moves: each service event changes the pace estimate.
   useEffect(() => {
@@ -139,6 +165,47 @@ export function MemberStatusCard({
                 ? `Your spot is listed for ${formatCurrency(askingPrice)}`
                 : "Your spot isn't listed for swap"}
             </span>
+          </div>
+        )}
+
+        {phase === "called" && (
+          <div className="mt-4 space-y-2">
+            {left && (
+              <p className="text-sm font-medium text-accent">
+                Show up within {left}, or your place goes to the next person.
+              </p>
+            )}
+            {purchaseLimit && (
+              <p className="text-sm text-ink/70">Limit: {purchaseLimit} per person.</p>
+            )}
+            {onRespond && (
+              <div className="flex flex-wrap items-center gap-2">
+                {(["ON_MY_WAY", "RUNNING_LATE"] as const).map((r) => (
+                  <Button
+                    key={r}
+                    size="sm"
+                    variant={response === r ? "primary" : "secondary"}
+                    isLoading={responding === r}
+                    onClick={async () => {
+                      setResponding(r)
+                      try {
+                        await onRespond(r)
+                      } finally {
+                        setResponding(null)
+                      }
+                    }}
+                  >
+                    {r === "ON_MY_WAY" ? "On my way" : "Running late"}
+                    {response === r && " ✓"}
+                  </Button>
+                ))}
+                {response && (
+                  <span className="text-xs text-ink/50">
+                    The host can see this{response === "ON_MY_WAY" && responseWindowMinutes ? ", and you get a little more time" : ""}.
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         )}
 

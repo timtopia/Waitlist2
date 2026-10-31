@@ -14,6 +14,7 @@ interface ConsolePosition {
   fulfilled: boolean
   lockedUntil: string | null
   calledAt?: string | null
+  response?: "ON_MY_WAY" | "RUNNING_LATE" | null
   partySize?: number
   user: { id: string; name: string | null }
 }
@@ -32,6 +33,7 @@ interface OwnerConsoleProps {
   isRestaurant?: boolean
   /** Paid swaps are on, so there can be payments to review even with no owner fee */
   allowResale?: boolean
+  purchaseLimit?: number | null
 }
 
 interface Earnings {
@@ -65,6 +67,7 @@ export function OwnerConsole({
   justCreated = false,
   onDismissCreated,
   allowResale = false,
+  purchaseLimit = null,
   onChanged,
   isRestaurant = false,
 }: OwnerConsoleProps) {
@@ -402,6 +405,14 @@ export function OwnerConsole({
                 <span className="font-mono tabular-nums text-accent mr-2">#{upNext.position}</span>
                 {upNext.user.name || "Anonymous"}
               </p>
+              {isServingUpNext && upNext.response && (
+                <p className={`text-xs ${upNext.response === "ON_MY_WAY" ? "text-green-700" : "text-amber-600"}`}>
+                  {upNext.response === "ON_MY_WAY" ? "Says they're on the way" : "Says they're running late"}
+                </p>
+              )}
+              {purchaseLimit && (
+                <p className="text-xs text-ink/60">Limit {purchaseLimit} per person</p>
+              )}
               {upNextLocked && (
                 <p className="text-xs text-amber-600">A swap for this spot is in progress -- wait for it to finish before serving.</p>
               )}

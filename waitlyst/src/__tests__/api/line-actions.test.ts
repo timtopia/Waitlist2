@@ -480,6 +480,19 @@ describe("PATCH /api/lines/[lineId]/settings", () => {
     expect((await response.json()).error).toMatch(/close after it opens/)
   })
 
+  it("rejects a time-to-show-up outside 1 to 60 minutes", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdById: "owner-1" })
+
+    const { PATCH } = await import("@/app/api/lines/[lineId]/settings/route")
+    const response = await PATCH(
+      new Request("http://localhost/api/lines/line-1/settings", { method: "PATCH", body: JSON.stringify({ responseWindowMinutes: 0 }) }),
+      { params: Promise.resolve({ lineId: "line-1" }) }
+    )
+    expect(response.status).toBe(400)
+    expect(mockPrisma.line.update).not.toHaveBeenCalled()
+  })
+
   it("rejects a product image that isn't an https link", async () => {
     mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
     mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdById: "owner-1" })

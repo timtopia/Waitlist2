@@ -23,7 +23,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { name, description, isPublic = true, opensAt, closesAt, maxCapacity, ownerFeePercent = 0, productName, productImage, productPrice, productUrl, allowResale = false, maxAskingPrice, hideCapacity = false, kind = "STANDARD" } = await req.json()
+    const { name, description, isPublic = true, opensAt, closesAt, maxCapacity, ownerFeePercent = 0, productName, productImage, productPrice, productUrl, allowResale = false, maxAskingPrice, hideCapacity = false, kind = "STANDARD", purchaseLimit = null, responseWindowMinutes = null } = await req.json()
 
     // Validate name (required, 1-100 chars)
     const nameErr = validateString(name, "Name", { min: 1, max: 100 })
@@ -89,6 +89,15 @@ export async function POST(req: Request) {
     }
 
     // Validate max asking price (optional, positive number)
+    for (const [value, label, max] of [
+      [purchaseLimit, "Purchase limit", 99],
+      [responseWindowMinutes, "Time to show up", 60],
+    ] as const) {
+      if (value !== null && (!Number.isInteger(value) || value < 1 || value > max)) {
+        return NextResponse.json({ error: `${label} must be a whole number from 1 to ${max}` }, { status: 400 })
+      }
+    }
+
     if (maxAskingPrice !== undefined && maxAskingPrice !== null) {
       const maxPriceErr = validateNumber(maxAskingPrice, "Max asking price", { min: 0.01, max: 10000 })
       if (maxPriceErr) {
@@ -115,6 +124,8 @@ export async function POST(req: Request) {
         productUrl: productUrl?.trim() || null,
         allowResale: typeof allowResale === "boolean" ? allowResale : false,
         maxAskingPrice: maxAskingPrice || null,
+        purchaseLimit,
+        responseWindowMinutes,
         hideCapacity: typeof hideCapacity === "boolean" ? hideCapacity : false,
       },
     })

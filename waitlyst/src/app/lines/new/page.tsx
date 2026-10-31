@@ -46,6 +46,8 @@ function CreateLineForm() {
   const [allowResale, setAllowResale] = useState(false)
   const [kind, setKind] = useState<"STANDARD" | "RESTAURANT">("STANDARD")
   const [maxAskingPrice, setMaxAskingPrice] = useState("")
+  const [purchaseLimit, setPurchaseLimit] = useState("")
+  const [responseWindow, setResponseWindow] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedTemplate, setSelectedTemplate] = useState<string>("custom")
@@ -146,6 +148,7 @@ function CreateLineForm() {
     name, description, isPublic, enableSchedule, opensAt, closesAt, maxCapacity, ownerFeePercent,
     showProductDetails, productName, productImage, productPrice, productUrl, hideCapacity,
     showResaleControls, allowResale, kind, maxAskingPrice, selectedTemplate,
+    purchaseLimit, responseWindow,
   }
   useEffect(() => {
     const saved = sessionStorage.getItem(DRAFT_KEY)
@@ -161,6 +164,7 @@ function CreateLineForm() {
       setHideCapacity(d.hideCapacity); setShowResaleControls(d.showResaleControls)
       setAllowResale(d.allowResale); setKind(d.kind); setMaxAskingPrice(d.maxAskingPrice)
       setSelectedTemplate(d.selectedTemplate)
+      setPurchaseLimit(d.purchaseLimit ?? ""); setResponseWindow(d.responseWindow ?? "")
     } catch {
       // A damaged draft just means starting over
     }
@@ -244,6 +248,8 @@ function CreateLineForm() {
           productUrl: productUrl.trim() || null,
           allowResale,
           maxAskingPrice: maxAskingPrice ? parseFloat(maxAskingPrice) : null,
+          purchaseLimit: purchaseLimit && kind !== "RESTAURANT" ? parseInt(purchaseLimit, 10) : null,
+          responseWindowMinutes: responseWindow ? parseInt(responseWindow, 10) : null,
           hideCapacity: maxCapacity ? hideCapacity : false,
           kind,
         }),
@@ -449,6 +455,46 @@ function CreateLineForm() {
               {connectError && (
                 <p className="text-xs text-accent mt-1">{connectError}</p>
               )}
+            </div>
+
+            {/* Purchase limit (drops) and time to show up when called */}
+            <div className="grid sm:grid-cols-2 gap-4">
+              {!(kind === "RESTAURANT") && (
+                <div>
+                  <label htmlFor="purchaseLimit" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
+                    Limit per customer (optional)
+                  </label>
+                  <input
+                    id="purchaseLimit"
+                    type="number"
+                    min="1"
+                    max="99"
+                    placeholder="No limit"
+                    value={purchaseLimit}
+                    onChange={(e) => setPurchaseLimit(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
+                  />
+                  <p className="text-xs text-ink/50 mt-1">e.g. 1 per person. Shown on the line page and when someone is called.</p>
+                </div>
+              )}
+              <div>
+                <label htmlFor="responseWindow" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
+                  Time to show up when called (optional)
+                </label>
+                <input
+                  id="responseWindow"
+                  type="number"
+                  min="1"
+                  max="60"
+                  placeholder="No limit"
+                  value={responseWindow}
+                  onChange={(e) => setResponseWindow(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
+                />
+                <p className="text-xs text-ink/50 mt-1">
+                  Minutes. Anyone who doesn&apos;t show up in time is skipped as a no-show and the next person moves up. Tapping &ldquo;On my way&rdquo; gives them one more window.
+                </p>
+              </div>
             </div>
 
             {/* Schedule Toggle */}

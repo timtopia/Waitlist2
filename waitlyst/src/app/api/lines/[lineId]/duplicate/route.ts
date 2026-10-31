@@ -31,6 +31,8 @@ export async function POST(
         ownerFeePercent: source.ownerFeePercent,
         allowResale: source.allowResale,
         maxAskingPrice: source.maxAskingPrice,
+        purchaseLimit: source.purchaseLimit,
+        responseWindowMinutes: source.responseWindowMinutes,
         productName: source.productName,
         productImage: source.productImage,
         productPrice: source.productPrice,
