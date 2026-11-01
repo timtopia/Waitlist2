@@ -87,8 +87,12 @@ export async function GET(
     // abandoned or stuck checkout) — so it's tracked separately below rather
     // than silently folded into zeros here.
     const completedTxns = enrichedTransactions.filter((t) => t.status === "COMPLETED")
-    const fulfilledTxns = completedTxns.filter((t) => t.buyerFulfilled)
-    const unfulfilledTxns = completedTxns.filter((t) => !t.buyerFulfilled)
+    // Served/not-served only matters while a hold is still open: once a
+    // payment is collected (or released) there's no decision left, and
+    // "Cancel all unfulfilled" only acts on open holds.
+    const openTxns = completedTxns.filter((t) => t.settledAt === null)
+    const fulfilledTxns = openTxns.filter((t) => t.buyerFulfilled)
+    const unfulfilledTxns = openTxns.filter((t) => !t.buyerFulfilled)
 
     const totalAmount = completedTxns.reduce((sum, t) => sum + t.amount, 0)
     const capturedAmount = completedTxns.filter((t) => t.settledAt !== null).reduce((sum, t) => sum + t.amount, 0)

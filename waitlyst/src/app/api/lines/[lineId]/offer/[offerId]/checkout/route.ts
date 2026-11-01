@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
-import { getStripe } from "@/lib/stripe"
+import { getStripe, abandonPendingTransaction } from "@/lib/stripe"
 
 /**
  * Lets the BUYER (the person who sent a swap offer) fetch the Stripe
@@ -58,6 +58,20 @@ export async function GET(
     }
 
     const session = await stripe.checkout.sessions.retrieve(transaction.stripePaymentId)
+    if (session.status === "expired") {
+      // Same cleanup as the checkout.session.expired webhook, in case it
+      // hasn't arrived yet: free both spots and reopen the offer.
+      await abandonPendingTransaction(transaction.id, {
+        offerId,
+        expireSession: false,
+        // Nobody paid before the window closed
+        byBuyer: true,
+      })
+      return NextResponse.json(
+        { error: "That payment window closed. Your offer went back to them to accept again." },
+        { status: 410 }
+      )
+    }
     if (!session.url) {
       return NextResponse.json(
         { error: "This payment link has expired. Ask them to accept the offer again." },

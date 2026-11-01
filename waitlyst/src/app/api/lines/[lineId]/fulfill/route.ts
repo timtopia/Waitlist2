@@ -98,13 +98,14 @@ export async function POST(
     const fulfilledUser = result.position.user
     if (fulfilledUser?.email && fulfilledUser.emailNotifications) {
       const baseUrl = process.env.NEXTAUTH_URL || process.env.AUTH_URL || "http://localhost:3000"
-      const line = await prisma.line.findUnique({ where: { id: lineId }, select: { name: true } })
+      const line = await prisma.line.findUnique({ where: { id: lineId }, select: { name: true, kind: true } })
       if (line) {
         const lineUrl = `${baseUrl}/lines/${lineId}`
         const { subject, html } = fulfilledEmail(
           fulfilledUser.name || "there",
           line.name,
-          lineUrl
+          lineUrl,
+          { isRestaurant: line.kind === "RESTAURANT" }
         )
         runAfterResponse(() => sendEmail(fulfilledUser.email!, subject, html))
       }

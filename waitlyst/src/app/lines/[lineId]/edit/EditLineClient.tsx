@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/Button"
 import { Input, Textarea } from "@/components/ui/Input"
@@ -44,9 +45,12 @@ function toLocalDatetime(iso: string | null): string {
 export function EditLineClient({
   line,
   platformFeePercent,
+  needsPayoutSetup = false,
 }: {
   line: LineData
   platformFeePercent: number
+  /** Payments are on but the owner has no payout account connected yet */
+  needsPayoutSetup?: boolean
 }) {
   const router = useRouter()
   const { addToast } = useToast()
@@ -363,6 +367,14 @@ export function EditLineClient({
               {parseFloat(ownerFeePercent) > 0 && !allowResale && (
                 <p className="text-xs text-amber-600 mt-1">
                   Swaps are off, so this fee won&apos;t apply. Turn on swapping in Swap Settings below.
+                </p>
+              )}
+              {parseFloat(ownerFeePercent) > 0 && needsPayoutSetup && (
+                <p className="text-xs text-amber-600 mt-1">
+                  Connect a payout account to receive this fee. Anything you earn before then is held and sent once you connect.{" "}
+                  <Link href="/profile" className="underline underline-offset-4 hover:text-ink">
+                    Set up payouts
+                  </Link>
                 </p>
               )}
               {(parseFloat(ownerFeePercent) || 0) !== line.ownerFeePercent && (

@@ -99,4 +99,33 @@ describe("MemberStatusCard", () => {
     rerender(<MemberStatusCard {...baseProps} status={status} notificationPermission="unsupported" />)
     expect(screen.queryByRole("button", { name: "Turn on alerts" })).not.toBeInTheDocument()
   })
+
+  it("numbers a restaurant party by parties still waiting, since seated ones stay listed", () => {
+    mockWaitTime(null)
+    render(<MemberStatusCard {...baseProps} isRestaurant status={{ phase: "waiting", position: 9, ahead: 2 }} />)
+    expect(screen.getByText("3")).toBeInTheDocument()
+    expect(screen.queryByText("9")).not.toBeInTheDocument()
+  })
+
+  it("tells a called restaurant party to give party size changes to the host", () => {
+    render(<MemberStatusCard {...baseProps} isRestaurant status={{ phase: "called", position: 1, ahead: 0 }} />)
+    expect(screen.getByText("Party size changed? Tell the host at the stand. Add a note or leave")).toBeInTheDocument()
+  })
+
+  it("marks the chosen response as pressed and locks both while one is sending", async () => {
+    let finish: () => void = () => {}
+    const onRespond = vi.fn(() => new Promise<void>((r) => { finish = r }))
+    render(
+      <MemberStatusCard {...baseProps} status={{ phase: "called", position: 1, ahead: 0 }} response="ON_MY_WAY" onRespond={onRespond} />
+    )
+    const onMyWay = screen.getByRole("button", { name: /On my way/ })
+    const late = screen.getByRole("button", { name: /Running late/ })
+    expect(onMyWay).toHaveAttribute("aria-pressed", "true")
+    expect(late).toHaveAttribute("aria-pressed", "false")
+    fireEvent.click(late)
+    expect(onMyWay).toBeDisabled()
+    expect(late).toBeDisabled()
+    finish()
+    await waitFor(() => expect(onMyWay).not.toBeDisabled())
+  })
 })

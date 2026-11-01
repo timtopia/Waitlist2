@@ -30,7 +30,7 @@ export async function POST(
     const firstUnserved = await prisma.linePosition.findFirst({
       where: { lineId, fulfilled: false },
       orderBy: { position: "asc" },
-      include: { user: { select: { name: true, email: true, emailNotifications: true } } },
+      include: { user: { select: { name: true, email: true, emailNotifications: true, isWalkIn: true } } },
     })
 
     let frontPosition = firstUnserved
@@ -44,7 +44,7 @@ export async function POST(
       }
       frontPosition = await prisma.linePosition.findFirst({
         where: { id: requestedId, lineId, fulfilled: false },
-        include: { user: { select: { name: true, email: true, emailNotifications: true } } },
+        include: { user: { select: { name: true, email: true, emailNotifications: true, isWalkIn: true } } },
       })
       if (!frontPosition) {
         return NextResponse.json(
@@ -106,7 +106,11 @@ export async function POST(
     const lineUrl = `${baseUrl}/lines/${lineId}`
     const calledUser = frontPosition.user
     if (calledUser?.email && calledUser.emailNotifications) {
-      const { subject, html } = positionCalledEmail(userName, line.name, lineUrl)
+      const { subject, html } = positionCalledEmail(userName, line.name, lineUrl, {
+        isRestaurant: line.kind === "RESTAURANT",
+        // Walk-ins aren't skipped as no-shows, so they have no deadline
+        windowMinutes: calledUser.isWalkIn ? null : line.responseWindowMinutes,
+      })
       runAfterResponse(() => sendEmail(calledUser.email!, subject, html))
     }
 
@@ -132,6 +136,7 @@ export async function POST(
       calledUserId: frontPosition.userId,
       position: frontPosition.position,
       positionId: frontPosition.id,
+      isWalkIn: frontPosition.user?.isWalkIn ?? false,
     })
   } catch (error) {
     console.error("Call next error:", error)

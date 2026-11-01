@@ -34,6 +34,23 @@ describe("email templates", () => {
     expect(subject).toBe("Your spot in Nova Drop sold for $90.00")
     expect(html).toContain("#2")
   })
+
+  it("tells a called restaurant party to head to the host stand, with their time limit", async () => {
+    const { positionCalledEmail } = await import("@/lib/email-templates")
+    const { html } = positionCalledEmail("Ann", "Dinner", "https://waitlyst.test/lines/1", { isRestaurant: true, windowMinutes: 10 })
+    expect(html).toContain("Your table is ready at <strong>Dinner</strong>. Head to the host stand.")
+    expect(html).toContain("You have 10 min to get there, or your place goes to the next party.")
+    const noWindow = positionCalledEmail("Ann", "Dinner", "https://waitlyst.test/lines/1", { isRestaurant: true, windowMinutes: null })
+    expect(noWindow.html).not.toContain("min to get there")
+  })
+
+  it("says seated or served, never fulfilled", async () => {
+    const { fulfilledEmail } = await import("@/lib/email-templates")
+    expect(fulfilledEmail("Ann", "Dinner", "u", { isRestaurant: true }).subject).toBe("You've been seated at Dinner")
+    const served = fulfilledEmail("Ann", "Bakery", "u")
+    expect(served.subject).toBe("You've been served in Bakery")
+    expect(served.html).not.toContain("fulfilled")
+  })
 })
 
 describe("performPositionSwap seller notification", () => {

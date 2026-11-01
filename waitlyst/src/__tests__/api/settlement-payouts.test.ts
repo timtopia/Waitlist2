@@ -92,4 +92,30 @@ describe("GET /api/lines/[lineId]/settlement -- owner fee totals", () => {
     expect(data.transactions.find((t: { id: string }) => t.id === "txn-captured").ownerFee).toBe(9)
     expect(data.transactions.find((t: { id: string }) => t.id === "txn-pending").ownerFee).toBe(5)
   })
+
+  it("counts served/not-served only among holds still awaiting capture", async () => {
+    // A payment already collected has no decision left; counting it as
+    // "unfulfilled" overstated what "Cancel all unfulfilled" would release.
+    mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdById: "owner-1" })
+    const base = { amount: 10, ownerFee: 1, platformFee: 0.5, status: "COMPLETED", stripePaymentId: null, createdAt: new Date() }
+    mockPrisma.transaction.findMany.mockResolvedValue([
+      { ...base, id: "collected-unserved", buyerId: "b1", sellerId: "s1", settledAt: new Date(), capturedAt: new Date() },
+      { ...base, id: "open-unserved", buyerId: "b2", sellerId: "s2", settledAt: null },
+      { ...base, id: "open-served", buyerId: "b3", sellerId: "s3", settledAt: null },
+    ])
+    mockPrisma.user.findMany.mockResolvedValue([])
+    mockPrisma.linePosition.findMany.mockResolvedValue([
+      { userId: "b1", position: 4, fulfilled: false },
+      { userId: "b2", position: 5, fulfilled: false },
+      { userId: "b3", position: 1, fulfilled: true },
+    ])
+
+    const { GET } = await import("@/app/api/lines/[lineId]/settlement/route")
+    const response = await GET(new Request("http://localhost/api/lines/line-1/settlement"), { params: Promise.resolve({ lineId: "line-1" }) })
+    const data = await response.json()
+    expect(data.summary.total).toBe(3)
+    expect(data.summary.unfulfilled).toBe(1)
+    expect(data.summary.fulfilled).toBe(1)
+  })
 })

@@ -53,18 +53,31 @@ function wrapTemplate(title: string, body: string, ctaText: string, ctaUrl: stri
 </html>`
 }
 
+export interface ServiceEmailOptions {
+  /** Restaurant lines seat parties at a host stand rather than serve people */
+  isRestaurant?: boolean
+  /** Minutes a called party has to show up; null/undefined when there's no limit */
+  windowMinutes?: number | null
+}
+
 export function positionCalledEmail(
   userName: string,
   lineName: string,
-  lineUrl: string
+  lineUrl: string,
+  opts: ServiceEmailOptions = {}
 ): { subject: string; html: string } {
   const safeName = escapeHtml(userName)
   const safeLine = escapeHtml(lineName)
   const subject = `You're up! You've been called in ${lineName}`
+  const deadline = opts.windowMinutes
+    ? `You have ${opts.windowMinutes} min to get there, or your place goes to the next ${opts.isRestaurant ? "party" : "person"}.`
+    : "Please come forward as soon as possible so you don't lose your spot."
   const body = `
     <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">You're up, ${safeName}!</h2>
-    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">You've been called to the front of <strong>${safeLine}</strong>.</p>
-    <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Please come forward as soon as possible so you don't lose your spot.</p>
+    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">${opts.isRestaurant
+      ? `Your table is ready at <strong>${safeLine}</strong>. Head to the host stand.`
+      : `You've been called to the front of <strong>${safeLine}</strong>.`}</p>
+    <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">${deadline}</p>
   `
   return { subject, html: wrapTemplate(subject, body, "Go to Line", lineUrl) }
 }
@@ -163,14 +176,17 @@ export function lineOpeningEmail(
 export function fulfilledEmail(
   userName: string,
   lineName: string,
-  lineUrl: string
+  lineUrl: string,
+  opts: ServiceEmailOptions = {}
 ): { subject: string; html: string } {
   const safeName = escapeHtml(userName)
   const safeLine = escapeHtml(lineName)
-  const subject = `You've been fulfilled in ${lineName}`
+  const subject = opts.isRestaurant ? `You've been seated at ${lineName}` : `You've been served in ${lineName}`
   const body = `
     <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">All done, ${safeName}!</h2>
-    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">You've been marked as fulfilled in <strong>${safeLine}</strong>.</p>
+    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">${opts.isRestaurant
+      ? `You've been seated at <strong>${safeLine}</strong>. Enjoy your meal.`
+      : `You've been marked as served in <strong>${safeLine}</strong>.`}</p>
     <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Thanks for using Waitlyst!</p>
   `
   return { subject, html: wrapTemplate(subject, body, "View Line", lineUrl) }

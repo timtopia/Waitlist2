@@ -11,6 +11,14 @@ export type LineUpdateEvent = {
 }
 
 const POLL_INTERVAL_MS = 30000 // 30 seconds (reduced from 5s to save DB compute)
+/** A poll stuck on a dead connection would otherwise block every later one */
+const POLL_TIMEOUT_MS = 10_000
+
+function pollSignal(): AbortSignal | undefined {
+  return typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function"
+    ? AbortSignal.timeout(POLL_TIMEOUT_MS)
+    : undefined
+}
 
 export interface LineUpdateOptions {
   intervalMs?: number
@@ -54,16 +62,27 @@ export function useLineUpdates(
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | null = null
+    // Visibility and "online" also trigger polls; never run two at once, or a
+    // slow older response could land after a newer one.
+    let inFlight = false
 
     const poll = async () => {
       if (document.visibilityState === "hidden" && !pollWhenHidden) return
+      if (inFlight) return
+      inFlight = true
 
       try {
         const res = await fetch(`/api/lines/${lineId}`, {
           cache: "no-store",
           // Unchanged since the last poll: the server answers 304 with no body
           headers: etagRef.current ? { "If-None-Match": etagRef.current } : undefined,
+          signal: pollSignal(),
         })
+        // A server error says nothing about the line; what's shown is out of date
+        if (res.status >= 500) {
+          setStale(true)
+          return
+        }
         setStale(false)
         if (res.status === 304) return
         // The line was there and now isn't: the organizer deleted it. Say so
@@ -90,6 +109,8 @@ export function useLineUpdates(
         }
       } catch {
         setStale(true)
+      } finally {
+        inFlight = false
       }
     }
 

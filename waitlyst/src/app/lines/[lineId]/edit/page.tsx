@@ -2,6 +2,7 @@ import { redirect } from "next/navigation"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { getPlatformFeePercent } from "@/lib/fees"
+import { getStripe } from "@/lib/stripe"
 import { countCapacityUsed } from "@/lib/capacity-server"
 import { EditLineClient } from "./EditLineClient"
 
@@ -34,6 +35,11 @@ export default async function EditLinePage({ params }: Props) {
     redirect(`/lines/${lineId}`)
   }
 
+  const owner = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { stripeConnectOnboarded: true },
+  })
+
   return (
     <EditLineClient
       line={{
@@ -60,6 +66,7 @@ export default async function EditLinePage({ params }: Props) {
         responseWindowMinutes: line.responseWindowMinutes,
       }}
       platformFeePercent={getPlatformFeePercent()}
+      needsPayoutSetup={!!getStripe() && !owner?.stripeConnectOnboarded}
     />
   )
 }

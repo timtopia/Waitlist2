@@ -62,7 +62,7 @@ describe("POST /api/lines/[lineId]/call-next", () => {
     const res = await POST(new Request("http://localhost/api/lines/line-1/call-next", { method: "POST" }), params)
 
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ calledUser: "Bob", calledUserId: "bob", position: 2, positionId: "pos-2" })
+    expect(await res.json()).toEqual({ calledUser: "Bob", calledUserId: "bob", position: 2, positionId: "pos-2", isWalkIn: false })
     expect(mockPrisma.linePosition.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { lineId: "line-1", fulfilled: false },
