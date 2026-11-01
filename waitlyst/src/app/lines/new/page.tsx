@@ -2,7 +2,7 @@
 
 import { Suspense, useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useSession } from "next-auth/react"
+import { signIn, useSession } from "next-auth/react"
 import { Button } from "@/components/ui/Button"
 import { Input, Textarea } from "@/components/ui/Input"
 import { Card, CardContent } from "@/components/ui/Card"
@@ -212,8 +212,8 @@ function CreateLineForm() {
       <div className="max-w-2xl mx-auto px-4 py-8">
         <Card>
           <CardContent className="py-12 text-center">
-            <p className="text-ink/60 mb-4">You must be signed in to create a line.</p>
-            <Button onClick={() => router.push("/")}>Go Home</Button>
+            <p className="text-ink/60 mb-4">Sign in to start your first line. It takes about a minute.</p>
+            <Button onClick={() => signIn("google", { callbackUrl: "/lines/new" })}>Sign in with Google</Button>
           </CardContent>
         </Card>
       </div>
@@ -435,6 +435,11 @@ function CreateLineForm() {
                   <span> A {platformFeePercent}% platform fee also applies to each swap.</span>
                 ) : null}
               </p>
+              {parseFloat(ownerFeePercent) > 0 && !allowResale && (
+                <p className="text-xs text-amber-600 mt-1">
+                  Swaps are off, so this fee won&apos;t apply. Turn on swapping in Swap Settings below.
+                </p>
+              )}
               {ownerFeePercent && parseFloat(ownerFeePercent) > 0 && stripeEnabled && connectOnboarded === false && (
                 <div className="mt-2 flex items-center justify-between gap-3 bg-accent/5 border border-accent/30 px-3 py-2">
                   <p className="text-xs text-ink/70">

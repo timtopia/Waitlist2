@@ -12,7 +12,7 @@ export default function NotFound() {
             Page not found
           </h1>
           <p className="text-ink/60 mb-8">
-            The line you&apos;re looking for doesn&apos;t exist or has been deleted.
+            This page doesn&apos;t exist, or the line was deleted.
           </p>
           <div className="flex items-center justify-center gap-3">
             <Link href="/browse">

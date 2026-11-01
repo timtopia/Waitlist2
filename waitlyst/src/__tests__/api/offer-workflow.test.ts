@@ -3,8 +3,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 const mockPrisma = {
   line: { findUnique: vi.fn() },
   linePosition: { findUnique: vi.fn(), findMany: vi.fn() },
-  swapOffer: { findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn(), delete: vi.fn(), upsert: vi.fn() },
-  transaction: { create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn() },
+  swapOffer: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn(), delete: vi.fn(), upsert: vi.fn() },
+  transaction: { create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn(), count: vi.fn().mockResolvedValue(0) },
   user: { findUnique: vi.fn() },
   $transaction: vi.fn((fn: (tx: unknown) => unknown) => fn(mockPrisma)),
 }
@@ -179,6 +179,44 @@ describe("POST /api/lines/[lineId]/offer", () => {
     expect(res.status).toBe(429)
     expect(mockPrisma.swapOffer.upsert).not.toHaveBeenCalled()
   })
+
+  function setupPending(me: string) {
+    mockAuth.mockResolvedValue({ user: { id: me } })
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", allowResale: true, maxAskingPrice: null, name: "L", nowServingUserId: null })
+    mockPrisma.linePosition.findUnique
+      .mockResolvedValueOnce({ userId: me, position: 2, fulfilled: false })
+      .mockResolvedValueOnce({ userId: "sam", position: 1, fulfilled: false })
+    mockPrisma.swapOffer.findUnique.mockResolvedValue({
+      id: "o-1", status: "PENDING", amount: 10, createdAt: new Date(), expiresAt: inHours(24),
+    })
+    mockPrisma.swapOffer.upsert.mockClear()
+  }
+  const send = async (amount: number) => {
+    const { POST } = await import("@/app/api/lines/[lineId]/offer/route")
+    return POST(
+      new Request("http://localhost/api/lines/line-1/offer", { method: "POST", body: JSON.stringify({ toUserId: "sam", amount }) }),
+      { params: Promise.resolve({ lineId: "line-1" }) }
+    )
+  }
+
+  it("lets a buyer raise a pending offer, guarded on the old amount", async () => {
+    setupPending(freshUser("ben"))
+    mockPrisma.swapOffer.findUniqueOrThrow.mockResolvedValue({ id: "o-1", amount: 15 })
+    const res = await send(15)
+    expect(res.status).toBe(201)
+    expect(mockPrisma.swapOffer.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "o-1", status: "PENDING", amount: 10 },
+      data: expect.objectContaining({ amount: 15 }),
+    }))
+    expect(mockPrisma.swapOffer.upsert).not.toHaveBeenCalled()
+  })
+
+  it("won't lower or repeat a pending offer", async () => {
+    setupPending(freshUser("ben"))
+    const res = await send(10)
+    expect(res.status).toBe(409)
+    expect(mockPrisma.swapOffer.updateMany).not.toHaveBeenCalled()
+  })
 })
 
 describe("PATCH /api/lines/[lineId]/offer/[offerId] accept", () => {
@@ -224,6 +262,28 @@ describe("PATCH /api/lines/[lineId]/offer/[offerId] accept", () => {
     })
   })
 
+  it("won't accept from a buyer who keeps backing out of payments", async () => {
+    setupAccept(freshUser("sam"))
+    mockPrisma.transaction.count.mockResolvedValueOnce(3)
+    const res = await accept()
+    expect(res.status).toBe(409)
+    expect(mockPrisma.transaction.create).not.toHaveBeenCalled()
+    expect(mockPrisma.swapOffer.updateMany).toHaveBeenCalledWith({
+      where: { id: "offer-1", status: "PENDING" },
+      data: { status: "EXPIRED" },
+    })
+  })
+
+  it("claims the offer only at the amount the seller saw", async () => {
+    setupAccept(freshUser("sam"))
+    mockPrisma.user.findUnique.mockResolvedValue(null)
+    await accept()
+    expect(mockPrisma.swapOffer.updateMany).toHaveBeenCalledWith({
+      where: { id: "offer-1", status: "PENDING", amount: 10 },
+      data: { status: "ACCEPTED" },
+    })
+  })
+
   it("records which checkout the accepted offer started", async () => {
     setupAccept(freshUser("sam"))
     mockPrisma.user.findUnique.mockResolvedValue(null)
@@ -260,7 +320,7 @@ describe("DELETE /api/lines/[lineId]/offer/[offerId] (withdraw)", () => {
     mockPrisma.transaction.findFirst.mockResolvedValue({ id: "txn-pending" })
     const res = await withdraw()
     expect(res.status).toBe(200)
-    expect(stripeMocks.abandonPendingTransaction).toHaveBeenCalledWith("txn-pending", { offerId: null })
+    expect(stripeMocks.abandonPendingTransaction).toHaveBeenCalledWith("txn-pending", { offerId: null, byBuyer: true })
   })
 
   it("can't withdraw a swap that already went through", async () => {

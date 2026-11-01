@@ -50,7 +50,10 @@ export function Header() {
                 <div className="relative hidden md:block">
                   <button
                     onClick={() => setMenuOpen(!menuOpen)}
-                    className="flex items-center space-x-2 focus:outline-none"
+                    className="flex items-center space-x-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ink"
+                    aria-label="Account menu"
+                    aria-haspopup="menu"
+                    aria-expanded={menuOpen}
                   >
                     {session.user?.image ? (
                       <Image
@@ -97,8 +100,9 @@ export function Header() {
             {/* Mobile hamburger button */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden flex items-center justify-center w-11 h-11 text-ink/60 hover:text-ink hover:bg-ink/5 focus:outline-none"
+              className="md:hidden flex items-center justify-center w-11 h-11 text-ink/60 hover:text-ink hover:bg-ink/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-ink"
               aria-label="Toggle menu"
+              aria-expanded={mobileMenuOpen}
             >
               {mobileMenuOpen ? (
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

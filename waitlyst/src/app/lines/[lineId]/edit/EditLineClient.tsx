@@ -360,6 +360,11 @@ export function EditLineClient({
                 )}
                 <span> A {platformFeePercent}% platform fee also applies to each swap.</span>
               </p>
+              {parseFloat(ownerFeePercent) > 0 && !allowResale && (
+                <p className="text-xs text-amber-600 mt-1">
+                  Swaps are off, so this fee won&apos;t apply. Turn on swapping in Swap Settings below.
+                </p>
+              )}
               {(parseFloat(ownerFeePercent) || 0) !== line.ownerFeePercent && (
                 <p className="text-xs text-amber-600 mt-1">
                   Changing the fee will update all displayed prices immediately. Purchases already in progress will keep their original fees.
@@ -624,6 +629,12 @@ export function EditLineClient({
                       <p className="text-xs text-ink/50 mt-1">
                         Cap the maximum swap price anyone can set for their position. Leave empty for no limit.
                       </p>
+                      {line.allowResale && maxAskingPrice && parseFloat(maxAskingPrice) >= 1 &&
+                        (line.maxAskingPrice === null || parseFloat(maxAskingPrice) < line.maxAskingPrice) && (
+                        <p className="text-xs text-amber-600 mt-1">
+                          Saving takes down listings above this price and cancels offers and checkouts over it.
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>

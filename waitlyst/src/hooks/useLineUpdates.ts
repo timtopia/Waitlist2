@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useCallback } from "react"
+import { useEffect, useRef, useCallback, useState } from "react"
 
 export type LineUpdateEvent = {
   type: "join" | "leave" | "price-change" | "swap" | "connected" | "delete" | "lock" | "poll-update"
@@ -30,12 +30,16 @@ export interface LineUpdateOptions {
  * SSE was removed — on Vercel serverless, SSE events fired from API routes
  * can't reach the SSE connection because each request runs in a separate
  * invocation with its own memory. Polling is the reliable approach.
+ *
+ * Returns `stale: true` while polls are failing (e.g. the phone lost signal),
+ * so the page can say it's out of date instead of looking current.
  */
 export function useLineUpdates(
   lineId: string,
   onUpdate: (event: LineUpdateEvent) => void,
   { intervalMs = POLL_INTERVAL_MS, pollWhenHidden = false }: LineUpdateOptions = {}
 ) {
+  const [stale, setStale] = useState(false)
   const lastSnapshotRef = useRef<string | null>(null)
   const deletedRef = useRef(false)
   const etagRef = useRef<string | null>(null)
@@ -60,6 +64,7 @@ export function useLineUpdates(
           // Unchanged since the last poll: the server answers 304 with no body
           headers: etagRef.current ? { "If-None-Match": etagRef.current } : undefined,
         })
+        setStale(false)
         if (res.status === 304) return
         // The line was there and now isn't: the organizer deleted it. Say so
         // once, rather than leaving the page frozen on its last snapshot.
@@ -84,7 +89,7 @@ export function useLineUpdates(
           lastSnapshotRef.current = text
         }
       } catch {
-        // Silently ignore polling errors
+        setStale(true)
       }
     }
 
@@ -112,13 +117,21 @@ export function useLineUpdates(
       }
     }
 
+    // Catch up the moment the connection returns, not at the next tick
+    const handleOnline = () => poll()
+    const handleOffline = () => setStale(true)
+
     document.addEventListener("visibilitychange", handleVisibilityChange)
+    window.addEventListener("online", handleOnline)
+    window.addEventListener("offline", handleOffline)
 
     // Initial baseline after a short delay, then start polling
     const startTimeout = setTimeout(startPolling, 2000)
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange)
+      window.removeEventListener("online", handleOnline)
+      window.removeEventListener("offline", handleOffline)
       clearTimeout(startTimeout)
       stopPolling()
     }
@@ -129,4 +142,6 @@ export function useLineUpdates(
     etagRef.current = null
     lastSnapshotRef.current = null
   }, [lineId])
+
+  return { stale }
 }

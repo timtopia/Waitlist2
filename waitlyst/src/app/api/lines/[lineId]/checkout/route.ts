@@ -6,13 +6,11 @@ import { paymentsUnavailable } from "@/lib/payments-mode"
 import { calculateFees } from "@/lib/fees"
 import { rateLimit } from "@/lib/rate-limit"
 import { shortName } from "@/lib/privacy"
-import { tradeBlocker } from "@/lib/trading"
+import { tradeBlocker, MAX_ABANDONED_CHECKOUTS, ABANDON_WINDOW_MS } from "@/lib/trading"
 
 // Checkouts the buyer cancelled or let time out, per line, before they must
 // wait. Each one locks the person ahead for up to 30 minutes, so the window
 // is long enough that the limit actually bites.
-const MAX_ABANDONED_CHECKOUTS = 3
-const ABANDON_WINDOW_MS = 6 * 60 * 60 * 1000
 
 const checkoutLimiter = rateLimit({ interval: 60_000, limit: 10 })
 

@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import { notFound } from "next/navigation"
 import { prisma } from "@/lib/prisma"
 import { capacityUnit, capacityUsed, capacityView, guestCount } from "@/lib/capacity"
 import { LineDetailClient } from "./LineDetailClient"
@@ -69,11 +70,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       description,
       type: "website",
       siteName: "Waitlyst",
+      ...(line.productImage && { images: [line.productImage] }),
     },
     twitter: {
       card: "summary_large_image",
       title: `${line.name} - Waitlyst`,
       description,
+      ...(line.productImage && { images: [line.productImage] }),
     },
   }
 }
@@ -81,6 +84,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function LineDetailPage({ params }: Props) {
   const { lineId } = await params
   const line = await getLine(lineId)
+  // A bad or deleted link gets the real 404 page (with somewhere to go)
+  if (!line) notFound()
 
   // Build JSON-LD structured data
   let jsonLd: Record<string, unknown> | null = null

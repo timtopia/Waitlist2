@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { LineCard } from "@/components/LineCard"
 import { Button } from "@/components/ui/Button"
@@ -40,19 +40,28 @@ export default function BrowsePage() {
   const [filter, setFilter] = useState<FilterStatus>("all")
   const [sortBy, setSortBy] = useState<SortOption>("newest")
 
-  useEffect(() => {
-    async function fetchLines() {
-      try {
-        const res = await fetch("/api/lines")
-        if (res.ok) {
-          setLines(await res.json())
-        }
-      } finally {
-        setLoading(false)
+  // A failed load used to look like an empty board
+  const [loadError, setLoadError] = useState(false)
+  const fetchLines = useCallback(async () => {
+    setLoading(true)
+    setLoadError(false)
+    try {
+      const res = await fetch("/api/lines")
+      if (res.ok) {
+        setLines(await res.json())
+      } else {
+        setLoadError(true)
       }
+    } catch {
+      setLoadError(true)
+    } finally {
+      setLoading(false)
     }
-    fetchLines()
   }, [])
+
+  useEffect(() => {
+    fetchLines()
+  }, [fetchLines])
 
   const filtered = useMemo(() => {
     const result = lines.filter((line) => {
@@ -170,6 +179,11 @@ export default function BrowsePage() {
           {[1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="h-20 bg-white animate-pulse" />
           ))}
+        </div>
+      ) : loadError ? (
+        <div className="text-center py-20 border border-rule bg-white" role="alert">
+          <p className="text-ink/60 mb-4">Couldn&apos;t load lines. Check your connection and try again.</p>
+          <Button variant="secondary" onClick={fetchLines}>Try again</Button>
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-20 border border-rule bg-white">

@@ -16,7 +16,7 @@ import { swapAcceptedEmail } from "@/lib/email-templates"
 import { rateLimit } from "@/lib/rate-limit"
 import { shortName } from "@/lib/privacy"
 import { isOfferExpired } from "@/lib/offers"
-import { tradeBlocker } from "@/lib/trading"
+import { tradeBlocker, MAX_ABANDONED_CHECKOUTS, ABANDON_WINDOW_MS } from "@/lib/trading"
 
 const LOCK_DURATION_MS = 30 * 60 * 1000 // 30 minutes
 const offerRespondLimiter = rateLimit({ interval: 60000, limit: 10 })
@@ -158,7 +158,7 @@ export async function PATCH(
     const now = new Date()
     if (buyerPosition.lockedUntil && now < buyerPosition.lockedUntil) {
       return NextResponse.json(
-        { error: "The buyer's position is currently involved in another transaction" },
+        { error: "The person behind you is in the middle of another swap. Try again in a few minutes." },
         { status: 409 }
       )
     }
@@ -169,13 +169,35 @@ export async function PATCH(
       )
     }
 
+    // Same brake as direct buys: an offer whose checkout keeps lapsing unpaid
+    // reopens each time, so a high offer never paid could lock the seller's
+    // spot over and over.
+    const recentAbandoned = await prisma.transaction.count({
+      where: {
+        lineId,
+        buyerId: offer.fromUserId,
+        status: "FAILED",
+        abandonedByBuyer: true,
+        createdAt: { gt: new Date(Date.now() - ABANDON_WINDOW_MS) },
+      },
+    })
+    if (recentAbandoned >= MAX_ABANDONED_CHECKOUTS) {
+      await prisma.swapOffer.updateMany({ where: { id: offerId, status: "PENDING" }, data: { status: "EXPIRED" } })
+      return NextResponse.json(
+        { error: "They've backed out of several payments here recently, so this offer can't be accepted." },
+        { status: 409 }
+      )
+    }
+
     const askingPrice = offer.amount
     const fees = calculateFees(askingPrice, line.ownerFeePercent)
 
     // Claim the offer atomically so a double-click (or two tabs) can't start
     // two checkouts for the same offer.
+    // Matching the amount too means a raise landing mid-accept fails the
+    // claim instead of charging the price the seller didn't see.
     const claimed = await prisma.swapOffer.updateMany({
-      where: { id: offerId, status: "PENDING" },
+      where: { id: offerId, status: "PENDING", amount: offer.amount },
       data: { status: "ACCEPTED" },
     })
     if (claimed.count === 0) {
@@ -403,7 +425,8 @@ export async function DELETE(
           { status: 400 }
         )
       }
-      await abandonPendingTransaction(pending.id, { offerId: null })
+      // Backing out after the seller accepted counts as a walk-away
+      await abandonPendingTransaction(pending.id, { offerId: null, byBuyer: true })
     } else if (offer.status !== "PENDING") {
       return NextResponse.json(
         { error: `This offer was already ${offer.status.toLowerCase()}` },

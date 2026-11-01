@@ -472,10 +472,10 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
       <div className="flex items-center justify-between mb-6">
         <div>
           <Link
-            href="/dashboard"
+            href={`/lines/${lineId}`}
             className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4 mb-2 inline-block"
           >
-            &larr; Dashboard
+            &larr; Back to line
           </Link>
           <h1 className="text-2xl font-semibold tracking-tight">
             Settlement &mdash; {lineName}
@@ -684,12 +684,17 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
                         </td>
                         <td className="px-6 py-4 text-right font-mono tabular-nums text-ink">
                           {formatCurrency(txn.amount)}
+                          {txn.ownerFee > 0 && (
+                            <span className="block text-xs text-ink/50">Your fee {formatCurrency(txn.ownerFee)}</span>
+                          )}
                         </td>
                         <td className="px-6 py-4 text-center">
                           {txn.buyerPosition !== null ? (
                             <span className="font-mono tabular-nums text-accent">
                               #{txn.buyerPosition}
                             </span>
+                          ) : txn.buyerFulfilled ? (
+                            <span className="text-green-700">{kind === "RESTAURANT" ? "Seated" : "Served"}</span>
                           ) : (
                             <span className="text-ink/40">Left</span>
                           )}
@@ -729,13 +734,18 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
                         <p className="font-mono text-xs tabular-nums text-ink/50 mt-0.5">
                           {txn.buyerPosition !== null
                             ? `Position #${txn.buyerPosition}`
-                            : "Left line"}
+                            : txn.buyerFulfilled
+                              ? kind === "RESTAURANT" ? "Seated" : "Served"
+                              : "Left line"}
                         </p>
                       </div>
                       <div className="text-right">
                         <p className="font-mono tabular-nums font-medium text-ink">
                           {formatCurrency(txn.amount)}
                         </p>
+                        {txn.ownerFee > 0 && (
+                          <p className="font-mono text-xs tabular-nums text-ink/50">Your fee {formatCurrency(txn.ownerFee)}</p>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center justify-between mt-2">

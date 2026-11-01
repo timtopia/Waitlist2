@@ -152,8 +152,8 @@ describe("ProfileClient", () => {
 
     expect(screen.getByText("5 lines created")).toBeInTheDocument()
     expect(screen.getByText("3 active positions")).toBeInTheDocument()
-    expect(screen.getByText("8 swaps made")).toBeInTheDocument()
-    expect(screen.getByText("4 swaps received")).toBeInTheDocument()
+    expect(screen.getByText("8 spots bought")).toBeInTheDocument()
+    expect(screen.getByText("4 spots sold")).toBeInTheDocument()
   })
 
   it("renders financial summary with total available and breakdowns", () => {
