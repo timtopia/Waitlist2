@@ -9,6 +9,7 @@ import {
   lockPositionsForTransaction,
   abandonPendingTransaction,
 } from "@/lib/stripe"
+import { paymentsUnavailable } from "@/lib/payments-mode"
 import { calculateFees } from "@/lib/fees"
 import { sendEmail } from "@/lib/email"
 import { swapAcceptedEmail } from "@/lib/email-templates"
@@ -88,6 +89,13 @@ export async function PATCH(
       return NextResponse.json(
         { error: "This offer has expired. They can send you a new one." },
         { status: 410 }
+      )
+    }
+
+    if (paymentsUnavailable()) {
+      return NextResponse.json(
+        { error: "Payments aren't available right now, so spots can't be bought or swapped. Please try again later." },
+        { status: 503 }
       )
     }
 

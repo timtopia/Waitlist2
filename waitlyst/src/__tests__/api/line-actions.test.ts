@@ -9,6 +9,8 @@ const mockPrisma = {
     updateMany: vi.fn(),
   },
   linePosition: {
+    findMany: vi.fn().mockResolvedValue([]),
+    update: vi.fn(),
     findFirst: vi.fn(),
     findUnique: vi.fn(),
     delete: vi.fn(),
@@ -139,7 +141,7 @@ describe("POST /api/lines/[lineId]/pause", () => {
     expect(data.isActive).toBe(false)
     expect(mockPrisma.line.update).toHaveBeenCalledWith({
       where: { id: "line-1" },
-      data: { isActive: false },
+      data: { isActive: false, pausedAt: expect.any(Date) },
     })
   })
 
@@ -167,7 +169,44 @@ describe("POST /api/lines/[lineId]/pause", () => {
     expect(data.isActive).toBe(true)
     expect(mockPrisma.line.update).toHaveBeenCalledWith({
       where: { id: "line-1" },
-      data: { isActive: true },
+      data: { isActive: true, pausedAt: null },
+    })
+  })
+
+  it("gives called people back the time the line spent paused", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    const now = new Date("2026-11-01T20:30:00Z")
+    vi.setSystemTime(now)
+    const at = (hhmm: string) => new Date(`2026-11-01T${hhmm}:00Z`)
+    mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
+    mockPrisma.line.findUnique.mockResolvedValue({
+      id: "line-1",
+      createdById: "owner-1",
+      isActive: false,
+      pausedAt: at("20:00"),
+    })
+    mockPrisma.linePosition.findMany.mockResolvedValue([
+      // Called before the pause, said "on my way" before it too
+      { id: "before", calledAt: at("19:55"), respondedAt: at("19:58") },
+      // Called while the line was paused: the clock starts on resume
+      { id: "during", calledAt: at("20:10"), respondedAt: null },
+    ])
+
+    const { POST } = await import("@/app/api/lines/[lineId]/pause/route")
+    const response = await POST(
+      new Request("http://localhost/api/lines/line-1/pause", { method: "POST", body: JSON.stringify({ isActive: true }) }),
+      { params: Promise.resolve({ lineId: "line-1" }) }
+    )
+    vi.useRealTimers()
+
+    expect(response.status).toBe(200)
+    expect(mockPrisma.linePosition.update).toHaveBeenCalledWith({
+      where: { id: "before" },
+      data: { calledAt: at("20:25"), respondedAt: at("20:28") },
+    })
+    expect(mockPrisma.linePosition.update).toHaveBeenCalledWith({
+      where: { id: "during" },
+      data: { calledAt: now, respondedAt: null },
     })
   })
 })

@@ -59,7 +59,7 @@ export function MemberStatusCard({
   const [responding, setResponding] = useState<string | null>(null)
   // Tick once a second while called, for the countdown
   const [now, setNow] = useState(() => Date.now())
-  const deadline = phase === "called" ? callDeadline(calledAt, responseWindowMinutes, response, respondedAt) : null
+  const deadline = phase === "called" && !isPaused ? callDeadline(calledAt, responseWindowMinutes, respondedAt) : null
   const deadlineMs = deadline?.getTime() ?? null
   useEffect(() => {
     if (deadlineMs === null) return

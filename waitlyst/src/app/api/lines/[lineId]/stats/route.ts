@@ -59,7 +59,9 @@ export async function GET(
       totalCompleted,
       totalRefunded,
       pendingSettlement,
-      netRevenue: totalCompleted - totalRefunded,
+      // Refunded swaps are already left out of totalCompleted (they're
+      // REFUNDED, not COMPLETED); subtracting them again counted them twice.
+      netRevenue: totalCompleted,
       recentTransactions: transactions.slice(0, 10),
       service: serviceStats(visits, positions),
     })

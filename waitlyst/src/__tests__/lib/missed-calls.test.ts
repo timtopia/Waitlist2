@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
 const mockPrisma = {
-  linePosition: { findMany: vi.fn(), updateMany: vi.fn() },
+  linePosition: { findMany: vi.fn(), updateMany: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
 }
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }))
 const removeByOrganizer = vi.fn()
@@ -16,13 +16,12 @@ const NOW = new Date("2026-11-01T20:00:00Z")
 const minutesAgo = (m: number) => new Date(NOW.getTime() - m * 60_000)
 
 describe("responseDeadline", () => {
-  it("is the call time plus the window, extended once by 'on my way'", async () => {
+  it("is the call time plus the window, extended once from the first 'on my way'", async () => {
     const { responseDeadline } = await import("@/lib/missed-calls")
-    expect(responseDeadline(minutesAgo(10), 5, null, null)).toEqual(minutesAgo(5))
-    // Said "on my way" 2 minutes ago: 5 more minutes from then
-    expect(responseDeadline(minutesAgo(10), 5, "ON_MY_WAY", minutesAgo(2))).toEqual(new Date(NOW.getTime() + 3 * 60_000))
-    // "Running late" doesn't buy time
-    expect(responseDeadline(minutesAgo(10), 5, "RUNNING_LATE", minutesAgo(2))).toEqual(minutesAgo(5))
+    expect(responseDeadline(minutesAgo(10), 5, null)).toEqual(minutesAgo(5))
+    // First said "on my way" 2 minutes ago: 5 more minutes from then, kept
+    // even if they've since said they're running late
+    expect(responseDeadline(minutesAgo(10), 5, minutesAgo(2))).toEqual(new Date(NOW.getTime() + 3 * 60_000))
   })
 })
 
@@ -31,8 +30,8 @@ describe("expireMissedCalls", () => {
 
   it("skips called people whose time ran out as no-shows, but not those on their way", async () => {
     mockPrisma.linePosition.findMany.mockResolvedValue([
-      { id: "late", calledAt: minutesAgo(12), response: null, respondedAt: null },
-      { id: "coming", calledAt: minutesAgo(12), response: "ON_MY_WAY", respondedAt: minutesAgo(1) },
+      { id: "late", calledAt: minutesAgo(12), respondedAt: null },
+      { id: "coming", calledAt: minutesAgo(12), respondedAt: minutesAgo(1) },
     ])
     removeByOrganizer.mockResolvedValue({})
     const { expireMissedCalls } = await import("@/lib/missed-calls")
@@ -58,35 +57,68 @@ describe("expireMissedCalls", () => {
 })
 
 describe("POST /respond", () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(NOW)
+  })
+  afterEach(() => vi.useRealTimers())
 
-  it("records 'on my way' for someone who has been called", async () => {
-    mockAuth.mockResolvedValue({ user: { id: "guest-1" } })
-    mockPrisma.linePosition.updateMany.mockResolvedValue({ count: 1 })
+  const respond = async (response: string) => {
     const { POST } = await import("@/app/api/lines/[lineId]/respond/route")
-
-    const res = await POST(
-      new Request("http://localhost/api/lines/line-1/respond", { method: "POST", body: JSON.stringify({ response: "ON_MY_WAY" }) }),
+    return POST(
+      new Request("http://localhost/api/lines/line-1/respond", { method: "POST", body: JSON.stringify({ response }) }),
       { params: Promise.resolve({ lineId: "line-1" }) }
     )
+  }
+  const called = (over: Record<string, unknown> = {}) => ({
+    id: "pos-1",
+    calledAt: minutesAgo(3),
+    respondedAt: null,
+    line: { responseWindowMinutes: 10, isActive: true },
+    ...over,
+  })
+
+  it("records the first 'on my way' as the time the extension runs from", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "guest-1" } })
+    mockPrisma.linePosition.findFirst.mockResolvedValue(called())
+
+    const res = await respond("ON_MY_WAY")
 
     expect(res.status).toBe(200)
-    expect(mockPrisma.linePosition.updateMany).toHaveBeenCalledWith({
+    expect(mockPrisma.linePosition.findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: { lineId: "line-1", userId: "guest-1", fulfilled: false, calledAt: { not: null } },
-      data: { response: "ON_MY_WAY", respondedAt: expect.any(Date) },
+    }))
+    expect(mockPrisma.linePosition.update).toHaveBeenCalledWith({
+      where: { id: "pos-1" },
+      data: { response: "ON_MY_WAY", respondedAt: NOW },
     })
+  })
+
+  it("doesn't buy more time for saying 'on my way' again, or take it away for 'running late'", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "guest-1" } })
+    mockPrisma.linePosition.findFirst.mockResolvedValue(called({ calledAt: minutesAgo(12), respondedAt: minutesAgo(4) }))
+
+    expect((await respond("ON_MY_WAY")).status).toBe(200)
+    expect(mockPrisma.linePosition.update).toHaveBeenLastCalledWith({ where: { id: "pos-1" }, data: { response: "ON_MY_WAY" } })
+
+    // Past the original window, but still inside the "on my way" extension
+    expect((await respond("RUNNING_LATE")).status).toBe(200)
+    expect(mockPrisma.linePosition.update).toHaveBeenLastCalledWith({ where: { id: "pos-1" }, data: { response: "RUNNING_LATE" } })
+  })
+
+  it("refuses a reply once the time to show up has run out", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "guest-1" } })
+    mockPrisma.linePosition.findFirst.mockResolvedValue(called({ calledAt: minutesAgo(11) }))
+
+    expect((await respond("ON_MY_WAY")).status).toBe(409)
+    expect(mockPrisma.linePosition.update).not.toHaveBeenCalled()
   })
 
   it("refuses someone who hasn't been called", async () => {
     mockAuth.mockResolvedValue({ user: { id: "guest-1" } })
-    mockPrisma.linePosition.updateMany.mockResolvedValue({ count: 0 })
-    const { POST } = await import("@/app/api/lines/[lineId]/respond/route")
+    mockPrisma.linePosition.findFirst.mockResolvedValue(null)
 
-    const res = await POST(
-      new Request("http://localhost/api/lines/line-1/respond", { method: "POST", body: JSON.stringify({ response: "RUNNING_LATE" }) }),
-      { params: Promise.resolve({ lineId: "line-1" }) }
-    )
-
-    expect(res.status).toBe(400)
+    expect((await respond("RUNNING_LATE")).status).toBe(400)
   })
 })

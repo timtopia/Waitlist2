@@ -396,7 +396,20 @@ describe("releaseFunds (capture + payouts)", () => {
     expect(fakeStripe.transfers.create).toHaveBeenCalledTimes(1)
     expect(fakeStripe.transfers.create).toHaveBeenCalledWith(expect.objectContaining({
       destination: "acct_owner", amount: 400, source_transaction: "ch_1", transfer_group: "t1",
-    }))
+    }), { idempotencyKey: "t1:owner_fee" })
+  })
+
+  it("a deleted line's unpaid owner fee is never recorded as paid", async () => {
+    // Regression: with the line gone, `!line` counted the owner as paid
+    connect("sam", "acct_sam")
+    fakeStripe.paymentIntents.capture.mockResolvedValue({
+      id: "pi_x", status: "succeeded", latest_charge: "ch_1", transfer_data: null,
+    })
+    const t = txn()
+    db.lines = []
+    const { releaseFunds } = await import("@/lib/stripe")
+
+    expect(await releaseFunds(t)).toMatchObject({ sellerPaidAt: expect.any(Date), ownerPaidAt: null })
   })
 
   it("seller who onboarded after checkout: pays them from the charge id, not the PaymentIntent id", async () => {
@@ -409,7 +422,7 @@ describe("releaseFunds (capture + payouts)", () => {
     await releaseFunds(txn())
     expect(fakeStripe.transfers.create).toHaveBeenCalledWith(expect.objectContaining({
       destination: "acct_sam", amount: 4000, source_transaction: "ch_1", transfer_group: "t1",
-    }))
+    }), { idempotencyKey: "t1:seller_payout" })
   })
 
   it("re-running a release never re-sends a payout already made", async () => {
@@ -473,7 +486,7 @@ describe("releaseFunds (capture + payouts)", () => {
     const { payOutstandingPayouts } = await import("@/lib/stripe")
 
     await payOutstandingPayouts("sam")
-    expect(fakeStripe.transfers.create).toHaveBeenCalledWith(expect.objectContaining({ destination: "acct_sam", amount: 4000 }))
+    expect(fakeStripe.transfers.create).toHaveBeenCalledWith(expect.objectContaining({ destination: "acct_sam", amount: 4000 }), expect.anything())
     expect(db.transactions[0].sellerPaidAt).toBeInstanceOf(Date)
 
     // Coming back to the payout page again doesn't re-send it, even if

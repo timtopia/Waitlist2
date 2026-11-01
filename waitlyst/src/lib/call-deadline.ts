@@ -1,18 +1,17 @@
 /**
  * Client-safe twin of responseDeadline in missed-calls.ts: when a called
  * person must show up by. Saying "on my way" buys one more window from when
- * they said it.
+ * they first said it (respondedAt), kept even if they're later running late.
  */
 export function callDeadline(
   calledAt: string | null | undefined,
   windowMinutes: number | null | undefined,
-  response: string | null | undefined,
   respondedAt: string | null | undefined
 ): Date | null {
   if (!calledAt || !windowMinutes) return null
   const windowMs = windowMinutes * 60_000
   let deadline = new Date(calledAt).getTime() + windowMs
-  if (response === "ON_MY_WAY" && respondedAt) {
+  if (respondedAt) {
     deadline = Math.max(deadline, new Date(respondedAt).getTime() + windowMs)
   }
   return new Date(deadline)

@@ -96,6 +96,9 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [loading, setLoading] = useState(true)
   const [joining, setJoining] = useState(false)
   const [partySize, setPartySize] = useState(2)
+  // Whether the guest chose the size themselves (vs. the default of 2), so a
+  // size that stops fitting is raised with them instead of quietly shrunk
+  const [partySizeChosen, setPartySizeChosen] = useState(false)
   const [joinNote, setJoinNote] = useState("")
   const [remindMe, setRemindMe] = useState<boolean | null>(null)
   const [remindBusy, setRemindBusy] = useState(false)
@@ -358,7 +361,21 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     return () => clearTimeout(timer)
   }, [opensAtMs, closesAtMs, viewerId, lineId, sendNotification, addToast])
 
+  /** Tell a party it no longer fits rather than joining them as a smaller one */
+  function partyNoLongerFits(requested: number): void {
+    setPartySize(maxPartySize)
+    setPartySizeChosen(false)
+    addToast(
+      `A party of ${requested} no longer fits -- there's room for ${maxPartySize} more guest${maxPartySize === 1 ? "" : "s"}. Choose your party size and join again.`,
+      "error"
+    )
+  }
+
   async function handleJoin(sizeOverride?: number): Promise<boolean> {
+    if (sizeOverride === undefined && isRestaurant && partySizeChosen && partySize > maxPartySize) {
+      partyNoLongerFits(partySize)
+      return false
+    }
     const size = sizeOverride ?? joinPartySize
     if (!session) {
       // Come back with ?join=1 so the join completes on return instead of
@@ -399,8 +416,18 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     autoJoinAttempted.current = true
     router.replace(`/lines/${lineId}`, { scroll: false })
     const party = Number(searchParams.get("party"))
-    const size = Number.isInteger(party) && party >= 1 ? Math.min(party, maxPartySize) : undefined
-    if (size) setPartySize(size)
+    const requested = Number.isInteger(party) && party >= 1 ? party : undefined
+    if (canJoin && requested && requested > maxPartySize) {
+      // The line filled while they were signing in: eight people must not
+      // turn up for a table booked for five
+      partyNoLongerFits(requested)
+      return
+    }
+    const size = requested
+    if (size) {
+      setPartySize(size)
+      setPartySizeChosen(true)
+    }
     if (canJoin) {
       handleJoin(size).then((joined) => {
         if (joined) addToast("You're in line!", "success")
@@ -634,7 +661,10 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                   <span className="whitespace-nowrap">Party of</span>
                   <select
                     value={joinPartySize}
-                    onChange={(e) => setPartySize(Number(e.target.value))}
+                    onChange={(e) => {
+                      setPartySize(Number(e.target.value))
+                      setPartySizeChosen(true)
+                    }}
                     className="border border-rule bg-white px-2 py-2 text-ink"
                     aria-label="Party size"
                   >
@@ -753,7 +783,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                   {line.ownerFeePercent > 0 && <> + {line.ownerFeePercent}% to the line owner</>}
                   {line.platformFeePercent > 0 && <> + a {line.platformFeePercent}% Waitlyst fee</>}.{" "}
                   {isRestaurant
-                    ? "Your card is held, not charged, until you're seated, and the host can release it if you aren't."
+                    ? "Your card is held until you're seated. If you leave, or don't show up in time when you're called, it's charged anyway -- the guest you bought from gave up their place. The host can release it if they remove you."
                     : "Swaps are final and paid out to the seller right away."}
                 </>
               ) : (

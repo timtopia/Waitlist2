@@ -857,7 +857,9 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
       <ConfirmModal
         open={showLeaveConfirm}
         title="Leave Line"
-        message="Are you sure you want to leave this line? You'll lose your place. Spots you bought stay paid for -- leaving doesn't refund them."
+        message={isRestaurant
+          ? "Are you sure you want to leave this line? You'll lose your place. If you bought a spot, your card is charged for it now -- leaving doesn't release the hold or refund it."
+          : "Are you sure you want to leave this line? You'll lose your place. Spots you bought stay paid for -- leaving doesn't refund them."}
         confirmLabel="Leave Line"
         variant="danger"
         isLoading={loadingAction === "leave"}
@@ -1059,7 +1061,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                           )
                         })()}
                         {isCreator && pos.calledAt && !pos.fulfilled && responseWindowMinutes && !pos.user.isWalkIn && !isPaused && (() => {
-                          const left = timeLeft(callDeadline(pos.calledAt, responseWindowMinutes, pos.response, pos.respondedAt))
+                          const left = timeLeft(callDeadline(pos.calledAt, responseWindowMinutes, pos.respondedAt))
                           return left ? <span className="text-xs text-ink/50">{left} left to show up</span> : null
                         })()}
                         {pos.askingPrice != null && !isCurrentUser && (

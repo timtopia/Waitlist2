@@ -9,6 +9,7 @@ import { capacityUsed, capacityView } from "@/lib/capacity"
 import { auth } from "@/auth"
 import { lineViewer, shortName } from "@/lib/privacy"
 import { expireMissedCalls } from "@/lib/missed-calls"
+import { setLineActive } from "@/lib/line-pause"
 import { sendDueLineReminders } from "@/lib/line-reminders"
 import { createHash } from "crypto"
 import { emailEnabled, sendEmail } from "@/lib/email"
@@ -184,11 +185,27 @@ export async function DELETE(
 
     // Close out what was refunded. A purchase Stripe wouldn't refund stays
     // unsettled, so it isn't recorded as handled when the buyer still paid.
+    await prisma.transaction.updateMany({
+      where: { lineId, settledAt: null, status: "REFUNDED" },
+      data: { settledAt: new Date() },
+    })
+
+    // Deleting now would take the settlement page -- the only place to retry
+    // -- with it, and leave the buyer's money in limbo. Pause instead so
+    // nothing new happens, and let the owner sort the refund out first.
+    if (refundFailedCount > 0) {
+      await setLineActive(lineId, false)
+      return NextResponse.json(
+        {
+          error: `${refundFailedCount} buyer refund${refundFailedCount === 1 ? "" : "s"} couldn't be processed, so the line wasn't deleted. It's been paused; retry the refund from the settlement page, then delete it.`,
+          refundedCount,
+          refundFailedCount,
+        },
+        { status: 409 }
+      )
+    }
+
     await prisma.$transaction(async (tx) => {
-      await tx.transaction.updateMany({
-        where: { lineId, settledAt: null, status: "REFUNDED" },
-        data: { settledAt: new Date() },
-      })
       // Offers aren't tied to the line by a foreign key, so clear them here.
       await tx.swapOffer.deleteMany({ where: { lineId } })
       await tx.line.delete({ where: { id: lineId } })

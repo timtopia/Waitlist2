@@ -558,6 +558,10 @@ async function transferPayouts(
       source_transaction: chargeId,
       transfer_group: txn.id,
       metadata: { transactionId: txn.id, type },
+    }, {
+      // The webhook and the payout-setup redirect can both run this at once;
+      // the transfers.list check above can't stop both from sending.
+      idempotencyKey: `${txn.id}:${type}`,
     }).then(() => true, (err) => {
       console.error(`${type} transfer failed for transaction ${txn.id}:`, err)
       return false
@@ -571,8 +575,11 @@ async function transferPayouts(
     seller = await send("seller_payout", txn.amount, sellerConnectId)
   }
 
-  let owner = !line || line.createdById === txn.sellerId || txn.ownerFee <= 0 || alreadySent("owner_fee")
-  const ownerConnectId = connectIdOf(line?.createdById)
+  // A deleted line's owner can't be looked up, so their fee isn't paid --
+  // but it mustn't be recorded as paid either.
+  if (!line) return { seller, owner: txn.ownerFee <= 0 }
+  let owner = line.createdById === txn.sellerId || txn.ownerFee <= 0 || alreadySent("owner_fee")
+  const ownerConnectId = connectIdOf(line.createdById)
   if (!owner && ownerConnectId) {
     owner = await send("owner_fee", txn.ownerFee, ownerConnectId)
   }

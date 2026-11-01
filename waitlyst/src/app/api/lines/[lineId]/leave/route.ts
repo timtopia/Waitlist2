@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
-import { exitQueue } from "@/lib/queue-exit"
+import { exitQueue, lockLine } from "@/lib/queue-exit"
 import { expireCheckoutSession, releaseAndSettle } from "@/lib/stripe"
 
 export async function DELETE(
@@ -16,6 +16,8 @@ export async function DELETE(
 
   try {
     const { abandonedSessionId, purchases } = await prisma.$transaction(async (tx) => {
+      // Lock before reading: another exit ahead could shift this position
+      await lockLine(tx, lineId)
       const position = await tx.linePosition.findUnique({
         where: { lineId_userId: { lineId, userId } },
       })

@@ -75,6 +75,7 @@ model Line {
   visits                QueueVisit[]
   reminders             LineReminder[]
   isActive              Boolean        @default(true)
+  pausedAt              DateTime? // When the line was last paused; called people's clocks stop until it resumes
   isPublic              Boolean        @default(true)
   opensAt               DateTime? // When the line opens for joining (null = open immediately)
   closesAt              DateTime? // When the line stops accepting new joins (null = never closes)

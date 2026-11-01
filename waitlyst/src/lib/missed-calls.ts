@@ -3,17 +3,17 @@ import { PositionNotFoundError, removeByOrganizer } from "./queue-exit"
 
 /**
  * When a called person must show up by. Saying "on my way" buys one more
- * window from when they said it; "running late" doesn't.
+ * window from when they first said it (respondedAt), and keeps it even if
+ * they later say they're running late. "Running late" alone doesn't.
  */
 export function responseDeadline(
   calledAt: Date,
   windowMinutes: number,
-  response: "ON_MY_WAY" | "RUNNING_LATE" | null,
   respondedAt: Date | null
 ): Date {
   const windowMs = windowMinutes * 60_000
   let deadline = calledAt.getTime() + windowMs
-  if (response === "ON_MY_WAY" && respondedAt) deadline = Math.max(deadline, respondedAt.getTime() + windowMs)
+  if (respondedAt) deadline = Math.max(deadline, respondedAt.getTime() + windowMs)
   return new Date(deadline)
 }
 
@@ -35,12 +35,12 @@ export async function expireMissedCalls(lineId: string, windowMinutes: number, n
       // A paused line is stopped on purpose; nobody runs out of time
       line: { isActive: true },
     },
-    select: { id: true, calledAt: true, response: true, respondedAt: true },
+    select: { id: true, calledAt: true, respondedAt: true },
   })
 
   let skipped = 0
   for (const p of called) {
-    if (responseDeadline(p.calledAt!, windowMinutes, p.response, p.respondedAt) > now) continue
+    if (responseDeadline(p.calledAt!, windowMinutes, p.respondedAt) > now) continue
     try {
       await removeByOrganizer(lineId, p.id, "payout", true, true)
       skipped++

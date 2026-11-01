@@ -52,9 +52,10 @@ export async function removeByOrganizer(
   let refundedIds: string[] = []
   if (action === "refund") refundedIds = await returnBuyerFunds(openPurchases)
 
-  // Re-read inside the transaction: the queue may have shifted while the
-  // refunds were going through.
+  // Re-read under the line lock: the queue may have shifted while the
+  // refunds were going through, or another exit may be closing a gap ahead.
   const { abandonedSessionId } = await prisma.$transaction(async (tx) => {
+    await lockLine(tx, lineId)
     const current = await tx.linePosition.findUnique({ where: { id: positionId, lineId } })
     if (!current) throw new PositionNotFoundError()
     return exitQueue(tx, current, noShow ? "NO_SHOW" : "REMOVED")
@@ -87,7 +88,8 @@ export async function removeByOrganizer(
         line.name,
         refunded.length > 0,
         `${getBaseUrl()}/lines/${lineId}`,
-        missedCall
+        missedCall,
+        collectedCount > 0
       )
       await sendEmail(user.email, subject, html)
     })
