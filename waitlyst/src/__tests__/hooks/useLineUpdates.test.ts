@@ -31,11 +31,14 @@ describe("useLineUpdates", () => {
     vi.useRealTimers()
   })
 
-  it("emits poll-update only when the line changes", async () => {
+  it("passes on the first poll, then only changes", async () => {
     const onUpdate = vi.fn()
     respondWith('{"v":1}')
     renderHook(() => useLineUpdates("line-1", onUpdate, { intervalMs: 1000 }))
-    await advance(2000) // baseline
+    // Catches the page up on anything that changed since it first loaded
+    await advance(2000)
+    expect(onUpdate).toHaveBeenCalledWith({ type: "poll-update", data: { v: 1 } })
+    onUpdate.mockClear()
     await advance(1000)
     expect(onUpdate).not.toHaveBeenCalled()
     respondWith('{"v":2}')
@@ -48,6 +51,7 @@ describe("useLineUpdates", () => {
     respondWith('{"v":1}', '"e1"')
     renderHook(() => useLineUpdates("line-1", onUpdate, { intervalMs: 1000 }))
     await advance(2000)
+    onUpdate.mockClear()
     fetchMock.mockResolvedValue({ ok: false, status: 304, headers: new Headers() })
     await advance(1000)
     expect(fetchMock.mock.calls.at(-1)?.[1].headers).toEqual({ "If-None-Match": '"e1"' })

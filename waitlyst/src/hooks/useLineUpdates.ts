@@ -63,7 +63,11 @@ export function useLineUpdates(
         if (res.ok) {
           etagRef.current = res.headers.get("ETag")
           const text = await res.text()
-          if (lastSnapshotRef.current !== null && lastSnapshotRef.current !== text) {
+          // The first poll is always passed on: the page's own first load
+          // happened before it, and anything that changed in between would
+          // otherwise stay hidden until the line changed again. Callers diff
+          // against what's on screen, so an unchanged line alerts no one.
+          if (lastSnapshotRef.current !== text) {
             const parsed = JSON.parse(text)
             stableOnUpdate({ type: "poll-update", data: parsed })
           }
