@@ -541,7 +541,7 @@ describe("GET /api/lines/[lineId]/stats", () => {
     expect(data.totalCompleted).toBe(100) // settled completed amount
     expect(data.totalRefunded).toBe(30)
     expect(data.pendingSettlement).toBe(50)
-    expect(data.netRevenue).toBe(70) // 100 - 30
+    expect(data.netRevenue).toBe(100) // refunds were never in totalCompleted
     expect(data.recentTransactions).toHaveLength(4)
   })
 })

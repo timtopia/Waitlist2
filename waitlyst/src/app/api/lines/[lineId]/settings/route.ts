@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { countCapacityUsed } from "@/lib/capacity-server"
+import { setLineActive } from "@/lib/line-pause"
 import { validateString, validateNumber, validateUrl, validateImageUrl } from "@/lib/validate"
 
 export async function PATCH(
@@ -23,9 +24,6 @@ export async function PATCH(
     const allowedUpdates: Record<string, unknown> = {}
     if (typeof updates.isPublic === "boolean") {
       allowedUpdates.isPublic = updates.isPublic
-    }
-    if (typeof updates.isActive === "boolean") {
-      allowedUpdates.isActive = updates.isActive
     }
     // Validate name (1-100 chars)
     if (updates.name !== undefined) {
@@ -194,6 +192,11 @@ export async function PATCH(
         return NextResponse.json({ error: `${label} must be a whole number from 1 to ${max}` }, { status: 400 })
       }
       allowedUpdates[field] = updates[field]
+    }
+
+    // Pausing goes through the helper so called people's clocks stop too
+    if (typeof updates.isActive === "boolean") {
+      await setLineActive(lineId, updates.isActive)
     }
 
     const updatedLine = await prisma.line.update({

@@ -7,6 +7,7 @@ const mockPrisma = {
     findMany: vi.fn(),
     findUnique: vi.fn(),
     delete: vi.fn(),
+    update: vi.fn(),
     updateMany: vi.fn(),
   },
   linePosition: {
@@ -358,6 +359,18 @@ describe("DELETE /api/lines/[lineId]", () => {
     expect(data.success).toBe(true)
   })
 
+  it("locks the line before reading the leaving position, so an exit ahead can't make it stale", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "user-1" } })
+    mockPrisma.linePosition.findUnique.mockResolvedValue({ id: "pos-1", lineId: "line-1", userId: "user-1", position: 2, lockedBy: null })
+    mockPrisma.transaction.findMany.mockResolvedValue([])
+
+    const { DELETE } = await import("@/app/api/lines/[lineId]/leave/route")
+    await DELETE(new Request("http://localhost/api/lines/line-1/leave", { method: "DELETE" }), { params: Promise.resolve({ lineId: "line-1" }) })
+
+    expect(mockPrisma.$queryRaw.mock.invocationCallOrder[0])
+      .toBeLessThan(mockPrisma.linePosition.findUnique.mock.invocationCallOrder[0])
+  })
+
   it("should mark pending transactions as failed", async () => {
     mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
     mockPrisma.linePosition.findMany.mockResolvedValue([])
@@ -400,6 +413,32 @@ describe("DELETE /api/lines/[lineId]", () => {
     expect(mockSendEmail.mock.calls.map((c) => c[0])).toEqual(["bea@test", "pat@test"])
     expect(mockSendEmail.mock.calls[0][2]).toContain("returned to you")
     expect(mockSendEmail.mock.calls[1][2]).not.toContain("returned to you")
+  })
+
+  it("keeps (and pauses) the line when a buyer's refund fails, so it can be retried", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", name: "Drop", createdById: "owner-1", isActive: true })
+    mockPrisma.linePosition.findMany.mockResolvedValue([
+      { user: { id: "buyer", name: "Bea", email: "bea@test", emailNotifications: true } },
+    ])
+    mockPrisma.transaction.findMany
+      .mockResolvedValueOnce([]) // pending
+      .mockResolvedValueOnce([{ id: "txn-1", buyerId: "buyer", stripePaymentId: "cs_1" }])
+    mockPrisma.transaction.updateMany.mockResolvedValue({ count: 0 })
+    const { returnBuyerFunds } = await import("@/lib/stripe")
+    vi.mocked(returnBuyerFunds).mockResolvedValueOnce([])
+
+    const { DELETE } = await import("@/app/api/lines/[lineId]/route")
+    const response = await DELETE(new Request("http://localhost/api/lines/line-1", { method: "DELETE" }), { params: Promise.resolve({ lineId: "line-1" }) })
+
+    expect(response.status).toBe(409)
+    expect((await response.json()).refundFailedCount).toBe(1)
+    expect(mockPrisma.line.delete).not.toHaveBeenCalled()
+    expect(mockPrisma.line.update).toHaveBeenCalledWith({
+      where: { id: "line-1" },
+      data: { isActive: false, pausedAt: expect.any(Date) },
+    })
+    expect(mockSendEmail).not.toHaveBeenCalled()
   })
 })
 
@@ -796,7 +835,7 @@ describe("Stats API", () => {
     expect(data.pendingSettlementCount).toBe(1)
     expect(data.totalCompleted).toBe(100)
     expect(data.pendingSettlement).toBe(50)
-    expect(data.netRevenue).toBe(75)
+    expect(data.netRevenue).toBe(100)
     expect(data.service).toEqual({
       served: 1, left: 1, removed: 0, noShows: 0, waiting: 1, medianWaitMinutes: 12, servedLastHour: 1,
     })

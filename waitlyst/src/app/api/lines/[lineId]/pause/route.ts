@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
-import { prisma } from "@/lib/prisma"
+import { setLineActive } from "@/lib/line-pause"
 
 export async function POST(
   req: Request,
@@ -18,12 +18,8 @@ export async function POST(
   const isActive = typeof body?.isActive === "boolean" ? body.isActive : !result.line.isActive
 
   try {
-    const updatedLine = await prisma.line.update({
-      where: { id: lineId },
-      data: { isActive },
-    })
-
-    return NextResponse.json({ isActive: updatedLine.isActive })
+    await setLineActive(lineId, isActive)
+    return NextResponse.json({ isActive })
   } catch (error) {
     console.error("Pause toggle error:", error)
     return NextResponse.json(

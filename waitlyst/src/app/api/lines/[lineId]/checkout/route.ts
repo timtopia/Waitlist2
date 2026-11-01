@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { getStripe, getBaseUrl, performPositionSwap, lockPositionsForTransaction } from "@/lib/stripe"
+import { paymentsUnavailable } from "@/lib/payments-mode"
 import { calculateFees } from "@/lib/fees"
 import { rateLimit } from "@/lib/rate-limit"
 import { shortName } from "@/lib/privacy"
@@ -25,6 +26,13 @@ export async function POST(
     return NextResponse.json(
       { error: "Too many requests. Please try again later." },
       { status: 429, headers: { "Retry-After": "60" } }
+    )
+  }
+
+  if (paymentsUnavailable()) {
+    return NextResponse.json(
+      { error: "Payments aren't available right now, so spots can't be bought or swapped. Please try again later." },
+      { status: 503 }
     )
   }
 

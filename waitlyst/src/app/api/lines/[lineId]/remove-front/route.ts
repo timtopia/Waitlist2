@@ -3,7 +3,7 @@ import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { buyerTotal } from "@/lib/fees"
 import { expireCheckoutSession, returnBuyerFunds } from "@/lib/stripe"
-import { exitQueue, removeByOrganizer, PositionNotFoundError } from "@/lib/queue-exit"
+import { exitQueue, lockLine, removeByOrganizer, PositionNotFoundError } from "@/lib/queue-exit"
 
 export async function POST(
   req: Request,
@@ -46,6 +46,8 @@ export async function POST(
 
   try {
     const txResult = await prisma.$transaction(async (tx) => {
+      // Lock before reading, so #1 can't change underneath us
+      await lockLine(tx, lineId)
       const frontPosition = await tx.linePosition.findFirst({
         where: { lineId, position: 1 },
       })
