@@ -114,6 +114,8 @@ export async function POST(req: Request) {
             await abandonPendingTransaction(transactionId, {
               offerId: session.metadata?.offerId ?? null,
               expireSession: false,
+              // Nobody paid before the window closed
+              byBuyer: true,
             })
           } catch (error) {
             console.error(`Webhook: Failed to clean up expired session for transaction ${transactionId}:`, error)

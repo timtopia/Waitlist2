@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { capacityUsed, capacityView } from "@/lib/capacity"
+import { capacityUsed, capacityView, roomLeftMessage } from "@/lib/capacity"
 
 const line = { maxCapacity: 5, hideCapacity: false, createdById: "owner" }
 
@@ -14,7 +14,8 @@ describe("capacityView", () => {
 
   it("hides the limit from anyone but the owner", () => {
     const hidden = { ...line, hideCapacity: true }
-    expect(capacityView(hidden, 5, "member")).toEqual({ maxCapacity: null, hasCapacityLimit: true, isFull: true, capacityUsed: 5 })
+    // The used count is hidden too: with "room for N more" it gave the limit away
+    expect(capacityView(hidden, 5, "member")).toEqual({ maxCapacity: null, hasCapacityLimit: true, isFull: true, capacityUsed: 0 })
     expect(capacityView(hidden, 5)).toMatchObject({ maxCapacity: null })
     expect(capacityView(hidden, 5, "owner")).toMatchObject({ maxCapacity: 5 })
   })
@@ -43,5 +44,12 @@ describe("capacityUsed", () => {
     const positions = [{ fulfilled: true }, { fulfilled: false }]
     // Clearing the served must not reopen spots on a limited drop
     expect(capacityUsed("STANDARD", positions, 3)).toBe(5)
+  })
+})
+
+describe("roomLeftMessage", () => {
+  it("names the room left, unless the owner hides capacity", () => {
+    expect(roomLeftMessage({ hideCapacity: false, kind: "RESTAURANT" }, 3)).toContain("room for 3 more guests")
+    expect(roomLeftMessage({ hideCapacity: true, kind: "RESTAURANT" }, 3)).not.toMatch(/\d/)
   })
 })

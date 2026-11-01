@@ -50,7 +50,11 @@ export async function PATCH(
     for (const field of ["opensAt", "closesAt"] as const) {
       if (updates[field] === undefined) continue
       if (!updates[field]) {
-        allowedUpdates[field] = null
+        // Clearing a future opening time opens the line now. Recording when
+        // keeps "email me when it opens" working; a null opensAt looks like a
+        // line that never had a schedule, so nobody was emailed.
+        const stored = result.line[field]
+        allowedUpdates[field] = field === "opensAt" && stored && stored > new Date() ? new Date() : null
         continue
       }
       const date = new Date(updates[field])

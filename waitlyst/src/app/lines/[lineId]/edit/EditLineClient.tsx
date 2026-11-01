@@ -289,6 +289,12 @@ export function EditLineClient({
                 <p className="text-xs text-ink/50">
                   {isActive ? "Line is accepting joins" : "Line is paused - no new joins allowed"}
                 </p>
+                {!isActive && enableSchedule && opensAt && new Date(opensAt) > new Date() && (
+                  <p className="text-xs text-amber-700 mt-1">
+                    This line is scheduled to open, but it&apos;s paused, so it won&apos;t open then and nobody gets the
+                    &quot;it&apos;s open&quot; email. Turn it on to open on schedule.
+                  </p>
+                )}
               </div>
             </div>
 

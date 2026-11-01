@@ -230,7 +230,7 @@ export async function expireCheckoutSession(sessionId: string | null | undefined
  */
 export async function abandonPendingTransaction(
   transactionId: string,
-  opts: { offerId?: string | null; expireSession?: boolean } = {}
+  opts: { offerId?: string | null; expireSession?: boolean; byBuyer?: boolean } = {}
 ): Promise<boolean> {
   const transaction = await prisma.transaction.findUnique({ where: { id: transactionId } })
   if (!transaction) return false
@@ -238,7 +238,7 @@ export async function abandonPendingTransaction(
   const abandoned = await prisma.$transaction(async (tx) => {
     const { count } = await tx.transaction.updateMany({
       where: { id: transactionId, status: "PENDING" },
-      data: { status: "FAILED" },
+      data: { status: "FAILED", ...(opts.byBuyer ? { abandonedByBuyer: true } : {}) },
     })
     if (count === 0) return false
     await tx.linePosition.updateMany({

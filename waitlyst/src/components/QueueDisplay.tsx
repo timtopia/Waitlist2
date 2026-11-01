@@ -230,6 +230,44 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
     ? positions.find((p) => p.position === currentUserPosition.position - 1)
     : null
 
+  // A buy they started but never finished (closed the Stripe tab, pressed
+  // Back) keeps both spots locked; let them pick it up again or call it off.
+  const [myCheckout, setMyCheckout] = useState<{ pending: boolean; url: string | null } | null>(null)
+  const myLockUntil = currentUserPosition?.lockedUntil ?? null
+  useEffect(() => {
+    if (!myLockUntil || new Date(myLockUntil) <= new Date()) {
+      setMyCheckout(null)
+      return
+    }
+    let cancelled = false
+    fetch(`/api/lines/${lineId}/my-checkout`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled) setMyCheckout(data)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [lineId, myLockUntil])
+
+  async function handleCancelMyCheckout() {
+    setLoadingAction("cancel-checkout")
+    try {
+      const res = await fetch(`/api/lines/${lineId}/my-checkout`, { method: "DELETE" })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        addToast("Purchase cancelled. No charges were made.", "info")
+        setMyCheckout(null)
+      } else {
+        addToast(data.error || "Couldn't cancel the purchase", "error")
+      }
+      onRefresh()
+    } finally {
+      setLoadingAction(null)
+    }
+  }
+
   // Called-up and served spots are off the market (the server enforces it too).
   const offMarket = (p: Position) => !!p.fulfilled || !!p.calledAt || p.user.id === nowServingUserId
 
@@ -1257,7 +1295,26 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                 {/* List / re-price / un-list the current user's own position */}
                 {isCurrentUser && allowResale && !isPaused && !selectMode && !offMarket(pos) && (
                   <div className="mt-3">
-                    {isLocked ? (
+                    {isLocked && myCheckout?.pending ? (
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <p className="text-sm text-ink/70">You started buying the spot ahead but haven&apos;t paid yet.</p>
+                        {myCheckout.url && (
+                          <a
+                            href={myCheckout.url}
+                            className="font-mono text-xs uppercase tracking-widest text-ink hover:text-accent underline underline-offset-4"
+                          >
+                            Resume payment
+                          </a>
+                        )}
+                        <button
+                          onClick={handleCancelMyCheckout}
+                          disabled={loadingAction === "cancel-checkout"}
+                          className="font-mono text-xs uppercase tracking-widest text-ink/50 hover:text-ink underline underline-offset-4 disabled:opacity-50"
+                        >
+                          Cancel purchase
+                        </button>
+                      </div>
+                    ) : isLocked ? (
                       <p className="text-sm text-ink/50">
                         Your position is locked while a swap is in progress.
                       </p>

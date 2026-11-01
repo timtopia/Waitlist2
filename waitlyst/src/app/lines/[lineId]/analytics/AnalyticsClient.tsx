@@ -47,7 +47,13 @@ function lastDays(n: number): Date[] {
   const out: Date[] = []
   const today = new Date()
   today.setHours(0, 0, 0, 0)
-  for (let i = n - 1; i >= 0; i--) out.push(new Date(today.getTime() - i * 86_400_000))
+  // Step by calendar day: subtracting 24h lands on 23:00 the day before
+  // across a daylight-saving change, shifting every earlier bar a day
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(today)
+    d.setDate(today.getDate() - i)
+    out.push(d)
+  }
   return out
 }
 
@@ -90,15 +96,20 @@ export function AnalyticsClient({
 
     // Served (or seated) per day, last 30 days
     const servedPerDay = new Map<string, number>()
+    const guestsPerDay = new Map<string, number>()
     for (const v of served) {
       const k = dayKey(new Date(v.servedAt!))
       servedPerDay.set(k, (servedPerDay.get(k) ?? 0) + 1)
+      guestsPerDay.set(k, (guestsPerDay.get(k) ?? 0) + v.partySize)
     }
     const days = lastDays(RECENT_DAYS)
     const dayLabel = (d: Date) => d.toLocaleDateString([], { month: "short", day: "numeric" })
     const perDay: Bar[] = days.map((d) => {
       const count = servedPerDay.get(dayKey(d)) ?? 0
-      return { label: dayLabel(d), value: count, display: `${count} ${isRestaurant ? "seated" : "served"}` }
+      if (!isRestaurant) return { label: dayLabel(d), value: count, display: `${count} served` }
+      // Covers matter as much as parties to a restaurant
+      const guests = guestsPerDay.get(dayKey(d)) ?? 0
+      return { label: dayLabel(d), value: count, display: `${count} seated (${guests} ${guests === 1 ? "guest" : "guests"})` }
     })
 
     // Swap fees earned per day, last 30 days
@@ -131,6 +142,7 @@ export function AnalyticsClient({
 
     return {
       servedCount: served.length,
+      guestsServed: served.reduce((sum, v) => sum + v.partySize, 0),
       medianWait: median(waits),
       noShowRate: served.length + noShows > 0 ? noShows / (served.length + noShows) : null,
       noShows,
@@ -162,7 +174,11 @@ export function AnalyticsClient({
       {view && (
         <div className="space-y-6">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Stat label={isRestaurant ? "Parties seated" : "People served"} value={view.servedCount.toLocaleString()} />
+            <Stat
+              label={isRestaurant ? "Parties seated" : "People served"}
+              value={view.servedCount.toLocaleString()}
+              note={isRestaurant ? `${view.guestsServed.toLocaleString()} guests` : undefined}
+            />
             <Stat
               label="Typical wait"
               value={view.medianWait === null ? "--" : `${Math.round(view.medianWait)} min`}

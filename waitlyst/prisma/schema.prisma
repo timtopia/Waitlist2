@@ -150,6 +150,7 @@ model Transaction {
   ownerPaidAt           DateTime? // Owner's fee sent to their payout account
   captureBefore         DateTime? // The card hold lapses after this unless the payment is collected
   holdExpiredAt         DateTime? // The hold lapsed before it was collected
+  abandonedByBuyer      Boolean           @default(false) // The buyer cancelled or let the checkout time out (not the seller leaving, a call, etc.)
   createdAt             DateTime          @default(now())
 
   @@index([lineId])

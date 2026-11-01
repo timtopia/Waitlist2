@@ -110,7 +110,8 @@ export async function GET(
           if (p.userId === viewerId) return p
           // A party's note and the host's quote are between them and the host
           p = { ...p, note: null, quotedMinutes: null, quotedAt: null, response: null, respondedAt: null }
-          if (viewer === "member") return { ...p, user: { ...p.user, name: shortName(p.user.name) } }
+          // "First L." only: a profile photo identifies someone more than a full name
+          if (viewer === "member") return { ...p, user: { ...p.user, name: shortName(p.user.name), image: null } }
           return {
             ...p,
             userId: `anon-${p.id}`,

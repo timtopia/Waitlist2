@@ -8,6 +8,8 @@ import { swapOfferEmail } from "@/lib/email-templates"
 import { MIN_OFFER_AMOUNT, isOfferExpired, newOfferExpiry } from "@/lib/offers"
 import { tradeBlocker } from "@/lib/trading"
 
+// Between one declined or withdrawn offer and the next to the same person
+const OFFER_COOLDOWN_MS = 10 * 60 * 1000
 const offerLimiter = rateLimit({ interval: 60_000, limit: 10 })
 
 export async function POST(
@@ -50,6 +52,10 @@ export async function POST(
     const line = await prisma.line.findUnique({ where: { id: lineId } })
     if (!line) {
       return NextResponse.json({ error: "Line not found" }, { status: 404 })
+    }
+
+    if (line.isActive === false) {
+      return NextResponse.json({ error: "This line is paused" }, { status: 400 })
     }
 
     if (!line.allowResale) {
@@ -125,6 +131,18 @@ export async function POST(
       return NextResponse.json(
         { error: "You already have a pending offer to this person" },
         { status: 409 }
+      )
+    }
+    // Withdraw-and-resend (or resend right after a decline) emailed the
+    // person ahead every few seconds
+    if (
+      existingOffer &&
+      (existingOffer.status === "DECLINED" || existingOffer.status === "WITHDRAWN") &&
+      existingOffer.createdAt > new Date(Date.now() - OFFER_COOLDOWN_MS)
+    ) {
+      return NextResponse.json(
+        { error: "You just made them an offer. Wait a few minutes before sending another." },
+        { status: 429 }
       )
     }
     if (existingOffer?.status === "ACCEPTED" && existingOffer.transactionId) {

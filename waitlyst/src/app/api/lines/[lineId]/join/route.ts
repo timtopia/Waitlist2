@@ -4,7 +4,7 @@ import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { rateLimit } from "@/lib/rate-limit"
 import { lockLine } from "@/lib/queue-exit"
-import { capacityUnit, parsePartySize } from "@/lib/capacity"
+import { parsePartySize, roomLeftMessage } from "@/lib/capacity"
 import { parseNote } from "@/lib/validate"
 
 /** A reason the join was refused, safe to show the user. */
@@ -83,9 +83,7 @@ export async function POST(
         }
         if (taken + partySize > line.maxCapacity) {
           const left = line.maxCapacity - taken
-          throw new JoinRefusedError(
-            `There's only room for ${left} more ${capacityUnit(line.kind, left)} in this line`
-          )
+          throw new JoinRefusedError(roomLeftMessage(line, left))
         }
       }
 

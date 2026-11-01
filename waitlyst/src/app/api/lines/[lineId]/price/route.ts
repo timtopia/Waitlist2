@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-helpers"
+import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { tradeBlocker } from "@/lib/trading"
 
@@ -31,8 +32,12 @@ export async function PATCH(
   if (price !== null) {
     const line = await prisma.line.findUnique({
       where: { id: lineId },
-      select: { allowResale: true, maxAskingPrice: true, nowServingUserId: true },
+      select: { allowResale: true, maxAskingPrice: true, nowServingUserId: true, isActive: true },
     })
+    // The paused banner says swaps are off; taking a spot off sale still works
+    if (line?.isActive === false) {
+      return NextResponse.json({ error: "This line is paused" }, { status: 400 })
+    }
     if (line && !line.allowResale) {
       return NextResponse.json(
         { error: "Swapping is disabled for this line" },
@@ -55,24 +60,26 @@ export async function PATCH(
     }
   }
 
+  const lockedMessage = "Someone is paying for a swap with you right now. You can change your listing once it finishes."
   try {
     const current = await prisma.linePosition.findUnique({
       where: { lineId_userId: { lineId, userId: result.userId } },
       select: { lockedUntil: true },
     })
     if (current?.lockedUntil && current.lockedUntil > new Date()) {
-      return NextResponse.json(
-        { error: "Someone is paying for a swap with you right now. You can change your listing once it finishes." },
-        { status: 409 }
-      )
+      return NextResponse.json({ error: lockedMessage }, { status: 409 })
     }
 
+    // The update itself also requires the spot to be unlocked: a buyer's
+    // checkout could lock it between the check above and here, and would
+    // then pay the old price while the listing showed the new one.
     const position = await prisma.linePosition.update({
       where: {
         lineId_userId: {
           lineId,
           userId: result.userId,
         },
+        OR: [{ lockedUntil: null }, { lockedUntil: { lte: new Date() } }],
       },
       data: { askingPrice: price },
       include: {
@@ -82,6 +89,14 @@ export async function PATCH(
 
     return NextResponse.json(position)
   } catch (error) {
+    // No row matched: locked just now, or not in the line
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+      const stillThere = await prisma.linePosition.findUnique({
+        where: { lineId_userId: { lineId, userId: result.userId } },
+        select: { id: true },
+      })
+      if (stillThere) return NextResponse.json({ error: lockedMessage }, { status: 409 })
+    }
     console.error("Update price error:", error)
     return NextResponse.json(
       { error: "Could not update the price. You may not be in this line." },

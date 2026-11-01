@@ -132,7 +132,7 @@ export function EmbedWidgetClient({
         const line = await res.json()
         setLive({
           positionCount: (line.positions ?? []).reduce(
-            (sum: number, p: { partySize?: number }) => sum + (p.partySize ?? 1),
+            (sum: number, p: { partySize?: number; fulfilled?: boolean }) => sum + (p.fulfilled ? 0 : p.partySize ?? 1),
             0
           ),
           capacityUsed: line.capacityUsed,
