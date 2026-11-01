@@ -56,10 +56,15 @@ export function validateUrl(value: unknown, name: string): string | null {
   if (typeof value !== "string") {
     return `${name} must be a string`
   }
+  let url: URL
   try {
-    new URL(value)
+    url = new URL(value)
   } catch {
     return `Please enter a valid URL for ${name}`
+  }
+  // javascript: and data: links parse fine but must never become a button
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    return `${name} must start with http:// or https://`
   }
   return null
 }

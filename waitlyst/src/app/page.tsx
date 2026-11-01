@@ -43,7 +43,7 @@ export default async function HomePage() {
   const [session, activeLines, peopleInQueues, swapsCompleted] = await Promise.all([
     auth(),
     prisma.line.count({ where: { isActive: true } }),
-    prisma.linePosition.count(),
+    prisma.linePosition.count({ where: { fulfilled: false } }),
     prisma.transaction.count({ where: { status: "COMPLETED" } }),
   ])
 
@@ -187,7 +187,7 @@ export default async function HomePage() {
               </p>
             </div>
             <Link
-              href="/api/auth/signin"
+              href="/lines/new"
               className="inline-flex items-center justify-center px-8 py-3.5 bg-paper text-ink font-medium hover:bg-accent hover:text-white transition-colors shrink-0"
             >
               Get started

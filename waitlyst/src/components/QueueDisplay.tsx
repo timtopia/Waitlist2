@@ -6,7 +6,7 @@ import { useDialog } from "@/lib/use-dialog"
 import { Button } from "./ui/Button"
 import { ConfirmModal } from "./ui/ConfirmModal"
 import { useToast } from "./ui/Toast"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useSession } from "next-auth/react"
 import { formatCurrency } from "@/lib/format"
 import { calcFees } from "@/lib/fees"
@@ -181,6 +181,9 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
     }
   }, [lineId])
 
+  // Incoming offers only show in the viewer's own row, which can be far down
+  // a long line, so toast each new one. The first load just seeds the set.
+  const seenOfferIds = useRef<Set<string> | null>(null)
   const fetchOffers = useCallback(async () => {
     if (!session?.user?.id) return
     try {
@@ -189,11 +192,20 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
         const data = await res.json()
         setSentOffers(data.sent)
         setReceivedOffers(data.received)
+        const pending = (data.received as SwapOffer[]).filter((o) => o.status === "PENDING")
+        if (seenOfferIds.current) {
+          for (const o of pending) {
+            if (!seenOfferIds.current.has(`${o.id}:${o.amount}`)) {
+              addToast(`New swap offer: ${formatCurrency(o.amount)}. See your spot in the line below.`, "info")
+            }
+          }
+        }
+        seenOfferIds.current = new Set([...(seenOfferIds.current ?? []), ...pending.map((o) => `${o.id}:${o.amount}`)])
       }
     } catch {
       // Silently fail
     }
-  }, [lineId, session?.user?.id])
+  }, [lineId, session?.user?.id, addToast])
 
   useEffect(() => {
     fetchWaitTime()
@@ -315,7 +327,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
       })
       const data = await res.json()
       if (res.ok) {
-        addToast("Offer sent", "success")
+        addToast(sentOfferToFront?.status === "PENDING" ? "Offer raised" : "Offer sent", "success")
         setOfferFormOpen(null)
         setOfferAmount("")
         fetchOffers()
@@ -1047,8 +1059,9 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
             return (
               <div
                 key={pos.id}
+                id={isCurrentUser ? "my-spot" : undefined}
                 onClick={canSelect ? () => toggleSelection(pos.id) : undefined}
-                className={`flex flex-col px-4 py-3 ${leftBorder} ${
+                className={`flex flex-col px-4 py-3 scroll-mt-20 ${leftBorder} ${
                   isSelected ? "bg-ink/5" : isCurrentUser ? "bg-paper" : "bg-white"
                 } ${canSelect ? "cursor-pointer" : ""}`}
               >
@@ -1060,6 +1073,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                         checked={isSelected}
                         onChange={() => toggleSelection(pos.id)}
                         onClick={(e) => e.stopPropagation()}
+                        aria-label={`Select ${pos.user.name || "party"} #${pos.position}`}
                         className="w-4 h-4 accent-ink border-rule flex-shrink-0"
                       />
                     )}
@@ -1117,6 +1131,22 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                             </span>
                           )
                         })()}
+                        {isCreator && pos.calledAt && !pos.fulfilled && (() => {
+                          // Walk-ins, lines without a show-up window, and parties
+                          // whose window ran out get no countdown; say how long
+                          // ago they were called so stale calls stand out.
+                          const left = responseWindowMinutes && !pos.user.isWalkIn && !isPaused
+                            ? timeLeft(callDeadline(pos.calledAt, responseWindowMinutes, pos.respondedAt, pos.graceMinutes))
+                            : null
+                          if (left) return null
+                          const ago = Math.max(0, Math.floor((clock - new Date(pos.calledAt).getTime()) / 60_000))
+                          const stale = ago >= (responseWindowMinutes ? responseWindowMinutes * 2 : 10)
+                          return (
+                            <span className={`text-xs ${stale ? "text-amber-600" : "text-ink/50"}`}>
+                              called {formatWaited(ago)} ago
+                            </span>
+                          )
+                        })()}
                         {isCreator && pos.calledAt && !pos.fulfilled && responseWindowMinutes && !pos.user.isWalkIn && !isPaused && (() => {
                           const left = timeLeft(callDeadline(pos.calledAt, responseWindowMinutes, pos.respondedAt, pos.graceMinutes))
                           if (!left) return null
@@ -1127,6 +1157,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                               <button
                                 onClick={() => handleGiveMoreTime(pos.id)}
                                 disabled={loadingAction === `grace-${pos.id}`}
+                                aria-label={`Give ${pos.user.name || "this party"} 5 more minutes`}
                                 className="font-mono uppercase tracking-widest text-accent hover:underline underline-offset-4 disabled:opacity-50"
                               >
                                 +5 min
@@ -1219,7 +1250,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                           Swap pending
                         </p>
                       )}
-                      {!isFront && !pos.fulfilled && waitTimeData?.estimatedMinutesPerPerson != null && (
+                      {!isFront && !pos.fulfilled && !isCurrentUser && waitTimeData?.estimatedMinutesPerPerson != null && (
                         <p className="text-xs text-ink/40">
                           Est. wait: {formatWaitTime(waitTimeData.estimatedMinutesPerPerson * unservedAhead)}
                         </p>
@@ -1288,6 +1319,11 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                         You&apos;d receive {formatCurrency(offer.amount)} and move back one spot.
                         {offer.expiresAt && ` Expires in ${formatTimeLeft(offer.expiresAt)}.`}
                       </p>
+                      {allowResale && (
+                        <p className="text-xs text-ink/50 mt-0.5">
+                          Want more? Decline and list your spot at your price. They can buy it right away.
+                        </p>
+                      )}
                       <div className="flex items-center gap-2 mt-2">
                         <Button
                           size="sm"
@@ -1324,10 +1360,11 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                   )
                 })}
 
-                {/* List / re-price / un-list the current user's own position */}
-                {isCurrentUser && allowResale && !isPaused && !selectMode && !offMarket(pos) && (
+                {/* A purchase this user started but hasn't paid for. Kept outside
+                    the listing gate so they can still resume or cancel it if
+                    the line pauses mid-checkout. */}
+                {isCurrentUser && !selectMode && isLocked && myCheckout?.pending && (
                   <div className="mt-3">
-                    {isLocked && myCheckout?.pending ? (
                       <div className="flex items-center gap-3 flex-wrap">
                         <p className="text-sm text-ink/70">You started buying the spot ahead but haven&apos;t paid yet.</p>
                         {myCheckout.url && (
@@ -1346,9 +1383,17 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                           Cancel purchase
                         </button>
                       </div>
-                    ) : isLocked ? (
+                  </div>
+                )}
+
+                {/* List / re-price / un-list the current user's own position */}
+                {isCurrentUser && allowResale && !isPaused && !selectMode && !offMarket(pos) && !(isLocked && myCheckout?.pending) && (
+                  <div className="mt-3">
+                    {isLocked ? (
                       <p className="text-sm text-ink/50">
-                        Your position is locked while a swap is in progress.
+                        {pos.lockedUntil
+                          ? `Someone is paying for your spot. If they don't finish in ${formatTimeLeft(pos.lockedUntil)}, it stays yours.`
+                          : "Your position is locked while a swap is in progress."}
                       </p>
                     ) : pos.askingPrice != null ? (
                       <div className="flex items-center gap-2 flex-wrap">
@@ -1356,7 +1401,9 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                           Listed for{" "}
                           <span className="font-mono tabular-nums">{formatCurrency(pos.askingPrice)}</span>
                           {feeInfo && (
-                            <span className="text-ink/40"> (buyer pays {formatCurrency(buyerTotal(pos.askingPrice))})</span>
+                            <span className="text-ink/40">
+                              {" "}(you get {formatCurrency(pos.askingPrice)}; buyer pays {formatCurrency(buyerTotal(pos.askingPrice))})
+                            </span>
                           )}
                         </p>
                         <button
@@ -1410,6 +1457,12 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                             Max: {formatCurrency(maxAskingPrice)}
                           </span>
                         )}
+                        {parseFloat(listPriceAmount) >= 1 && (
+                          <p className="w-full text-xs text-ink/50">
+                            You get {formatCurrency(parseFloat(listPriceAmount))}
+                            {feeInfo && <>; buyer pays {formatCurrency(buyerTotal(parseFloat(listPriceAmount)))} incl. fees</>}.
+                          </p>
+                        )}
                       </div>
                     ) : (
                       <button
@@ -1418,6 +1471,11 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                       >
                         List Your Spot For Sale
                       </button>
+                    )}
+                    {isRestaurant && (pos.askingPrice != null || listPriceFormOpen) && (
+                      <p className="mt-1 text-xs text-ink/50">
+                        You&apos;re paid once the buyer is seated. If the host releases their card instead, you aren&apos;t paid.
+                      </p>
                     )}
                     {stripeEnabled && !hasPayoutSetup && (pos.askingPrice != null || listPriceFormOpen) && (
                       <div className="mt-2 flex items-center justify-between gap-3 bg-accent/5 border border-accent/30 px-3 py-2">
@@ -1468,7 +1526,8 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                           {pos.user.name || "They"} accepted your {formatCurrency(sentOfferToFront.amount)} offer.
                         </p>
                         <p className="text-xs text-ink/50 mt-0.5">
-                          Pay {formatCurrency(buyerTotal(sentOfferToFront.amount))} (incl. fees) to take their spot. Both spots are held for you for up to 30 minutes.
+                          Pay {formatCurrency(buyerTotal(sentOfferToFront.amount))} (incl. fees) to take their spot.{" "}
+                          {pos.lockedUntil ? `Both spots are held for you for ${formatTimeLeft(pos.lockedUntil)} more.` : "Both spots are held for you for up to 30 minutes."}
                         </p>
                         <div className="flex items-center gap-2 mt-2">
                           <Button
@@ -1488,12 +1547,18 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                           </Button>
                         </div>
                       </div>
-                    ) : isLocked ? null : sentOfferToFront?.status === "PENDING" ? (
+                    ) : isLocked ? null : sentOfferToFront?.status === "PENDING" && offerFormOpen !== pos.user.id ? (
                       <div className="flex items-center gap-3 flex-wrap">
                         <p className="text-sm text-ink/50">
                           Offer sent: {formatCurrency(sentOfferToFront.amount)} -- waiting for response
                           {sentOfferToFront.expiresAt && ` (expires in ${formatTimeLeft(sentOfferToFront.expiresAt)})`}
                         </p>
+                        <button
+                          onClick={() => setOfferFormOpen(pos.user.id)}
+                          className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"
+                        >
+                          Raise
+                        </button>
                         <button
                           onClick={() => handleWithdrawOffer(sentOfferToFront.id)}
                           disabled={loadingAction === `withdraw-${sentOfferToFront.id}`}
@@ -1542,7 +1607,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                           isLoading={offerLoading}
                           disabled={maxAskingPrice != null && !!offerAmount && parseFloat(offerAmount) > maxAskingPrice}
                         >
-                          Send Offer
+                          {sentOfferToFront?.status === "PENDING" ? "Raise Offer" : "Send Offer"}
                         </Button>
                         <button
                           onClick={() => { setOfferFormOpen(null); setOfferAmount("") }}

@@ -80,6 +80,14 @@ export async function POST(req: Request) {
       }
     }
 
+    // Validate product name (optional, short text)
+    if (productName !== undefined && productName !== null && productName !== "") {
+      const productErr = validateString(productName, "Product name", { min: 0, max: 100 })
+      if (productErr) {
+        return NextResponse.json({ error: productErr }, { status: 400 })
+      }
+    }
+
     // Validate product URL (optional, must be valid URL)
     if (productUrl !== undefined && productUrl !== null && productUrl !== "") {
       const urlErr = validateUrl(productUrl, "Product URL")
@@ -165,6 +173,8 @@ export async function GET(req: Request) {
         _count: { select: { positions: true } },
       },
       orderBy: { createdAt: "desc" },
+      // The board shows the newest lines; one account can't bloat it forever
+      take: 100,
     })
 
     // Guests in line (shown on the card), split by served so restaurant

@@ -1,4 +1,13 @@
 /**
+ * Starting a checkout locks both spots until it's paid or expires, so a buyer
+ * who keeps starting and abandoning checkouts (directly, or by getting
+ * offers accepted and never paying) holds up the person ahead. After this
+ * many walk-aways in the window they can't start another.
+ */
+export const MAX_ABANDONED_CHECKOUTS = 3
+export const ABANDON_WINDOW_MS = 6 * 60 * 60 * 1000
+
+/**
  * Once someone has been called up or served, their spot is no longer
  * something to trade: buying a served person's place buys nothing (served
  * people don't count toward anyone's wait), and swapping with the person at

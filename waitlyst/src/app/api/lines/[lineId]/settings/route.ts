@@ -113,10 +113,30 @@ export async function PATCH(
     }
     // Owner fee percentage (clamped to 0-50)
     if (typeof updates.ownerFeePercent === "number") {
-      allowedUpdates.ownerFeePercent = Math.max(0, Math.min(updates.ownerFeePercent, 50))
+      const fee = Math.max(0, Math.min(updates.ownerFeePercent, 50))
+      // Offer fees are worked out when the offer is accepted, so raising the
+      // fee would make buyers pay more than they agreed to. Wait until open
+      // offers are settled.
+      if (fee > result.line.ownerFeePercent) {
+        const openOffers = await prisma.swapOffer.count({
+          where: { lineId, status: { in: ["PENDING", "ACCEPTED"] } },
+        })
+        if (openOffers > 0) {
+          return NextResponse.json(
+            { error: `The fee can't be raised while ${openOffers} swap offer${openOffers === 1 ? " is" : "s are"} open. Try again once they're settled.` },
+            { status: 400 }
+          )
+        }
+      }
+      allowedUpdates.ownerFeePercent = fee
     }
     // Product fields
     if (updates.productName !== undefined) {
+      if (updates.productName !== null && typeof updates.productName !== "string") {
+        return NextResponse.json({ error: "Product name must be text" }, { status: 400 })
+      }
+      const productErr = updates.productName ? validateString(updates.productName, "Product name", { min: 0, max: 100 }) : null
+      if (productErr) return NextResponse.json({ error: productErr }, { status: 400 })
       allowedUpdates.productName = typeof updates.productName === "string" && updates.productName.trim()
         ? updates.productName.trim()
         : null

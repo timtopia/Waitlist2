@@ -75,6 +75,7 @@ export function OwnerConsole({
   const [busy, setBusy] = useState<string | null>(null)
   const [earnings, setEarnings] = useState<Earnings | null>(null)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
+  const [showNoShowConfirm, setShowNoShowConfirm] = useState(false)
   const [closeChoice, setCloseChoice] = useState(false)
   const closeDialogRef = useDialog(closeChoice, () => setCloseChoice(false))
   const [pace, setPace] = useState<Pace | null>(null)
@@ -90,6 +91,11 @@ export function OwnerConsole({
   const afterNext = waiting[1] ?? null
   const isServingUpNext = !!upNext && (!!upNext.calledAt || nowServingUserId === upNext.user.id)
   const upNextLocked = !!upNext?.lockedUntil && new Date(upNext.lockedUntil) > new Date()
+  // Restaurants seat parties; everyone else serves people
+  const servedWord = isRestaurant ? "seated" : "served"
+  const markServedLabel = isRestaurant ? "Mark Seated" : "Mark Served"
+  // Only restaurant swaps sit on hold until seating; drop swaps settle at once
+  const heldPayments = allowResale && isRestaurant
 
   const fetchEarnings = useCallback(async () => {
     try {
@@ -148,23 +154,38 @@ export function OwnerConsole({
     try {
       const fulfilled = await post("fulfill", { positionId: upNext.id })
       if (!fulfilled.ok) {
-        addToast(fulfilled.data.error || "Failed to mark as served", "error")
+        addToast(fulfilled.data.error || `Failed to mark as ${servedWord}`, "error")
         return
       }
       const name = upNext.user.name || "Guest"
       if (callNext && afterNext?.calledAt) {
         // Already called out of order: calling again would wipe their
         // "on my way" and send them a second "you've been called"
-        addToast(`${name} served -- ${afterNext.user.name || "the next party"} was already called`, "success")
+        addToast(`${name} ${servedWord} -- ${afterNext.user.name || "the next party"} was already called`, "success")
       } else if (callNext && afterNext) {
         const called = await post("call-next", { positionId: afterNext.id })
         addToast(
-          called.ok ? `${name} served -- called ${called.data.calledUser}` : `${name} served`,
+          called.ok ? `${name} ${servedWord} -- called ${called.data.calledUser}` : `${name} ${servedWord}`,
           called.ok ? "success" : "info"
         )
       } else {
-        addToast(`${name} marked as served`, "success")
+        addToast(`${name} marked as ${servedWord}`, "success")
       }
+    } finally {
+      setBusy(null)
+      onChanged()
+    }
+  }
+
+  /** The called party never showed: skip them without digging through the list */
+  async function handleNoShow() {
+    if (!upNext) return
+    setShowNoShowConfirm(false)
+    setBusy("no-show")
+    try {
+      const { ok, data } = await post("remove-position", { positionId: upNext.id, action: "payout", noShow: true })
+      if (ok) addToast(`Marked ${upNext.user.name || "them"} as a no-show`, "success")
+      else addToast(data.error || "Couldn't mark as a no-show", "error")
     } finally {
       setBusy(null)
       onChanged()
@@ -176,7 +197,14 @@ export function OwnerConsole({
     try {
       const { ok, data } = await post("pause", { isActive: !isActive })
       if (ok) {
-        addToast(data.isActive ? "Line resumed -- people can join again" : "Line paused -- no new joins or swaps, and it's hidden from Browse until you resume", "success")
+        addToast(
+          data.isActive
+            ? "Line resumed -- people can join again"
+            : isRestaurant && !allowResale
+              ? "Line paused -- no online joins until you resume. Walk-ins and calls still work."
+              : "Line paused -- no new joins or swaps, and it's hidden from Browse until you resume",
+          "success"
+        )
       } else {
         addToast(data.error || "Failed to update line", "error")
       }
@@ -198,11 +226,11 @@ export function OwnerConsole({
         addToast(
           data.failed > 0
             ? `Cleared ${data.removed}, ${data.failed} could not be removed`
-            : `Cleared ${data.removed} served ${data.removed === 1 ? "person" : "people"} -- everyone else moved up`,
+            : `Cleared ${data.removed} ${servedWord} ${isRestaurant ? (data.removed === 1 ? "party" : "parties") : data.removed === 1 ? "person" : "people"} -- everyone else moved up`,
           data.failed > 0 ? "info" : "success"
         )
       } else {
-        addToast(data.error || "Failed to clear served people", "error")
+        addToast(data.error || `Failed to clear ${servedWord} ${isRestaurant ? "parties" : "people"}`, "error")
       }
       onChanged()
     } finally {
@@ -305,12 +333,22 @@ export function OwnerConsole({
     <div className="mb-6 bg-white border border-ink" data-testid="owner-console">
       <ConfirmModal
         open={showClearConfirm}
-        title="Clear served people"
-        message={`Remove the ${served.length} ${served.length === 1 ? "person" : "people"} you've already served from the line? Everyone still waiting moves up. Their payments stay final.`}
-        confirmLabel="Clear Served"
+        title={`Clear ${servedWord} ${isRestaurant ? "parties" : "people"}`}
+        message={`Remove the ${served.length} ${isRestaurant ? (served.length === 1 ? "party" : "parties") : served.length === 1 ? "person" : "people"} you've already ${servedWord} from the line? Everyone still waiting moves up. Their payments stay final.`}
+        confirmLabel={isRestaurant ? "Clear Seated" : "Clear Served"}
         isLoading={busy === "clear"}
         onConfirm={handleClearServed}
         onCancel={() => setShowClearConfirm(false)}
+      />
+      <ConfirmModal
+        open={showNoShowConfirm}
+        title="Mark as a no-show?"
+        message={`Remove ${upNext?.user.name || "this party"} from the line as a no-show? Everyone behind them moves up.`}
+        confirmLabel="No-show"
+        variant="danger"
+        isLoading={busy === "no-show"}
+        onConfirm={handleNoShow}
+        onCancel={() => setShowNoShowConfirm(false)}
       />
 
       {closeChoice && (
@@ -322,13 +360,14 @@ export function OwnerConsole({
             <p className="text-sm text-ink/60 mb-4">
               This pauses the line so no one new can join, and removes all {positions.length}{" "}
               {positions.length === 1 ? "person" : "people"} still on it. Everyone still waiting is told they&apos;re no longer in line.
-              {allowResale && " Choose what happens to swap payments still on hold:"}
+              {" "}Export CSV from the ⋯ menu first if you want a copy of the list.
+              {heldPayments && " Choose what happens to swap payments still on hold:"}
             </p>
             <div className="flex flex-col space-y-2">
               <Button onClick={() => handleClose("payout")} isLoading={busy === "close"} className="w-full">
-                {allowResale ? "Close and keep payments" : "Close the line"}
+                {heldPayments ? "Close and keep payments" : "Close the line"}
               </Button>
-              {allowResale && (
+              {heldPayments && (
                 <Button variant="danger" onClick={() => handleClose("refund")} isLoading={busy === "close"} className="w-full">
                   Close and refund held payments
                 </Button>
@@ -402,7 +441,7 @@ export function OwnerConsole({
           <p className="text-sm text-ink/60">
             {positions.length === 0
               ? "No one in line yet. Share the link to get people in."
-              : "Everyone in line has been served."}
+              : `Everyone in line has been ${servedWord}.`}
           </p>
         ) : (
           <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -435,7 +474,7 @@ export function OwnerConsole({
                     isLoading={busy === "serve-next"}
                     disabled={!!busy || upNextLocked}
                   >
-                    {afterNext ? "Done · Call Next" : "Mark Served"}
+                    {afterNext ? "Done · Call Next" : markServedLabel}
                   </Button>
                   {afterNext && (
                     <Button
@@ -445,7 +484,18 @@ export function OwnerConsole({
                       isLoading={busy === "serve"}
                       disabled={!!busy || upNextLocked}
                     >
-                      Mark Served
+                      {markServedLabel}
+                    </Button>
+                  )}
+                  {upNext.calledAt && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setShowNoShowConfirm(true)}
+                      isLoading={busy === "no-show"}
+                      disabled={!!busy || upNextLocked}
+                    >
+                      No-show
                     </Button>
                   )}
                 </>
@@ -462,7 +512,7 @@ export function OwnerConsole({
                     isLoading={busy === "serve"}
                     disabled={!!busy || upNextLocked}
                   >
-                    Mark Served
+                    {markServedLabel}
                   </Button>
                 </>
               )}
@@ -545,14 +595,14 @@ export function OwnerConsole({
         <div className="mt-3 flex items-center gap-3 font-mono text-xs uppercase tracking-widest text-ink/50 tabular-nums">
           <span>{waiting.length} waiting</span>
           <span className="text-ink/20">·</span>
-          <span>{served.length} served</span>
+          <span>{served.length} {servedWord}</span>
           {served.length > 0 && (
             <button
               onClick={() => setShowClearConfirm(true)}
               disabled={!!busy}
               className="text-accent hover:underline underline-offset-4 disabled:opacity-50"
             >
-              Clear served
+              Clear {servedWord}
             </button>
           )}
           <Link

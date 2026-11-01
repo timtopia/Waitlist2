@@ -21,6 +21,7 @@ interface CreatedLine {
   isActive: boolean
   isPublic: boolean
   createdAt: string
+  kind?: "STANDARD" | "RESTAURANT"
   _count: { positions: number }
   frontPerson: {
     id: string
@@ -255,11 +256,15 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
     setLines(initialLines)
   }, [initialLines])
 
-  async function handleCallNext(lineId: string) {
+  async function handleCallNext(lineId: string, positionId: string) {
     setLoadingAction(`call-${lineId}`)
     try {
+      // Name who the card showed: this page refreshes slowly, and a queue
+      // that moved since shouldn't make this call someone else
       const res = await fetch(`/api/lines/${lineId}/call-next`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ positionId }),
       })
       if (res.ok) {
         const data = await res.json()
@@ -274,7 +279,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
     }
   }
 
-  async function handleServeFront(lineId: string, positionId: string, name: string) {
+  async function handleServeFront(lineId: string, positionId: string, name: string, servedWord: string) {
     setLoadingAction(`serve-${lineId}`)
     try {
       const res = await fetch(`/api/lines/${lineId}/fulfill`, {
@@ -283,11 +288,11 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
         body: JSON.stringify({ positionId }),
       })
       if (res.ok) {
-        addToast(`${name} marked as served`, "success")
+        addToast(`${name} marked as ${servedWord}`, "success")
         router.refresh()
       } else {
         const data = await res.json()
-        addToast(data.error || "Failed to mark as served", "error")
+        addToast(data.error || `Failed to mark as ${servedWord}`, "error")
       }
     } finally {
       setLoadingAction(null)
@@ -824,7 +829,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                           )}
                         </div>
                         <p className="text-sm text-ink/60 mt-1">
-                          {line._count.positions} in line
+                          {line._count.positions} waiting
                           {line.frontPerson && (
                             <span>
                               {" · "} Next: {line.frontPerson.user.name || "Anonymous"}
@@ -844,11 +849,11 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                               variant="secondary"
                               onClick={(e) => {
                                 e.preventDefault()
-                                handleServeFront(line.id, line.frontPerson!.id, line.frontPerson!.user.name || "Guest")
+                                handleServeFront(line.id, line.frontPerson!.id, line.frontPerson!.user.name || "Guest", line.kind === "RESTAURANT" ? "seated" : "served")
                               }}
                               isLoading={loadingAction === `serve-${line.id}`}
                             >
-                              Mark Served
+                              {line.kind === "RESTAURANT" ? "Mark Seated" : "Mark Served"}
                             </Button>
                           )}
                           <Button
@@ -856,7 +861,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                             variant={line.frontPerson.calledAt ? "ghost" : "secondary"}
                             onClick={(e) => {
                               e.preventDefault()
-                              handleCallNext(line.id)
+                              handleCallNext(line.id, line.frontPerson!.id)
                             }}
                             isLoading={loadingAction === `call-${line.id}`}
                           >

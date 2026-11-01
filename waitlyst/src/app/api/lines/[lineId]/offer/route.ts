@@ -7,6 +7,7 @@ import { sendEmail } from "@/lib/email"
 import { swapOfferEmail } from "@/lib/email-templates"
 import { MIN_OFFER_AMOUNT, isOfferExpired, newOfferExpiry } from "@/lib/offers"
 import { tradeBlocker } from "@/lib/trading"
+import { formatCurrency } from "@/lib/format"
 
 // Between one declined or withdrawn offer and the next to the same person
 const OFFER_COOLDOWN_MS = 10 * 60 * 1000
@@ -94,18 +95,18 @@ export async function POST(
         { status: 400 }
       )
     }
-    // Added by the host at the stand: no account, so no way to see or accept an offer
-    if (toPosition.user?.isWalkIn) {
-      return NextResponse.json(
-        { error: "The person in front of you was added by the host and can't take offers." },
-        { status: 400 }
-      )
-    }
-
     // Validate: toUserId must be directly in front (position - 1)
     if (toPosition.position !== fromPosition.position - 1) {
       return NextResponse.json(
         { error: "You can only offer to swap with the person directly in front of you" },
+        { status: 400 }
+      )
+    }
+
+    // Added by the host at the stand: no account, so no way to see or accept an offer
+    if (toPosition.user?.isWalkIn) {
+      return NextResponse.json(
+        { error: "The person in front of you was added by the host and can't take offers." },
         { status: 400 }
       )
     }
@@ -127,9 +128,12 @@ export async function POST(
         },
       },
     })
-    if (existingOffer && existingOffer.status === "PENDING" && !isOfferExpired(existingOffer)) {
+    // The person ahead can only accept or decline, so raising a pending
+    // offer is how a buyer negotiates. Lowering it would be a bait-and-switch.
+    const raising = !!existingOffer && existingOffer.status === "PENDING" && !isOfferExpired(existingOffer)
+    if (raising && amount <= existingOffer.amount) {
       return NextResponse.json(
-        { error: "You already have a pending offer to this person" },
+        { error: `You already offered them ${formatCurrency(existingOffer.amount)}. You can only raise a pending offer.` },
         { status: 409 }
       )
     }
@@ -140,8 +144,11 @@ export async function POST(
       (existingOffer.status === "DECLINED" || existingOffer.status === "WITHDRAWN") &&
       existingOffer.createdAt > new Date(Date.now() - OFFER_COOLDOWN_MS)
     ) {
+      const mins = Math.max(1, Math.ceil((existingOffer.createdAt.getTime() + OFFER_COOLDOWN_MS - Date.now()) / 60_000))
       return NextResponse.json(
-        { error: "You just made them an offer. Wait a few minutes before sending another." },
+        {
+          error: `${existingOffer.status === "DECLINED" ? "They declined your last offer" : "You just withdrew an offer"}. You can send another in ${mins} min.`,
+        },
         { status: 429 }
       )
     }
@@ -161,30 +168,47 @@ export async function POST(
     // A previous offer between the two (declined, expired, withdrawn, or an
     // accepted one that already went through) is reused as the new offer.
     const now = new Date()
-    const offer = await prisma.swapOffer.upsert({
-      where: {
-        lineId_fromUserId_toUserId: {
+    let offer
+    if (raising) {
+      // Guarded on the old amount and status: if the person ahead answered
+      // in the meantime, they keep the price they saw.
+      const raised = await prisma.swapOffer.updateMany({
+        where: { id: existingOffer!.id, status: "PENDING", amount: existingOffer!.amount },
+        data: { amount, expiresAt: newOfferExpiry(now) },
+      })
+      if (raised.count === 0) {
+        return NextResponse.json(
+          { error: "They just answered your offer. Refresh to see what they said." },
+          { status: 409 }
+        )
+      }
+      offer = await prisma.swapOffer.findUniqueOrThrow({ where: { id: existingOffer!.id } })
+    } else {
+      offer = await prisma.swapOffer.upsert({
+        where: {
+          lineId_fromUserId_toUserId: {
+            lineId,
+            fromUserId: result.userId,
+            toUserId,
+          },
+        },
+        update: {
+          amount,
+          status: "PENDING",
+          createdAt: now,
+          expiresAt: newOfferExpiry(now),
+          transactionId: null,
+        },
+        create: {
           lineId,
           fromUserId: result.userId,
           toUserId,
+          amount,
+          status: "PENDING",
+          expiresAt: newOfferExpiry(now),
         },
-      },
-      update: {
-        amount,
-        status: "PENDING",
-        createdAt: now,
-        expiresAt: newOfferExpiry(now),
-        transactionId: null,
-      },
-      create: {
-        lineId,
-        fromUserId: result.userId,
-        toUserId,
-        amount,
-        status: "PENDING",
-        expiresAt: newOfferExpiry(now),
-      },
-    })
+      })
+    }
 
     // Send email notification to the recipient (fire-and-forget)
     const toUser = await prisma.user.findUnique({

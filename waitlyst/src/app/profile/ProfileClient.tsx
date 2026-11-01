@@ -320,9 +320,9 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
             <span className="text-ink/20">·</span>
             <span>{stats.activePositions} active positions</span>
             <span className="text-ink/20">·</span>
-            <span>{stats.purchaseCount} swaps made</span>
+            <span>{stats.purchaseCount} spots bought</span>
             <span className="text-ink/20">·</span>
-            <span>{stats.saleCount} swaps received</span>
+            <span>{stats.saleCount} spots sold</span>
           </div>
 
           {/* Total Available — hero number */}

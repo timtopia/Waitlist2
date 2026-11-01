@@ -141,11 +141,14 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   useEffect(() => {
     const paymentStatus = searchParams.get("payment")
     if (paymentStatus === "success") {
-      addToast("Payment successful! Your position has been swapped.", "success")
+      // Restaurant buyers' cards are only held until they're seated, so
+      // don't promise a charge; the move itself is true for both kinds.
+      addToast("You moved up! Your payment went through.", "success")
       // Clean up URL
       router.replace(`/lines/${lineId}`, { scroll: false })
     } else if (paymentStatus === "cancelled") {
       addToast("Payment was cancelled. No charges were made.", "info")
+      router.replace(`/lines/${lineId}`, { scroll: false })
     } else if (paymentStatus === "offer_withdrawn") {
       addToast("Payment was cancelled and your offer withdrawn. No charges were made.", "info")
       router.replace(`/lines/${lineId}`, { scroll: false })
@@ -319,7 +322,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
 
   // The host at the stand needs online joins and "on my way" taps promptly
   const hostingLive = !!line?.isActive && line.createdBy.id === session?.user?.id
-  useLineUpdates(lineId, handleLineUpdate, {
+  const { stale } = useLineUpdates(lineId, handleLineUpdate, {
     intervalMs: nearFront || hostingLive ? 10000 : 30000,
     pollWhenHidden: !!memberStatus && notificationsEnabled,
   })
@@ -694,6 +697,11 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                   </select>
                 </label>
               )}
+              {canJoin && isRestaurant && line.maxCapacity != null && maxPartySize < MAX_PARTY_SIZE && (
+                <span className="text-xs text-ink/50">
+                  Room for {maxPartySize} more guest{maxPartySize === 1 ? "" : "s"}. Bigger party? Ask the host.
+                </span>
+              )}
               {canJoin && session && line.kind === "RESTAURANT" && (
                 <input
                   value={joinNote}
@@ -840,7 +848,9 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
               <p className="font-semibold text-ink">This line is currently paused</p>
               <p className="text-sm text-ink/60 mt-0.5">
                 {isCreator
-                  ? "You have paused this line. No one can join or swap positions until you resume it."
+                  ? isRestaurant
+                    ? "Guests can't join online, and called parties' show-up timers are on hold. You can still add walk-ins and call and seat parties."
+                    : "You have paused this line. No one can join or swap positions until you resume it. Called people's show-up timers are on hold."
                   : "New joins and position swaps are temporarily disabled."}
               </p>
             </div>
@@ -963,12 +973,19 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         </div>
       )}
 
+      {stale && (memberStatus || isCreator) && (
+        <p role="status" className="mb-4 border border-amber-600/40 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+          Connection lost. {memberStatus ? "Your place is safe; this" : "This"} page will update when you&apos;re back online.
+        </p>
+      )}
+
       {/* My Status Card — only for authenticated members in the line */}
       {memberStatus && userPosition && (
         <MemberStatusCard
           status={memberStatus}
           maxCapacity={isRestaurant ? null : line.maxCapacity}
           isRestaurant={isRestaurant}
+          allowResale={line.allowResale}
           totalPositions={line.positions.length}
           askingPrice={userPosition.askingPrice}
           lineId={line.id}
@@ -998,7 +1015,9 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
               </p>
               <p className="text-sm text-ink/60 mt-1">
                 {departure.wasServed
-                  ? "The organizer served you and cleared your spot. Thanks for waiting."
+                  ? isRestaurant
+                    ? "The host seated you and cleared your spot. Thanks for waiting."
+                    : "The organizer served you and cleared your spot. Thanks for waiting."
                   : departure.wasCalled
                     ? "You were called but didn't show up in time, so your place went to the next party -- or the organizer removed you."
                     : "You left from another device, or the organizer removed you."}

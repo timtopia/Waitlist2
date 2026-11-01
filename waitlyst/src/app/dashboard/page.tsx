@@ -22,7 +22,8 @@ export default async function DashboardPage() {
     prisma.line.findMany({
       where: { createdById: session.user.id },
       include: {
-        _count: { select: { positions: true } },
+        // Seated/served parties linger until cleared; count who's still waiting
+        _count: { select: { positions: { where: { fulfilled: false } } } },
         positions: {
           where: { fulfilled: false },
           orderBy: { position: "asc" },

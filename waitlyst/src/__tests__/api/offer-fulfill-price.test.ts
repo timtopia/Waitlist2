@@ -17,6 +17,7 @@ const mockPrisma = {
     updateMany: vi.fn().mockResolvedValue({ count: 1 }),
   },
   transaction: {
+    count: vi.fn().mockResolvedValue(0),
     create: vi.fn(),
     update: vi.fn(),
     findFirst: vi.fn(),

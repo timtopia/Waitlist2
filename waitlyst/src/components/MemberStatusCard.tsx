@@ -36,6 +36,8 @@ interface MemberStatusCardProps {
   onEnableNotifications?: () => void
   /** Restaurant lines count parties ahead, not people */
   isRestaurant?: boolean
+  /** Whether spots on this line can be listed for swap at all */
+  allowResale?: boolean
 }
 
 export function MemberStatusCard({
@@ -58,6 +60,7 @@ export function MemberStatusCard({
   notificationPermission = "unsupported",
   onEnableNotifications,
   isRestaurant = false,
+  allowResale = true,
 }: MemberStatusCardProps) {
   const { phase, position, ahead } = status
   const [minutesPerPerson, setMinutesPerPerson] = useState<number | null>(null)
@@ -72,6 +75,12 @@ export function MemberStatusCard({
     const timer = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(timer)
   }, [deadlineMs])
+  // Slower tick so the host's quoted time can flip to "has passed"
+  useEffect(() => {
+    if (deadlineMs !== null || !quotedAt) return
+    const timer = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(timer)
+  }, [deadlineMs, quotedAt])
   const left = timeLeft(deadline, now)
 
   // Refetch as the line moves: each service event changes the pace estimate.
@@ -107,28 +116,39 @@ export function MemberStatusCard({
     }
   }
 
+  // The host's word beats the app's estimate. Show it as a clock time so
+  // guests don't have to do the maths, and say so once it has passed.
+  let quoteDetail: string | null = null
+  if (quotedMinutes && quotedAt) {
+    const readyBy = new Date(new Date(quotedAt).getTime() + quotedMinutes * 60_000)
+    const at = readyBy.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+    quoteDetail = now > readyBy.getTime()
+      ? `The host's estimate (${at}) has passed. You're still in line.`
+      : `The host expects to seat you around ${at}.`
+  }
+
+  const organizer = isRestaurant ? "host" : "organizer"
   let headline: string
   let detail: string
   if (phase === "called") {
     headline = "It's your turn"
-    detail = `The organizer called you${calledAt ? ` ${timeAgo(calledAt)}` : ""}. It's your turn now.`
+    detail = isRestaurant
+      ? `The host called you${calledAt ? ` ${timeAgo(calledAt)}` : ""}. Head to the host stand.`
+      : `The organizer called you${calledAt ? ` ${timeAgo(calledAt)}` : ""}. It's your turn now.`
   } else if (phase === "served") {
-    headline = "You've been served"
-    detail = "You're all set. Leave the line whenever you're ready."
+    headline = isRestaurant ? "You've been seated" : "You've been served"
+    detail = isRestaurant ? "Enjoy your meal." : "You're all set. Leave the line whenever you're ready."
   } else if (phase === "next") {
     headline = "You're next"
-    detail = "No one is ahead of you. Stay close; you'll be called soon."
+    detail = quoteDetail ?? "No one is ahead of you. Stay close; you'll be called soon."
   } else {
     headline = isRestaurant
       ? `${ahead} ${ahead === 1 ? "party" : "parties"} ahead of you`
       : `${ahead} ${ahead === 1 ? "person" : "people"} ahead of you`
-    if (quotedMinutes && quotedAt) {
-      // The host's word beats the app's estimate
-      const at = new Date(quotedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-      detail = `The host quoted about ${quotedMinutes} min at ${at}.`
-    } else if (waitTimeLoading) detail = "Estimating your wait..."
+    if (quoteDetail) detail = quoteDetail
+    else if (waitTimeLoading) detail = "Estimating your wait..."
     else if (minutesPerPerson != null) detail = `Est. wait: ${formatWaitTime(minutesPerPerson * ahead)}`
-    else detail = "Wait estimate appears once the organizer starts serving people."
+    else detail = `Wait estimate appears once the ${organizer} starts ${isRestaurant ? "seating" : "serving"} people.`
   }
 
   const accent = phase === "called"
@@ -140,7 +160,7 @@ export function MemberStatusCard({
         accent ? "border-l-accent border-accent" : done ? "border-l-green-700" : "border-l-accent"
       }`}
     >
-      <div className="px-5 py-4 sm:px-6" role="status" aria-live="polite">
+      <div className="px-5 py-4 sm:px-6">
         <div className="flex items-center gap-4 sm:gap-6">
           <div
             className={`flex-shrink-0 w-16 h-16 sm:w-20 sm:h-20 flex flex-col items-center justify-center ${
@@ -153,10 +173,17 @@ export function MemberStatusCard({
 
           <div className="flex-1 min-w-0 space-y-1.5">
             <p className="font-mono text-xs uppercase tracking-widest text-ink/50">Your place</p>
-            <p className={`text-xl font-semibold tracking-tight ${accent ? "text-accent" : "text-ink"}`}>
+            {/* Only the headline is live: announcing the whole card re-read
+                every button and countdown whenever anything changed */}
+            <p role="status" className={`text-xl font-semibold tracking-tight ${accent ? "text-accent" : "text-ink"}`}>
               {headline}
             </p>
             <p className="text-sm text-ink/60">{detail}</p>
+            {!done && (
+              <a href="#my-spot" className="inline-block text-sm text-accent underline underline-offset-2">
+                {isRestaurant ? "Change party size, add a note, or leave" : "Manage your spot or leave"}
+              </a>
+            )}
           </div>
         </div>
 
@@ -168,11 +195,13 @@ export function MemberStatusCard({
                 {capacityLabel}
               </span>
             )}
-            <span>
-              {askingPrice !== null
-                ? `Your spot is listed for ${formatCurrency(askingPrice)}`
-                : "Your spot isn't listed for swap"}
-            </span>
+            {(allowResale || askingPrice !== null) && (
+              <span>
+                {askingPrice !== null
+                  ? `Your spot is listed for ${formatCurrency(askingPrice)}`
+                  : "Your spot isn't listed for swap"}
+              </span>
+            )}
           </div>
         )}
 
@@ -209,7 +238,9 @@ export function MemberStatusCard({
                 ))}
                 {response && (
                   <span className="text-xs text-ink/50">
-                    The host can see this{response === "ON_MY_WAY" && responseWindowMinutes ? ", and you get a little more time" : ""}.
+                    {response === "RUNNING_LATE" && responseWindowMinutes
+                      ? "The host can see this, but your time is still running. Tap On my way when you head over to get more time."
+                      : `The host can see this${response === "ON_MY_WAY" && responseWindowMinutes ? ", and you get a little more time" : ""}.`}
                   </span>
                 )}
               </div>

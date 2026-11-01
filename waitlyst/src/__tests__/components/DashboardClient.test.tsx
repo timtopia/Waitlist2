@@ -142,8 +142,8 @@ describe("DashboardClient", () => {
     render(<DashboardClient createdLines={mockCreatedLines} positions={[]} />)
     expect(screen.getByText("Test Line 1")).toBeInTheDocument()
     expect(screen.getByText("Test Line 2")).toBeInTheDocument()
-    expect(screen.getByText("5 in line")).toBeInTheDocument()
-    expect(screen.getByText("0 in line")).toBeInTheDocument()
+    expect(screen.getByText("5 waiting")).toBeInTheDocument()
+    expect(screen.getByText("0 waiting")).toBeInTheDocument()
   })
 
   it("shows public/private badges", () => {
