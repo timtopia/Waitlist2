@@ -55,13 +55,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={{ addToast }}>
       {children}
-      {/* Toast Container */}
-      <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
+      {/* Toast Container: always mounted, so screen readers are already
+          watching the live region when the first toast is added */}
+      <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none" aria-live="polite">
         {toasts.map((toast) => (
           <div
             key={toast.id}
             className={`pointer-events-auto flex items-center gap-3 px-4 py-3 text-white text-sm font-medium animate-slide-in-right ${styles[toast.type]}`}
-            role={toast.type === "error" ? "alert" : "status"}
+            role={toast.type === "error" ? "alert" : undefined}
           >
             <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={icons[toast.type]} />

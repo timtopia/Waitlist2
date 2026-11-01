@@ -248,32 +248,42 @@ export async function GET(
 
   try {
     const userId = result.userId
-    const [offers, positions, pendingPayments] = await Promise.all([
+    const [offers, positions, pendingPayments, line] = await Promise.all([
       prisma.swapOffer.findMany({
         where: { lineId, OR: [{ fromUserId: userId }, { toUserId: userId }] },
         orderBy: { createdAt: "desc" },
       }),
       prisma.linePosition.findMany({
         where: { lineId },
-        select: { userId: true, position: true },
+        select: { userId: true, position: true, fulfilled: true, calledAt: true },
       }),
       prisma.transaction.findMany({
         where: { lineId, status: "PENDING", OR: [{ buyerId: userId }, { sellerId: userId }] },
         select: { id: true },
       }),
+      prisma.line.findUnique({ where: { id: lineId }, select: { nowServingUserId: true } }),
     ])
 
-    // Positions move (swaps, leaves, removals) and offers age out, so a
-    // PENDING offer can silently stop meaning anything. Retire those here so
-    // neither side keeps seeing an offer that accept would only reject.
-    const positionOf = new Map(positions.map((p) => [p.userId, p.position]))
+    // Positions move (swaps, leaves, removals), people get called or served,
+    // and offers age out, so a PENDING offer can silently stop meaning
+    // anything. Retire those here so neither side keeps seeing an offer that
+    // accept would only reject.
+    const positionOf = new Map(positions.map((p) => [p.userId, p]))
+    const nowServingUserId = line?.nowServingUserId ?? null
     const now = new Date()
     const staleIds = offers
       .filter((o) => {
         if (o.status !== "PENDING") return false
         const from = positionOf.get(o.fromUserId)
         const to = positionOf.get(o.toUserId)
-        return isOfferExpired(o, now) || from === undefined || to === undefined || to !== from - 1
+        return (
+          isOfferExpired(o, now) ||
+          from === undefined ||
+          to === undefined ||
+          to.position !== from.position - 1 ||
+          tradeBlocker(from, nowServingUserId, "theirs") !== null ||
+          tradeBlocker(to, nowServingUserId, "theirs") !== null
+        )
       })
       .map((o) => o.id)
     if (staleIds.length > 0) {

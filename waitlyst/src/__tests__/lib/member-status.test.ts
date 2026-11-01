@@ -89,7 +89,13 @@ describe("diffMemberStatus", () => {
   it("reports moving up while still waiting", () => {
     const prev = makeLine([{ id: "a" }, { id: "b" }, { id: "c" }, { id: "me" }])
     const next = makeLine([{ id: "b" }, { id: "c" }, { id: "me" }])
-    expect(diffMemberStatus(prev, next, "me")).toEqual([{ kind: "moved", from: 4, to: 3 }])
+    expect(diffMemberStatus(prev, next, "me")).toEqual([{ kind: "moved", from: 4, to: 3, ahead: 2 }])
+  })
+
+  it("reports moving up when someone ahead is served but stays listed", () => {
+    const prev = makeLine([{ id: "a" }, { id: "b" }, { id: "me" }])
+    const next = makeLine([{ id: "a", fulfilled: true }, { id: "b" }, { id: "me" }])
+    expect(diffMemberStatus(prev, next, "me")).toEqual([{ kind: "moved", from: 3, to: 3, ahead: 1 }])
   })
 
   it("reports reaching the front as 'next' rather than a move", () => {
@@ -168,8 +174,20 @@ describe("describeMemberEvent", () => {
   })
 
   it("only alerts on moves near the front", () => {
-    expect(describeMemberEvent({ kind: "moved", from: 40, to: 39 }, "Bakery")).toBeNull()
-    expect(describeMemberEvent({ kind: "moved", from: 4, to: 3 }, "Bakery")).toMatchObject({ title: "You're #3", toast: false })
+    expect(describeMemberEvent({ kind: "moved", from: 40, to: 39, ahead: 38 }, "Bakery")).toBeNull()
+    expect(describeMemberEvent({ kind: "moved", from: 4, to: 3, ahead: 2 }, "Bakery")).toMatchObject({ title: "You're #3", toast: false })
+  })
+
+  it("counts only unserved people ahead, since served ones stay listed", () => {
+    // Spot #9, but six ahead were already seated
+    expect(describeMemberEvent({ kind: "moved", from: 9, to: 9, ahead: 2 }, "Dinner")).toMatchObject({ title: "You're #3" })
+  })
+
+  it("uses seating wording on restaurant lines", () => {
+    expect(describeMemberEvent({ kind: "served" }, "Dinner", true)).toMatchObject({ title: "You've been seated", body: "The host seated you at Dinner." })
+    expect(describeMemberEvent({ kind: "removed", wasServed: true, wasCalled: false }, "Dinner", true)?.body).toContain("after being seated")
+    expect(describeMemberEvent({ kind: "removed", wasServed: false, wasCalled: false }, "Dinner", true)?.body).toContain("the host removed you")
+    expect(describeMemberEvent({ kind: "served" }, "Bakery")).toMatchObject({ title: "You've been served" })
   })
 })
 
@@ -179,5 +197,10 @@ describe("memberTabTitle", () => {
     expect(memberTabTitle({ phase: "waiting", position: 4, ahead: 3 }, "Bakery")).toBe("#4 · Bakery")
     expect(memberTabTitle({ phase: "called", position: 1, ahead: 0 }, "Bakery")).toBe("Your turn! · Bakery")
     expect(memberTabTitle({ phase: "served", position: 1, ahead: 0 }, "Bakery")).toBe("Served · Bakery")
+    expect(memberTabTitle({ phase: "served", position: 1, ahead: 0 }, "Dinner", true)).toBe("Seated · Dinner")
+  })
+
+  it("numbers by unserved people ahead, not the spot number", () => {
+    expect(memberTabTitle({ phase: "waiting", position: 7, ahead: 2 }, "Dinner", true)).toBe("#3 · Dinner")
   })
 })

@@ -22,6 +22,7 @@ import { OwnerConsole } from "@/components/OwnerConsole"
 import { timeAgo } from "@/lib/format"
 import { MAX_PARTY_SIZE, capacityUnit, guestCount } from "@/lib/capacity"
 import { getMemberStatus, diffMemberStatus, describeMemberEvent, memberTabTitle } from "@/lib/member-status"
+import { callDeadline } from "@/lib/call-deadline"
 
 interface ActivityItem {
   id: string
@@ -29,6 +30,9 @@ interface ActivityItem {
   description: string
   timestamp: string
 }
+
+/** A request that never reached the server, so nothing changed */
+const NO_CONNECTION = "No connection. That wasn't sent -- try again when you have signal."
 
 interface Line {
   id: string
@@ -104,9 +108,12 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [remindMe, setRemindMe] = useState<boolean | null>(null)
   const [remindBusy, setRemindBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // A failed load that's worth retrying (rate limit, network), unlike a missing line
+  const [canRetry, setCanRetry] = useState(false)
   const [notificationPermission, setNotificationPermission] = useState<NotificationState>("unsupported")
   const notificationsEnabled = notificationPermission === "granted"
-  const [departure, setDeparture] = useState<{ wasServed: boolean; wasCalled: boolean } | null>(null)
+  // partySize is what they were in line as, so rejoining keeps the table size
+  const [departure, setDeparture] = useState<{ wasServed: boolean; wasCalled: boolean; partySize: number } | null>(null)
   // Set when the viewer leaves from this tab, so the next poll isn't
   // reported as "you're no longer in line".
   const leftHereRef = useRef(false)
@@ -140,13 +147,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   // Handle payment status from Stripe redirect
   useEffect(() => {
     const paymentStatus = searchParams.get("payment")
-    if (paymentStatus === "success") {
-      // Restaurant buyers' cards are only held until they're seated, so
-      // don't promise a charge; the move itself is true for both kinds.
-      addToast("You moved up! Your payment went through.", "success")
-      // Clean up URL
-      router.replace(`/lines/${lineId}`, { scroll: false })
-    } else if (paymentStatus === "cancelled") {
+    if (paymentStatus === "cancelled") {
       addToast("Payment was cancelled. No charges were made.", "info")
       router.replace(`/lines/${lineId}`, { scroll: false })
     } else if (paymentStatus === "offer_withdrawn") {
@@ -166,6 +167,23 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       router.replace(`/lines/${lineId}`, { scroll: false })
     }
   }, [searchParams, lineId, addToast, router])
+
+  // A completed swap checkout. Restaurant buyers' cards are only held until
+  // they're seated, so don't promise a charge there; this waits for the line
+  // to load to know which kind it is.
+  const lineKind = line?.kind
+  const paymentSuccessShown = useRef(false)
+  useEffect(() => {
+    if (searchParams.get("payment") !== "success" || !lineKind || paymentSuccessShown.current) return
+    paymentSuccessShown.current = true
+    addToast(
+      lineKind === "RESTAURANT"
+        ? "You moved up! Your card is held until you're seated."
+        : "You moved up! Your payment went through.",
+      "success"
+    )
+    router.replace(`/lines/${lineId}`, { scroll: false })
+  }, [searchParams, lineKind, lineId, addToast, router])
 
   // Handle Stripe Connect onboarding status, if the user set up payouts
   // from this page (e.g. right after listing their position for sale).
@@ -213,21 +231,50 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     fetchPayoutStatus()
   }, [session?.user?.id])
 
+  // Diff polls against what's on screen, not the previous poll: the viewer's
+  // own actions already refetched the line, so they never alert themselves.
+  const lineRef = useRef<Line | null>(null)
+  useEffect(() => {
+    lineRef.current = line
+  }, [line])
+
   const fetchLine = useCallback(async () => {
     try {
       const res = await fetch(`/api/lines/${lineId}`)
       if (res.ok) {
         const data = await res.json()
         setLine(data)
-      } else {
+        setError(null)
+        setCanRetry(false)
+      } else if (res.status === 404) {
         setError("Line not found")
+        setCanRetry(false)
+      } else if (!lineRef.current) {
+        // A refresh that fails while the line is on screen keeps it there;
+        // the next poll catches up
+        setError(
+          res.status === 429
+            ? "Lots of people are checking this line right now. Try again in a minute."
+            : "Couldn't load this line."
+        )
+        setCanRetry(true)
       }
     } catch {
-      setError("Failed to load line")
+      if (!lineRef.current) {
+        setError("Couldn't load this line.")
+        setCanRetry(true)
+      }
     } finally {
       setLoading(false)
     }
   }, [lineId])
+
+  function retryLoad() {
+    setError(null)
+    setCanRetry(false)
+    setLoading(true)
+    fetchLine()
+  }
 
   useEffect(() => {
     fetchLine()
@@ -259,12 +306,44 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     fetchActivity()
   }, [fetchLine, fetchActivity])
 
-  // Diff polls against what's on screen, not the previous poll: the viewer's
-  // own actions already refetched the line, so they never alert themselves.
-  const lineRef = useRef<Line | null>(null)
-  useEffect(() => {
-    lineRef.current = line
-  }, [line])
+  /**
+   * The host at the stand hears about guests' moves without reading the list:
+   * online joins, "on my way" taps, and called parties the show-up timer
+   * skipped. Their own actions already refetched the line, so they're not in
+   * this diff.
+   */
+  const announceToHost = useCallback((prev: Line, next: Line) => {
+    const name = (p: Line["positions"][number]) => p.user.name || "Guest"
+    const before = new Map(prev.positions.map((p) => [p.id, p]))
+    const after = new Map(next.positions.map((p) => [p.id, p]))
+    const nowMs = Date.now()
+    for (const p of prev.positions) {
+      if (p.fulfilled || !p.calledAt || after.has(p.id)) continue
+      // Only the show-up timer skips people: anything else that removed a
+      // called party (the guest leaving, a removal elsewhere) isn't a no-show
+      const deadline = next.isActive
+        ? callDeadline(p.calledAt, next.responseWindowMinutes, p.respondedAt, p.graceMinutes)
+        : null
+      if (deadline && deadline.getTime() <= nowMs) {
+        addToast(`${name(p)} was skipped -- didn't show in time`, "warning")
+      }
+    }
+    for (const p of next.positions) {
+      const old = before.get(p.id)
+      if (!old) {
+        if (p.user.isWalkIn || p.fulfilled) continue
+        addToast(
+          next.kind === "RESTAURANT" ? `New party: ${name(p)} (party of ${p.partySize})` : `${name(p)} joined`,
+          "info"
+        )
+      } else if (old.user.id === p.user.id && p.response && p.response !== old.response) {
+        addToast(
+          p.response === "ON_MY_WAY" ? `${name(p)} is on the way` : `${name(p)} is running late`,
+          p.response === "ON_MY_WAY" ? "success" : "info"
+        )
+      }
+    }
+  }, [addToast])
 
   const handleLineUpdate = useCallback((event: LineUpdateEvent) => {
     if (event.type === "delete") {
@@ -285,6 +364,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     fetchActivity()
     if (!prev) return
 
+    if (session?.user?.id && next.createdBy.id === session.user.id) announceToHost(prev, next)
+
     // Back in the line (rejoined): a later removal must be announced, not
     // swallowed as the leave from this tab
     if (getMemberStatus(next, session?.user?.id)) leftHereRef.current = false
@@ -294,17 +375,20 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         leftHereRef.current = false
         continue
       }
-      if (change.kind === "removed") setDeparture({ wasServed: change.wasServed, wasCalled: change.wasCalled })
+      if (change.kind === "removed") {
+        const was = prev.positions.find((p) => p.user.id === session?.user?.id)
+        setDeparture({ wasServed: change.wasServed, wasCalled: change.wasCalled, partySize: was?.partySize ?? 1 })
+      }
       if (change.kind === "called" || change.kind === "next") setDeparture(null)
       if (change.kind === "called") alertTurn()
-      const alert = describeMemberEvent(change, next.name)
+      const alert = describeMemberEvent(change, next.name, next.kind === "RESTAURANT")
       if (!alert) continue
       sendNotification(alert.title, { body: alert.body, tag: `waitlyst-${lineId}` })
       if (alert.toast && document.visibilityState === "visible") {
         addToast(`${alert.title}: ${alert.body}`, alert.tone)
       }
     }
-  }, [fetchActivity, sendNotification, addToast, session?.user?.id, lineId])
+  }, [fetchActivity, sendNotification, addToast, announceToHost, session?.user?.id, lineId])
 
   const memberStatus = line ? getMemberStatus(line, session?.user?.id) : null
   const nearFront = !!memberStatus && memberStatus.phase !== "served" && memberStatus.ahead <= 2
@@ -320,14 +404,24 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     return () => document.removeEventListener("pointerdown", primeChime)
   }, [inLine])
 
-  // The host at the stand needs online joins and "on my way" taps promptly
-  const hostingLive = !!line?.isActive && line.createdBy.id === session?.user?.id
+  // The host at the stand needs online joins and "on my way" taps promptly.
+  // Paused (isActive false) still counts: called parties keep replying and
+  // the host keeps calling and seating.
+  const hostingLive = !!line && line.createdBy.id === session?.user?.id
   const { stale } = useLineUpdates(lineId, handleLineUpdate, {
     intervalMs: nearFront || hostingLive ? 10000 : 30000,
     pollWhenHidden: !!memberStatus && notificationsEnabled,
   })
 
-  const tabTitle = line ? memberTabTitle(memberStatus, line.name) : null
+  // Say so when the connection comes back, for those who saw it drop
+  const showsStale = !!memberStatus || hostingLive
+  const wasStale = useRef(false)
+  useEffect(() => {
+    if (wasStale.current && !stale && showsStale) addToast("Back online", "success")
+    wasStale.current = stale
+  }, [stale, showsStale, addToast])
+
+  const tabTitle = line ? memberTabTitle(memberStatus, line.name, line.kind === "RESTAURANT") : null
   useEffect(() => {
     if (!tabTitle) return
     const original = document.title
@@ -411,18 +505,24 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
 
     setJoining(true)
     try {
-      const res = await fetch(`/api/lines/${lineId}/join`, {
-        method: "POST",
-        ...(line?.kind === "RESTAURANT" && {
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ partySize: size, ...(joinNote.trim() && { note: joinNote.trim() }) }),
-        }),
-      })
+      let res: Response
+      try {
+        res = await fetch(`/api/lines/${lineId}/join`, {
+          method: "POST",
+          ...(line?.kind === "RESTAURANT" && {
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ partySize: size, ...(joinNote.trim() && { note: joinNote.trim() }) }),
+          }),
+        })
+      } catch {
+        addToast(NO_CONNECTION, "error")
+        return false
+      }
       if (res.ok) {
         refreshAll()
         return true
       }
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
       addToast(data.error || "Failed to join line", "error")
       return false
     } finally {
@@ -504,11 +604,18 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   }, [searchParams, session, line])
 
   async function handleRespond(response: "ON_MY_WAY" | "RUNNING_LATE") {
-    const res = await fetch(`/api/lines/${lineId}/respond`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ response }),
-    })
+    let res: Response
+    try {
+      res = await fetch(`/api/lines/${lineId}/respond`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ response }),
+      })
+    } catch {
+      // Often tapped walking over with a weak signal: say it didn't go
+      addToast(NO_CONNECTION, "error")
+      return
+    }
     if (res.ok) {
       addToast(response === "ON_MY_WAY" ? "Told the host you're on your way" : "Told the host you're running late", "success")
       refreshAll()
@@ -602,6 +709,18 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         <Card>
           <CardContent className="py-12 text-center">
             <p className="text-ink/50">{error || "Line not found"}</p>
+            <div className="mt-4 flex items-center justify-center gap-2">
+              {canRetry && (
+                <Button size="sm" onClick={retryLoad}>
+                  Try again
+                </Button>
+              )}
+              <Link href="/browse">
+                <Button size="sm" variant="secondary">
+                  Browse lines
+                </Button>
+              </Link>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -717,13 +836,22 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                   {session ? "Join Line" : "Sign in to Join"}
                 </Button>
               )}
-              {!session && status !== "loading" && lineNotYetOpen && !linePaused && (
-                <Button
-                  variant="secondary"
-                  onClick={() => signIn("google", { callbackUrl: line.emailEnabled ? `/lines/${lineId}?remind=1` : `/lines/${lineId}` })}
-                >
-                  {line.emailEnabled ? "Sign in to get an email when it opens" : "Sign in to get ready"}
-                </Button>
+              {!session && status !== "loading" && lineNotYetOpen && !linePaused && line.opensAt && (
+                line.emailEnabled ? (
+                  <Button
+                    variant="secondary"
+                    onClick={() => signIn("google", { callbackUrl: `/lines/${lineId}?remind=1` })}
+                  >
+                    Sign in to get an email when it opens
+                  </Button>
+                ) : (
+                  // Nothing to sign up for without email: signing in early
+                  // wouldn't get them anything Join won't
+                  <p className="text-sm text-ink/60">
+                    Opens {new Date(line.opensAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}.
+                    {" "}Keep this page open and Join appears when it opens.
+                  </p>
+                )
               )}
               {line.emailEnabled && session && lineNotYetOpen && !isCreator && !isInLine && remindMe !== null && (
                 <Button variant="secondary" onClick={() => toggleReminder()} isLoading={remindBusy}>
@@ -837,6 +965,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
           isRestaurant={isRestaurant}
           allowResale={line.allowResale}
           purchaseLimit={line.purchaseLimit}
+          responseWindowMinutes={line.responseWindowMinutes}
         />
       )}
 
@@ -973,11 +1102,14 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         </div>
       )}
 
-      {stale && (memberStatus || isCreator) && (
-        <p role="status" className="mb-4 border border-amber-600/40 bg-amber-50 px-4 py-2 text-sm text-amber-800">
-          Connection lost. {memberStatus ? "Your place is safe; this" : "This"} page will update when you&apos;re back online.
-        </p>
-      )}
+      {/* Always mounted so screen readers announce the change when it drops */}
+      <div role="status" aria-live="polite">
+        {stale && (memberStatus || isCreator) && (
+          <p className="mb-4 border border-amber-600/40 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+            Connection lost. {memberStatus ? "Your place is safe; this" : "This"} page will update when you&apos;re back online.
+          </p>
+        )}
+      </div>
 
       {/* My Status Card — only for authenticated members in the line */}
       {memberStatus && userPosition && (
@@ -1023,8 +1155,19 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                     : "You left from another device, or the organizer removed you."}
               </p>
               {canJoin && (
-                <Button size="sm" variant="secondary" className="mt-3" onClick={() => handleJoin()} isLoading={joining}>
-                  Rejoin at the back
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="mt-3"
+                  onClick={() => {
+                    if (!isRestaurant) return handleJoin()
+                    // Come back as the same party, not the default of 2
+                    if (departure.partySize > maxPartySize) return partyNoLongerFits(departure.partySize)
+                    return handleJoin(Math.min(departure.partySize, maxPartySize))
+                  }}
+                  isLoading={joining}
+                >
+                  Rejoin at the back{isRestaurant && ` (party of ${departure.partySize})`}
                 </Button>
               )}
             </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { renderHook } from "@testing-library/react"
+import { act, renderHook } from "@testing-library/react"
 import { useLineUpdates } from "@/hooks/useLineUpdates"
 
 const fetchMock = vi.fn()
@@ -82,5 +82,32 @@ describe("useLineUpdates", () => {
     respondWith('{"v":2}')
     await advance(1000)
     expect(onUpdate).toHaveBeenCalledWith({ type: "poll-update", data: { v: 2 } })
+  })
+
+  it("reports stale on a server error, and recovers on the next good poll", async () => {
+    const onUpdate = vi.fn()
+    respondWith('{"v":1}')
+    const { result } = renderHook(() => useLineUpdates("line-1", onUpdate, { intervalMs: 1000 }))
+    await advance(2000)
+    expect(result.current.stale).toBe(false)
+    fetchMock.mockResolvedValue({ ok: false, status: 503, headers: new Headers() })
+    await act(() => advance(1000))
+    expect(result.current.stale).toBe(true)
+    respondWith('{"v":1}')
+    await act(() => advance(1000))
+    expect(result.current.stale).toBe(false)
+  })
+
+  it("doesn't start a poll while one is still in flight", async () => {
+    let resolve: (value: unknown) => void = () => {}
+    fetchMock.mockReturnValue(new Promise((r) => { resolve = r }))
+    renderHook(() => useLineUpdates("line-1", vi.fn(), { intervalMs: 1000 }))
+    await advance(2000)
+    await advance(3000)
+    window.dispatchEvent(new Event("online"))
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    resolve({ ok: true, status: 200, headers: new Headers(), text: () => Promise.resolve("{}") })
+    await advance(1000)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 })

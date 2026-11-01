@@ -443,7 +443,7 @@ function CreateLineForm() {
               {ownerFeePercent && parseFloat(ownerFeePercent) > 0 && stripeEnabled && connectOnboarded === false && (
                 <div className="mt-2 flex items-center justify-between gap-3 bg-accent/5 border border-accent/30 px-3 py-2">
                   <p className="text-xs text-ink/70">
-                    You haven&apos;t connected a payout account yet -- without one, this fee has nowhere to go.
+                    Connect a payout account to receive this fee. Anything you earn before then is held and sent once you connect.
                   </p>
                   <Button
                     type="button"

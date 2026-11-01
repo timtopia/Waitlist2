@@ -153,6 +153,9 @@ export function MemberStatusCard({
 
   const accent = phase === "called"
   const done = phase === "served"
+  // Seated parties stay listed until cleared, so on a restaurant line the
+  // spot number overcounts; show the place among parties still waiting.
+  const place = isRestaurant && !done ? ahead + 1 : position
 
   return (
     <Card
@@ -168,7 +171,7 @@ export function MemberStatusCard({
             }`}
           >
             <span className="font-mono text-xs uppercase tracking-widest opacity-60 leading-none">#</span>
-            <span className="font-mono tabular-nums text-2xl sm:text-3xl leading-none mt-1">{position}</span>
+            <span className="font-mono tabular-nums text-2xl sm:text-3xl leading-none mt-1">{place}</span>
           </div>
 
           <div className="flex-1 min-w-0 space-y-1.5">
@@ -181,7 +184,12 @@ export function MemberStatusCard({
             <p className="text-sm text-ink/60">{detail}</p>
             {!done && (
               <a href="#my-spot" className="inline-block text-sm text-accent underline underline-offset-2">
-                {isRestaurant ? "Change party size, add a note, or leave" : "Manage your spot or leave"}
+                {isRestaurant
+                  ? phase === "called"
+                    // Party size is locked once called; the host handles it in person
+                    ? "Party size changed? Tell the host at the stand. Add a note or leave"
+                    : "Change party size, add a note, or leave"
+                  : "Manage your spot or leave"}
               </a>
             )}
           </div>
@@ -222,7 +230,10 @@ export function MemberStatusCard({
                     key={r}
                     size="sm"
                     variant={response === r ? "primary" : "secondary"}
+                    aria-pressed={response === r}
                     isLoading={responding === r}
+                    // One answer at a time: a second tap mid-request could land out of order
+                    disabled={responding !== null}
                     onClick={async () => {
                       setResponding(r)
                       try {
@@ -233,7 +244,7 @@ export function MemberStatusCard({
                     }}
                   >
                     {r === "ON_MY_WAY" ? "On my way" : "Running late"}
-                    {response === r && " ✓"}
+                    {response === r && <span aria-hidden> ✓</span>}
                   </Button>
                 ))}
                 {response && (
