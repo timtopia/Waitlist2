@@ -25,6 +25,8 @@ interface MemberStatusCardProps {
   /** What they told the host after being called */
   response?: "ON_MY_WAY" | "RUNNING_LATE" | null
   respondedAt?: string | null
+  /** Extra minutes the host gave them to show up */
+  graceMinutes?: number
   /** Minutes a called person has to show up before being skipped */
   responseWindowMinutes?: number | null
   /** "N per person" on a drop */
@@ -49,6 +51,7 @@ export function MemberStatusCard({
   quotedAt = null,
   response = null,
   respondedAt = null,
+  graceMinutes = 0,
   responseWindowMinutes = null,
   purchaseLimit = null,
   onRespond,
@@ -62,7 +65,7 @@ export function MemberStatusCard({
   const [responding, setResponding] = useState<string | null>(null)
   // Tick once a second while called, for the countdown
   const [now, setNow] = useState(() => Date.now())
-  const deadline = phase === "called" && !isPaused ? callDeadline(calledAt, responseWindowMinutes, respondedAt) : null
+  const deadline = phase === "called" && !isPaused ? callDeadline(calledAt, responseWindowMinutes, respondedAt, graceMinutes) : null
   const deadlineMs = deadline?.getTime() ?? null
   useEffect(() => {
     if (deadlineMs === null) return

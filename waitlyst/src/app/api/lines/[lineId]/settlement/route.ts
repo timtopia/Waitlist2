@@ -113,6 +113,11 @@ export async function GET(
     const ownerFeePending = completedRawTxns
       .filter((t) => t.settledAt === null)
       .reduce((sum, t) => sum + t.ownerFee, 0)
+    // Collected from the buyer but not yet sent to the owner's payout
+    // account (no account yet, or the transfer failed): "earned" isn't "paid"
+    const ownerFeeAwaitingPayout = transactions
+      .filter((t) => t.status === "COMPLETED" && t.capturedAt && !t.ownerPaidAt && t.ownerFee > 0)
+      .reduce((sum, t) => sum + t.ownerFee, 0)
 
     return NextResponse.json({
       transactions: enrichedTransactions,
@@ -130,6 +135,7 @@ export async function GET(
         expiredAmount: expiredTxns.reduce((sum, t) => sum + t.amount, 0),
         ownerFeeCaptured,
         ownerFeePending,
+        ownerFeeAwaitingPayout,
       },
     })
   } catch (error) {

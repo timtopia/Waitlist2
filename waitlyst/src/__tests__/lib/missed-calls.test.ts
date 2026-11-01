@@ -23,6 +23,11 @@ describe("responseDeadline", () => {
     // even if they've since said they're running late
     expect(responseDeadline(minutesAgo(10), 5, minutesAgo(2))).toEqual(new Date(NOW.getTime() + 3 * 60_000))
   })
+
+  it("adds the extra minutes the host gave them", async () => {
+    const { responseDeadline } = await import("@/lib/missed-calls")
+    expect(responseDeadline(minutesAgo(10), 5, null, 10)).toEqual(new Date(NOW.getTime() + 5 * 60_000))
+  })
 })
 
 describe("expireMissedCalls", () => {

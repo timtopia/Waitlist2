@@ -20,10 +20,21 @@ export interface ServiceStats {
   waiting: number
   /** Median time from joining to being served */
   medianWaitMinutes: number | null
+  /** The same, over people served in the last few hours: tonight's pace, not a slow Tuesday's */
+  recentMedianWaitMinutes: number | null
   servedLastHour: number
 }
 
 const HOUR_MS = 60 * 60 * 1000
+const RECENT_MS = 3 * HOUR_MS
+
+function medianMinutes(waitsMs: number[]): number | null {
+  if (waitsMs.length === 0) return null
+  const sorted = [...waitsMs].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  const medianMs = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+  return Math.round((medianMs / 60000) * 10) / 10
+}
 
 /**
  * How the line has moved: everyone who has come through it, whether they're
@@ -38,15 +49,11 @@ export function serviceStats(visits: Visit[], positions: CurrentPosition[], now 
     if (p.fulfilled && p.fulfilledAt) servedTimes.push({ joinedAt: p.joinedAt, servedAt: p.fulfilledAt })
   }
 
-  const waits = servedTimes
-    .map((s) => s.servedAt.getTime() - s.joinedAt.getTime())
-    .sort((a, b) => a - b)
-  let medianWaitMinutes: number | null = null
-  if (waits.length > 0) {
-    const mid = Math.floor(waits.length / 2)
-    const medianMs = waits.length % 2 ? waits[mid] : (waits[mid - 1] + waits[mid]) / 2
-    medianWaitMinutes = Math.round((medianMs / 60000) * 10) / 10
-  }
+  const wait = (s: { joinedAt: Date; servedAt: Date }) => s.servedAt.getTime() - s.joinedAt.getTime()
+  const medianWaitMinutes = medianMinutes(servedTimes.map(wait))
+  const recentMedianWaitMinutes = medianMinutes(
+    servedTimes.filter((s) => now.getTime() - s.servedAt.getTime() < RECENT_MS).map(wait)
+  )
 
   return {
     // Visits record SERVED for anyone served before leaving, so served
@@ -57,6 +64,7 @@ export function serviceStats(visits: Visit[], positions: CurrentPosition[], now 
     noShows: visits.filter((v) => v.outcome === "NO_SHOW").length,
     waiting: positions.filter((p) => !p.fulfilled).length,
     medianWaitMinutes,
+    recentMedianWaitMinutes,
     servedLastHour: servedTimes.filter((s) => now.getTime() - s.servedAt.getTime() < HOUR_MS).length,
   }
 }

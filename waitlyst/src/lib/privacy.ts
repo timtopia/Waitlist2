@@ -34,3 +34,9 @@ export function shortName(name: string | null | undefined): string | null {
 export function firstName(name: string | null | undefined): string | null {
   return name?.trim().split(/\s+/)[0] || null
 }
+
+/** The public "Now serving" label: first name only, with the party size at a restaurant */
+export function servingLabel(kind: "STANDARD" | "RESTAURANT", name: string | null | undefined, partySize: number): string {
+  const publicName = firstName(name) || "Next person"
+  return kind === "RESTAURANT" ? `${publicName} (party of ${partySize})` : publicName
+}

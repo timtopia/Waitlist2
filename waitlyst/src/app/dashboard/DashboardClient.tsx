@@ -59,6 +59,8 @@ type SortOption = "newest" | "oldest" | "most-members"
 interface LineStats {
   ownerFeeEarned?: number
   ownerFeePending?: number
+  ownerFeeAwaitingPayout?: number
+  kind?: "STANDARD" | "RESTAURANT"
   totalTransactions: number
   completedCount: number
   refundedCount: number
@@ -553,6 +555,11 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                       + {formatCurrency(statsModal.stats.ownerFeePending ?? 0)} pending settlement
                     </p>
                   )}
+                  {(statsModal.stats.ownerFeeAwaitingPayout ?? 0) > 0 && (
+                    <p className="text-xs text-amber-600 mt-1">
+                      {formatCurrency(statsModal.stats.ownerFeeAwaitingPayout ?? 0)} collected but not yet sent to your payout account
+                    </p>
+                  )}
                 </div>
 
                 <p className="font-mono text-xs uppercase tracking-widest text-ink/40 pt-2">Swap volume (paid to sellers)</p>
@@ -584,7 +591,9 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                       Pending Settlement ({statsModal.stats.pendingSettlementCount})
                     </p>
                     <p className="text-xs text-ink/40 mt-1">
-                      Collected when each buyer is served
+                      {statsModal.stats.kind === "RESTAURANT"
+                        ? "Collected when each buyer is seated"
+                        : "Paid; closes out once both people have left the line"}
                     </p>
                   </div>
                 )}

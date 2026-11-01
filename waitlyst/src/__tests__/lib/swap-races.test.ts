@@ -399,6 +399,23 @@ describe("releaseFunds (capture + payouts)", () => {
     }), { idempotencyKey: "t1:owner_fee" })
   })
 
+  it("still pays a deleted line's owner their fee, from the owner recorded on the sale", async () => {
+    connect("sam", "acct_sam")
+    connect("owner", "acct_owner")
+    fakeStripe.paymentIntents.capture.mockResolvedValue({
+      id: "pi_x", status: "succeeded", latest_charge: "ch_1", transfer_data: null,
+    })
+    const t = { ...txn(), ownerId: "owner" }
+    db.lines = []
+    const { releaseFunds } = await import("@/lib/stripe")
+
+    expect(await releaseFunds(t)).toMatchObject({ ownerPaidAt: expect.any(Date) })
+    expect(fakeStripe.transfers.create).toHaveBeenCalledWith(
+      expect.objectContaining({ destination: "acct_owner", amount: 400 }),
+      { idempotencyKey: "t1:owner_fee" }
+    )
+  })
+
   it("a deleted line's unpaid owner fee is never recorded as paid", async () => {
     // Regression: with the line gone, `!line` counted the owner as paid
     connect("sam", "acct_sam")

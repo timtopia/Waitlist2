@@ -445,6 +445,8 @@ export async function isCheckoutAuthorized(session: Stripe.Checkout.Session): Pr
 interface ReleasableTransaction {
   id: string
   lineId: string
+  /** The line's owner at sale time; outlives the line */
+  ownerId?: string | null
   sellerId: string
   amount: number
   ownerFee: number
@@ -538,8 +540,10 @@ async function transferPayouts(
     where: { id: txn.lineId },
     select: { createdById: true },
   })
+  // Recorded on the sale, so a deleted line's owner is still paid their fee
+  const ownerId = txn.ownerId ?? line?.createdById ?? null
   const payees = await prisma.user.findMany({
-    where: { id: { in: [txn.sellerId, line?.createdById].filter((id): id is string => !!id) } },
+    where: { id: { in: [txn.sellerId, ownerId].filter((id): id is string => !!id) } },
     select: { id: true, stripeConnectId: true, stripeConnectOnboarded: true },
   })
   const connectIdOf = (userId: string | undefined) => {
@@ -575,11 +579,11 @@ async function transferPayouts(
     seller = await send("seller_payout", txn.amount, sellerConnectId)
   }
 
-  // A deleted line's owner can't be looked up, so their fee isn't paid --
-  // but it mustn't be recorded as paid either.
-  if (!line) return { seller, owner: txn.ownerFee <= 0 }
-  let owner = line.createdById === txn.sellerId || txn.ownerFee <= 0 || alreadySent("owner_fee")
-  const ownerConnectId = connectIdOf(line.createdById)
+  // An old sale on a deleted line has no owner to pay -- but it mustn't be
+  // recorded as paid either.
+  if (!ownerId) return { seller, owner: txn.ownerFee <= 0 }
+  let owner = ownerId === txn.sellerId || txn.ownerFee <= 0 || alreadySent("owner_fee")
+  const ownerConnectId = connectIdOf(ownerId)
   if (!owner && ownerConnectId) {
     owner = await send("owner_fee", txn.ownerFee, ownerConnectId)
   }
@@ -610,6 +614,8 @@ export async function payOutstandingPayouts(userId: string): Promise<void> {
       OR: [
         { sellerId: userId, sellerPaidAt: null },
         { lineId: { in: ownedLines.map((l) => l.id) }, ownerFee: { gt: 0 }, ownerPaidAt: null },
+        // Fees from lines they've since deleted
+        { ownerId: userId, ownerFee: { gt: 0 }, ownerPaidAt: null },
       ],
     },
   })

@@ -123,6 +123,7 @@ model LinePosition {
   quotedAt      DateTime? // When the host gave it
   response      CallResponse? // What they said after being called; cleared on each new call
   respondedAt   DateTime?
+  graceMinutes  Int           @default(0) // Extra time the host gave them to show up; reset on each new call
   fulfilledAt   DateTime? // When they were fulfilled
   joinedAt      DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
@@ -138,6 +139,7 @@ model Transaction {
   buyerId               String
   sellerId              String
   lineId                String
+  ownerId               String? // The line's owner at sale time, so their fee can still be paid if the line is deleted
   amount                Float // Seller's asking price (what seller receives)
   ownerFee              Float             @default(0) // Fee paid to line owner
   platformFee           Float             @default(0) // Fee paid to platform
@@ -156,6 +158,7 @@ model Transaction {
   @@index([lineId])
   @@index([buyerId])
   @@index([sellerId])
+  @@index([ownerId])
   @@index([stripePaymentIntentId])
 }
 

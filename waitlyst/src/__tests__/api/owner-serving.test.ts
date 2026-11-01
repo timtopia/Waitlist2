@@ -75,7 +75,7 @@ describe("POST /api/lines/[lineId]/call-next", () => {
     // Their spot is at the counter now: listing down, offers expired
     expect(mockPrisma.linePosition.update).toHaveBeenCalledWith({
       where: { id: "pos-2" },
-      data: { calledAt: expect.any(Date), askingPrice: null, response: null, respondedAt: null },
+      data: { calledAt: expect.any(Date), askingPrice: null, response: null, respondedAt: null, graceMinutes: 0 },
     })
     expect(mockPrisma.swapOffer.updateMany).toHaveBeenCalledWith({
       where: { lineId: "line-1", status: "PENDING", OR: [{ fromUserId: "bob" }, { toUserId: "bob" }] },

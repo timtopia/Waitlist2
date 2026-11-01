@@ -81,6 +81,7 @@ interface Line {
     quotedAt?: string | null
     response?: "ON_MY_WAY" | "RUNNING_LATE" | null
     respondedAt?: string | null
+    graceMinutes?: number
     user: {
       id: string
       name: string | null
@@ -978,6 +979,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
           quotedAt={userPosition.quotedAt ?? null}
           response={userPosition.response ?? null}
           respondedAt={userPosition.respondedAt ?? null}
+          graceMinutes={userPosition.graceMinutes ?? 0}
           responseWindowMinutes={line.responseWindowMinutes}
           purchaseLimit={line.purchaseLimit}
           onRespond={handleRespond}

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { lockLine } from "@/lib/queue-exit"
 import { parsePartySize, roomLeftMessage } from "@/lib/capacity"
 import { parseNote } from "@/lib/validate"
+import { servingLabel } from "@/lib/privacy"
 
 /** A reason the change was refused, safe to show the user. */
 class PartyRefusedError extends Error {}
@@ -74,6 +75,15 @@ export async function PATCH(
             left > 0 ? roomLeftMessage(line, left) : "This line is full, so your party can't grow"
           )
         }
+      }
+
+      // The public "Now serving (party of 2)" was built at call time
+      if (partySize !== mine.partySize && line.nowServingUserId === mine.userId) {
+        const user = await tx.user.findUnique({ where: { id: mine.userId }, select: { name: true } })
+        await tx.line.update({
+          where: { id: lineId },
+          data: { nowServing: servingLabel(line.kind, user?.name, partySize) },
+        })
       }
 
       return tx.linePosition.update({

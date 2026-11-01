@@ -26,6 +26,7 @@ export async function POST(
       id: true,
       calledAt: true,
       respondedAt: true,
+      graceMinutes: true,
       line: { select: { responseWindowMinutes: true, isActive: true } },
     },
   })
@@ -40,7 +41,7 @@ export async function POST(
   if (
     responseWindowMinutes &&
     isActive &&
-    responseDeadline(position.calledAt!, responseWindowMinutes, position.respondedAt) <= now
+    responseDeadline(position.calledAt!, responseWindowMinutes, position.respondedAt, position.graceMinutes ?? 0) <= now
   ) {
     return NextResponse.json({ error: "Your time to show up has run out" }, { status: 409 })
   }

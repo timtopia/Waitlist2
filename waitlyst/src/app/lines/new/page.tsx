@@ -704,7 +704,7 @@ function CreateLineForm() {
                         <input
                           id="maxAskingPrice"
                           type="number"
-                          min="0.01"
+                          min="1"
                           step="0.01"
                           placeholder="No limit"
                           value={maxAskingPrice}
