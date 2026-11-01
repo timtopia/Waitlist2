@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useSession } from "next-auth/react"
 import { formatCurrency } from "@/lib/format"
 import { calcFees } from "@/lib/fees"
+import { formatWaitTime } from "@/lib/wait-time"
 import { MAX_PARTY_SIZE } from "@/lib/capacity"
 
 interface Position {
@@ -28,6 +29,7 @@ interface Position {
   note?: string | null
   quotedMinutes?: number | null
   quotedAt?: string | null
+  joinedAt?: string
   user: {
     id: string
     name: string | null
@@ -117,12 +119,11 @@ interface QueueDisplayProps {
 }
 
 /** Format estimated wait time into a human-readable string */
-function formatWaitTime(minutes: number): string {
-  if (minutes < 1) return "<1 min"
-  if (minutes < 60) return `~${Math.round(minutes)} min`
-  const hours = minutes / 60
-  if (hours < 2) return "~1 hr"
-  return `~${Math.round(hours)} hrs`
+/** How long a party has actually waited: "12 min", "1 hr 5 min" */
+function formatWaited(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`
+  const rest = minutes % 60
+  return `${Math.floor(minutes / 60)} hr${rest ? ` ${rest} min` : ""}`
 }
 
 export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, feeInfo, isPaused = false, hasPayoutSetup = false, stripeEnabled = false, allowResale = true, maxAskingPrice = null, hideCapacity = false, nowServingUserId = null, isRestaurant = false, onLeft, responseWindowMinutes = null, emailEnabled = false }: QueueDisplayProps) {
@@ -158,6 +159,13 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
   const [showBatchConfirm, setShowBatchConfirm] = useState(false)
   const batchDialogRef = useDialog(showBatchConfirm, () => setShowBatchConfirm(false))
   const [batchLoading, setBatchLoading] = useState(false)
+  // Ticks so the host's "waiting 12 min" labels keep up between polls
+  const [clock, setClock] = useState(() => Date.now())
+  useEffect(() => {
+    if (!isCreator) return
+    const timer = setInterval(() => setClock(Date.now()), 30_000)
+    return () => clearInterval(timer)
+  }, [isCreator])
 
   const fetchWaitTime = useCallback(async () => {
     try {
@@ -223,7 +231,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
     : null
 
   // Called-up and served spots are off the market (the server enforces it too).
-  const offMarket = (p: Position) => !!p.fulfilled || p.user.id === nowServingUserId
+  const offMarket = (p: Position) => !!p.fulfilled || !!p.calledAt || p.user.id === nowServingUserId
 
   // Find the sent offer for the person directly in front
   const sentOfferToFront = positionInFront
@@ -1038,6 +1046,18 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                             {pos.response === "ON_MY_WAY" ? "On the way" : "Running late"}
                           </span>
                         )}
+                        {isCreator && !pos.fulfilled && pos.joinedAt && (() => {
+                          const waited = Math.max(0, Math.floor((clock - new Date(pos.joinedAt).getTime()) / 60_000))
+                          const overQuote =
+                            pos.quotedMinutes != null &&
+                            pos.quotedAt != null &&
+                            clock - new Date(pos.quotedAt).getTime() > pos.quotedMinutes * 60_000
+                          return (
+                            <span className={`text-xs ${overQuote ? "text-amber-600" : "text-ink/50"}`}>
+                              waiting {formatWaited(waited)}{overQuote && " · past quote"}
+                            </span>
+                          )
+                        })()}
                         {isCreator && pos.calledAt && !pos.fulfilled && responseWindowMinutes && !pos.user.isWalkIn && !isPaused && (() => {
                           const left = timeLeft(callDeadline(pos.calledAt, responseWindowMinutes, pos.response, pos.respondedAt))
                           return left ? <span className="text-xs text-ink/50">{left} left to show up</span> : null

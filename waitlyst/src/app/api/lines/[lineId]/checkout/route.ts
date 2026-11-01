@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { getStripe, getBaseUrl, performPositionSwap, lockPositionsForTransaction } from "@/lib/stripe"
 import { calculateFees } from "@/lib/fees"
 import { rateLimit } from "@/lib/rate-limit"
+import { shortName } from "@/lib/privacy"
 import { tradeBlocker } from "@/lib/trading"
 
 const MAX_ABANDONED_CHECKOUTS_PER_HOUR = 3
@@ -246,7 +247,7 @@ export async function POST(
                 currency: "usd",
                 product_data: {
                   name: `Position #${targetPosition.position} in ${targetPosition.line.name}`,
-                  description: `Buy position #${targetPosition.position} from ${targetPosition.user.name || "Anonymous"}`,
+                  description: `Buy position #${targetPosition.position} from ${shortName(targetPosition.user.name) || "someone"}`,
                 },
                 unit_amount: Math.round(fees.totalPrice * 100), // Stripe uses cents — total includes fees
               },

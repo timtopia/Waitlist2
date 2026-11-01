@@ -13,6 +13,7 @@ import { calculateFees } from "@/lib/fees"
 import { sendEmail } from "@/lib/email"
 import { swapAcceptedEmail } from "@/lib/email-templates"
 import { rateLimit } from "@/lib/rate-limit"
+import { shortName } from "@/lib/privacy"
 import { isOfferExpired } from "@/lib/offers"
 import { tradeBlocker } from "@/lib/trading"
 
@@ -251,7 +252,7 @@ export async function PATCH(
                 currency: "usd",
                 product_data: {
                   name: `Position #${sellerPosition.position} in ${sellerPosition.line.name}`,
-                  description: `Swap offer accepted — buy position #${sellerPosition.position} from ${sellerPosition.user.name || "Anonymous"}`,
+                  description: `Swap offer accepted — buy position #${sellerPosition.position} from ${shortName(sellerPosition.user.name) || "someone"}`,
                 },
                 unit_amount: Math.round(fees.totalPrice * 100),
               },
