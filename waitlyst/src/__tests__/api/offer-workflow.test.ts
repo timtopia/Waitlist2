@@ -160,6 +160,25 @@ describe("POST /api/lines/[lineId]/offer", () => {
     expect(Math.abs(create.expiresAt.getTime() - dayFromNow)).toBeLessThan(5000)
     expect(update).toMatchObject({ status: "PENDING", transactionId: null })
   })
+
+  it("makes them wait before re-sending right after a decline or withdrawal", async () => {
+    const me = freshUser("ben")
+    mockAuth.mockResolvedValue({ user: { id: me } })
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", allowResale: true, maxAskingPrice: null, name: "L", nowServingUserId: null })
+    mockPrisma.linePosition.findUnique
+      .mockResolvedValueOnce({ userId: me, position: 2, fulfilled: false })
+      .mockResolvedValueOnce({ userId: "sam", position: 1, fulfilled: false })
+    mockPrisma.swapOffer.findUnique.mockResolvedValue({ status: "WITHDRAWN", createdAt: new Date(Date.now() - 60_000) })
+    mockPrisma.swapOffer.upsert.mockClear()
+
+    const { POST } = await import("@/app/api/lines/[lineId]/offer/route")
+    const res = await POST(
+      new Request("http://localhost/api/lines/line-1/offer", { method: "POST", body: JSON.stringify({ toUserId: "sam", amount: 5 }) }),
+      { params: Promise.resolve({ lineId: "line-1" }) }
+    )
+    expect(res.status).toBe(429)
+    expect(mockPrisma.swapOffer.upsert).not.toHaveBeenCalled()
+  })
 })
 
 describe("PATCH /api/lines/[lineId]/offer/[offerId] accept", () => {

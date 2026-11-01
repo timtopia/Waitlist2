@@ -465,6 +465,23 @@ describe("PATCH /api/lines/[lineId]/price", () => {
     expect(mockPrisma.linePosition.update).not.toHaveBeenCalled()
   })
 
+  it("only re-prices an unlocked spot, in the same statement, so a checkout can't slip in between", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "user-1" } })
+    mockPrisma.line.findUnique.mockResolvedValue({ allowResale: true, maxAskingPrice: null })
+    mockPrisma.linePosition.findUnique.mockResolvedValue({ userId: "user-1", fulfilled: false, calledAt: null, lockedUntil: null })
+    mockPrisma.linePosition.update.mockResolvedValue({ id: "pos-1", askingPrice: 50 })
+
+    const { PATCH } = await import("@/app/api/lines/[lineId]/price/route")
+    await PATCH(
+      new Request("http://localhost/api/lines/line-1/price", { method: "PATCH", body: JSON.stringify({ price: 50 }) }),
+      { params: Promise.resolve({ lineId: "line-1" }) }
+    )
+
+    expect(mockPrisma.linePosition.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ OR: [{ lockedUntil: null }, { lockedUntil: { lte: expect.any(Date) } }] }),
+    }))
+  })
+
   it("stores a price to the cent", async () => {
     mockAuth.mockResolvedValue({ user: { id: "user-1" } })
     mockPrisma.line.findUnique.mockResolvedValue({ allowResale: true, maxAskingPrice: 250 })

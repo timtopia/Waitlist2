@@ -212,7 +212,8 @@ describe("POST /api/lines/[lineId]/call-next -- restaurant hosts calling a party
 
     const res = await call({ positionId: "pos-2" })
 
-    expect(res.status).toBe(400)
+    // The front moved since the page loaded; nobody else gets called
+    expect(res.status).toBe(409)
     expect(mockPrisma.line.update).not.toHaveBeenCalled()
   })
 

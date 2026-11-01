@@ -32,6 +32,8 @@ interface MemberStatusCardProps {
   onRespond?: (response: "ON_MY_WAY" | "RUNNING_LATE") => Promise<void>
   notificationPermission?: NotificationState
   onEnableNotifications?: () => void
+  /** Restaurant lines count parties ahead, not people */
+  isRestaurant?: boolean
 }
 
 export function MemberStatusCard({
@@ -52,6 +54,7 @@ export function MemberStatusCard({
   onRespond,
   notificationPermission = "unsupported",
   onEnableNotifications,
+  isRestaurant = false,
 }: MemberStatusCardProps) {
   const { phase, position, ahead } = status
   const [minutesPerPerson, setMinutesPerPerson] = useState<number | null>(null)
@@ -113,7 +116,9 @@ export function MemberStatusCard({
     headline = "You're next"
     detail = "No one is ahead of you. Stay close; you'll be called soon."
   } else {
-    headline = `${ahead} ${ahead === 1 ? "person" : "people"} ahead of you`
+    headline = isRestaurant
+      ? `${ahead} ${ahead === 1 ? "party" : "parties"} ahead of you`
+      : `${ahead} ${ahead === 1 ? "person" : "people"} ahead of you`
     if (quotedMinutes && quotedAt) {
       // The host's word beats the app's estimate
       const at = new Date(quotedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })

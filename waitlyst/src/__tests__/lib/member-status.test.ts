@@ -36,7 +36,7 @@ describe("getMemberStatus", () => {
 
   it("counts only unserved people ahead", () => {
     const line = makeLine([{ id: "a", fulfilled: true }, { id: "b" }, { id: "me" }])
-    expect(getMemberStatus(line, "me")).toEqual({ phase: "waiting", position: 3, ahead: 1 })
+    expect(getMemberStatus(line, "me")).toEqual({ phase: "waiting", position: 3, ahead: 1, calledAt: null })
   })
 
   it("treats someone behind only served people as next", () => {
@@ -52,7 +52,7 @@ describe("getMemberStatus", () => {
 
   it("shows a party called out of order as called, with people still ahead", () => {
     const line = makeLine([{ id: "big" }, { id: "me", called: true }], { nowServingUserId: "me" })
-    expect(getMemberStatus(line, "me")).toEqual({ phase: "called", position: 2, ahead: 1 })
+    expect(getMemberStatus(line, "me")).toEqual({ phase: "called", position: 2, ahead: 1, calledAt: "2026-10-30T19:00:00Z" })
   })
 
   it("keeps an earlier-called party called after the host calls someone else", () => {
@@ -119,12 +119,25 @@ describe("diffMemberStatus", () => {
   it("distinguishes leaving after service from being removed while waiting", () => {
     const empty = makeLine([{ id: "b" }])
     expect(diffMemberStatus(makeLine([{ id: "me", fulfilled: true }, { id: "b" }]), empty, "me"))
-      .toEqual([{ kind: "removed", wasServed: true }])
+      .toEqual([{ kind: "removed", wasServed: true, wasCalled: false }])
     // Called but never served (a no-show) is not "served"
     expect(diffMemberStatus(makeLine([{ id: "me", called: true }, { id: "b" }], { nowServingUserId: "me" }), empty, "me"))
-      .toEqual([{ kind: "removed", wasServed: false }])
+      .toEqual([{ kind: "removed", wasServed: false, wasCalled: true }])
     expect(diffMemberStatus(makeLine([{ id: "b" }, { id: "me" }]), empty, "me"))
-      .toEqual([{ kind: "removed", wasServed: false }])
+      .toEqual([{ kind: "removed", wasServed: false, wasCalled: false }])
+  })
+
+  it("alerts again when the host calls them a second time", () => {
+    const prev = makeLine([{ id: "me", called: true }])
+    const next = makeLine([{ id: "me", called: true }])
+    next.positions[0].calledAt = "2026-10-30T19:05:00Z"
+    expect(diffMemberStatus(prev, next, "me")).toEqual([{ kind: "called" }])
+    expect(diffMemberStatus(prev, makeLine([{ id: "me", called: true }]), "me")).toEqual([])
+  })
+
+  it("tells a skipped no-show why they're out", () => {
+    expect(describeMemberEvent({ kind: "removed", wasServed: false, wasCalled: true }, "Bakery")?.body)
+      .toContain("didn't show up in time")
   })
 
   it("tells a seller their spot sold when they move back a place", () => {
@@ -151,7 +164,7 @@ describe("diffMemberStatus", () => {
 describe("describeMemberEvent", () => {
   it("toasts for the moments that need action", () => {
     expect(describeMemberEvent({ kind: "called" }, "Bakery")).toMatchObject({ title: "It's your turn!", toast: true })
-    expect(describeMemberEvent({ kind: "removed", wasServed: false }, "Bakery")).toMatchObject({ toast: true, tone: "warning" })
+    expect(describeMemberEvent({ kind: "removed", wasServed: false, wasCalled: false }, "Bakery")).toMatchObject({ toast: true, tone: "warning" })
   })
 
   it("only alerts on moves near the front", () => {

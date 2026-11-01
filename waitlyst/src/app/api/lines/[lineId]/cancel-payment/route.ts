@@ -6,8 +6,10 @@ import { getBaseUrl, abandonPendingTransaction } from "@/lib/stripe"
 /**
  * Handle Stripe Checkout cancellation redirect.
  * When the buyer cancels on the Stripe checkout page they're sent here: the
- * pending transaction is abandoned, both spots unlock, and an accepted offer
- * goes back to PENDING. This is a bare GET link, so it only acts for the
+ * pending transaction is abandoned and both spots unlock. Backing out of
+ * paying for an accepted offer withdraws the offer -- reopening it would let
+ * the seller accept again and re-lock both spots for something the buyer
+ * just walked away from. This is a bare GET link, so it only acts for the
  * signed-in buyer and only on a still-PENDING checkout -- anyone else hitting
  * the URL (or a stale tab after the swap completed) changes nothing.
  */
@@ -19,6 +21,7 @@ export async function GET(
   const url = new URL(req.url)
   const transactionId = url.searchParams.get("transaction_id")
   const baseUrl = getBaseUrl()
+  let offerWithdrawn = false
 
   if (transactionId) {
     try {
@@ -33,7 +36,21 @@ export async function GET(
         transaction.lineId === lineId &&
         transaction.buyerId === session.user.id
       ) {
-        await abandonPendingTransaction(transactionId)
+        const offer = await prisma.swapOffer.findFirst({
+          where: { transactionId, status: "ACCEPTED" },
+          select: { id: true },
+        })
+        const abandoned = await abandonPendingTransaction(transactionId, {
+          byBuyer: true,
+          ...(offer ? { offerId: null } : {}),
+        })
+        if (abandoned && offer) {
+          const { count } = await prisma.swapOffer.updateMany({
+            where: { id: offer.id, status: "ACCEPTED" },
+            data: { status: "WITHDRAWN" },
+          })
+          offerWithdrawn = count > 0
+        }
       }
     } catch (error) {
       console.error("Cancel payment error:", error)
@@ -41,5 +58,5 @@ export async function GET(
     }
   }
 
-  return NextResponse.redirect(`${baseUrl}/lines/${lineId}?payment=cancelled`)
+  return NextResponse.redirect(`${baseUrl}/lines/${lineId}?payment=${offerWithdrawn ? "offer_withdrawn" : "cancelled"}`)
 }

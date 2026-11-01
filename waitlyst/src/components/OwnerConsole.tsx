@@ -123,9 +123,12 @@ export function OwnerConsole({
   }
 
   async function handleCall() {
+    if (!upNext) return
     setBusy("call")
     try {
-      const { ok, data } = await post("call-next")
+      // Name who the button showed, so a queue that moved since can't make
+      // this call someone else
+      const { ok, data } = await post("call-next", { positionId: upNext.id })
       if (ok) {
         addToast(`Called ${data.calledUser} to the front`, "success")
       } else {
@@ -147,8 +150,12 @@ export function OwnerConsole({
         return
       }
       const name = upNext.user.name || "Guest"
-      if (callNext && afterNext) {
-        const called = await post("call-next")
+      if (callNext && afterNext?.calledAt) {
+        // Already called out of order: calling again would wipe their
+        // "on my way" and send them a second "you've been called"
+        addToast(`${name} served -- ${afterNext.user.name || "the next party"} was already called`, "success")
+      } else if (callNext && afterNext) {
+        const called = await post("call-next", { positionId: afterNext.id })
         addToast(
           called.ok ? `${name} served -- called ${called.data.calledUser}` : `${name} served`,
           called.ok ? "success" : "info"

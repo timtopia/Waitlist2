@@ -105,7 +105,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [error, setError] = useState<string | null>(null)
   const [notificationPermission, setNotificationPermission] = useState<NotificationState>("unsupported")
   const notificationsEnabled = notificationPermission === "granted"
-  const [departure, setDeparture] = useState<{ wasServed: boolean } | null>(null)
+  const [departure, setDeparture] = useState<{ wasServed: boolean; wasCalled: boolean } | null>(null)
   // Set when the viewer leaves from this tab, so the next poll isn't
   // reported as "you're no longer in line".
   const leftHereRef = useRef(false)
@@ -145,6 +145,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       router.replace(`/lines/${lineId}`, { scroll: false })
     } else if (paymentStatus === "cancelled") {
       addToast("Payment was cancelled. No charges were made.", "info")
+    } else if (paymentStatus === "offer_withdrawn") {
+      addToast("Payment was cancelled and your offer withdrawn. No charges were made.", "info")
       router.replace(`/lines/${lineId}`, { scroll: false })
     } else if (paymentStatus === "error") {
       const reason = searchParams.get("reason")
@@ -154,7 +156,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         not_paid: "Payment was not completed.",
         no_transaction: "Transaction could not be found.",
         invalid_transaction: "Invalid transaction.",
-        swap_failed: "Your spot changed before the swap could finish, so it was cancelled. The hold on your card has been released.",
+        swap_failed: "The spot you were buying changed hands before the swap could finish (they moved, left, or were called), so it was cancelled. The hold on your card has been released.",
       }
       addToast(messages[reason || ""] || "Something went wrong with your payment.", "error")
       router.replace(`/lines/${lineId}`, { scroll: false })
@@ -261,6 +263,17 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   }, [line])
 
   const handleLineUpdate = useCallback((event: LineUpdateEvent) => {
+    if (event.type === "delete") {
+      const prev = lineRef.current
+      const wasMember = !!prev && !!getMemberStatus(prev, session?.user?.id)
+      setLine(null)
+      setError("This line was deleted by its organizer.")
+      if (wasMember && prev) {
+        sendNotification("Line closed", { body: `${prev.name} was deleted by its organizer.`, tag: `waitlyst-${lineId}` })
+        addToast(`${prev.name} was deleted by its organizer.`, "warning")
+      }
+      return
+    }
     if (event.type !== "poll-update" || !event.data) return
     const next = event.data as Line
     const prev = lineRef.current
@@ -268,12 +281,16 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     fetchActivity()
     if (!prev) return
 
+    // Back in the line (rejoined): a later removal must be announced, not
+    // swallowed as the leave from this tab
+    if (getMemberStatus(next, session?.user?.id)) leftHereRef.current = false
+
     for (const change of diffMemberStatus(prev, next, session?.user?.id)) {
       if (change.kind === "removed" && leftHereRef.current) {
         leftHereRef.current = false
         continue
       }
-      if (change.kind === "removed") setDeparture({ wasServed: change.wasServed })
+      if (change.kind === "removed") setDeparture({ wasServed: change.wasServed, wasCalled: change.wasCalled })
       if (change.kind === "called" || change.kind === "next") setDeparture(null)
       if (change.kind === "called") alertTurn()
       const alert = describeMemberEvent(change, next.name)
@@ -299,8 +316,10 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     return () => document.removeEventListener("pointerdown", primeChime)
   }, [inLine])
 
+  // The host at the stand needs online joins and "on my way" taps promptly
+  const hostingLive = !!line?.isActive && line.createdBy.id === session?.user?.id
   useLineUpdates(lineId, handleLineUpdate, {
-    intervalMs: nearFront ? 10000 : 30000,
+    intervalMs: nearFront || hostingLive ? 10000 : 30000,
     pollWhenHidden: !!memberStatus && notificationsEnabled,
   })
 
@@ -948,6 +967,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         <MemberStatusCard
           status={memberStatus}
           maxCapacity={isRestaurant ? null : line.maxCapacity}
+          isRestaurant={isRestaurant}
           totalPositions={line.positions.length}
           askingPrice={userPosition.askingPrice}
           lineId={line.id}
@@ -977,7 +997,9 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
               <p className="text-sm text-ink/60 mt-1">
                 {departure.wasServed
                   ? "The organizer served you and cleared your spot. Thanks for waiting."
-                  : "You left from another device, or the organizer removed you."}
+                  : departure.wasCalled
+                    ? "You were called but didn't show up in time, so your place went to the next party -- or the organizer removed you."
+                    : "You left from another device, or the organizer removed you."}
               </p>
               {canJoin && (
                 <Button size="sm" variant="secondary" className="mt-3" onClick={() => handleJoin()} isLoading={joining}>

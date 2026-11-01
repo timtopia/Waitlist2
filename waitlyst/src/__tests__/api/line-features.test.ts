@@ -19,6 +19,10 @@ const mockPrisma = {
     update: vi.fn(),
     count: vi.fn().mockResolvedValue(0),
   },
+  swapOffer: {
+    findFirst: vi.fn().mockResolvedValue(null),
+    updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+  },
   $transaction: vi.fn((fn) => fn(mockPrisma)),
 }
 
@@ -275,7 +279,28 @@ describe("GET /api/lines/[lineId]/cancel-payment", () => {
     expect(location).toContain("/lines/line-1")
     expect(location).toContain("payment=cancelled")
 
-    expect(abandonPendingTransaction).toHaveBeenCalledWith("txn-1")
+    expect(abandonPendingTransaction).toHaveBeenCalledWith("txn-1", { byBuyer: true })
+  })
+
+  it("withdraws an accepted offer the buyer backed out of paying for, instead of reopening it", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "buyer-1" } })
+    mockPrisma.transaction.findUnique.mockResolvedValue({ buyerId: "buyer-1", lineId: "line-1" })
+    mockPrisma.swapOffer.findFirst.mockResolvedValueOnce({ id: "offer-1" })
+    const { GET } = await import("@/app/api/lines/[lineId]/cancel-payment/route")
+    const { abandonPendingTransaction } = await import("@/lib/stripe")
+    vi.mocked(abandonPendingTransaction).mockResolvedValueOnce(true)
+
+    const response = await GET(
+      new Request("http://localhost/api/lines/line-1/cancel-payment?transaction_id=txn-1"),
+      { params: Promise.resolve({ lineId: "line-1" }) }
+    )
+
+    expect(abandonPendingTransaction).toHaveBeenCalledWith("txn-1", { byBuyer: true, offerId: null })
+    expect(mockPrisma.swapOffer.updateMany).toHaveBeenCalledWith({
+      where: { id: "offer-1", status: "ACCEPTED" },
+      data: { status: "WITHDRAWN" },
+    })
+    expect(response.headers.get("Location")).toContain("payment=offer_withdrawn")
   })
 
   it("ignores the cancel link for anyone but the buyer (it's a bare GET URL)", async () => {
@@ -436,7 +461,7 @@ describe("POST /api/lines/[lineId]/checkout", () => {
     expect(data.error).toContain("already first")
   })
 
-  it("refuses a new checkout after several abandoned ones in the last hour", async () => {
+  it("refuses a new checkout after several the buyer walked away from", async () => {
     // Its own user: the route also rate-limits checkouts per user per minute
     mockAuth.mockResolvedValue({ user: { id: "griefing-buyer" } })
     mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", isActive: true, allowResale: true })
@@ -457,6 +482,10 @@ describe("POST /api/lines/[lineId]/checkout", () => {
 
     expect(response.status).toBe(429)
     expect(mockPrisma.linePosition.findFirst).not.toHaveBeenCalled()
+    // Failures the buyer didn't cause (seller left, was called) don't count
+    expect(mockPrisma.transaction.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({ buyerId: "griefing-buyer", status: "FAILED", abandonedByBuyer: true }),
+    })
   })
 
   it("should return 400 if no one is in front", async () => {

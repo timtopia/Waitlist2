@@ -37,6 +37,7 @@ export function useLineUpdates(
   { intervalMs = POLL_INTERVAL_MS, pollWhenHidden = false }: LineUpdateOptions = {}
 ) {
   const lastSnapshotRef = useRef<string | null>(null)
+  const deletedRef = useRef(false)
   const etagRef = useRef<string | null>(null)
   const onUpdateRef = useRef(onUpdate)
   useEffect(() => {
@@ -60,6 +61,15 @@ export function useLineUpdates(
           headers: etagRef.current ? { "If-None-Match": etagRef.current } : undefined,
         })
         if (res.status === 304) return
+        // The line was there and now isn't: the organizer deleted it. Say so
+        // once, rather than leaving the page frozen on its last snapshot.
+        if (res.status === 404) {
+          if (lastSnapshotRef.current !== null && !deletedRef.current) {
+            deletedRef.current = true
+            stableOnUpdate({ type: "delete", lineId })
+          }
+          return
+        }
         if (res.ok) {
           etagRef.current = res.headers.get("ETag")
           const text = await res.text()

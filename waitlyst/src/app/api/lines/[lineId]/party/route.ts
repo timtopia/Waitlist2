@@ -3,7 +3,7 @@ import { countCapacityUsed } from "@/lib/capacity-server"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { lockLine } from "@/lib/queue-exit"
-import { capacityUnit, parsePartySize } from "@/lib/capacity"
+import { parsePartySize, roomLeftMessage } from "@/lib/capacity"
 import { parseNote } from "@/lib/validate"
 
 /** A reason the change was refused, safe to show the user. */
@@ -71,9 +71,7 @@ export async function PATCH(
         const left = line.maxCapacity - await countCapacityUsed(line, tx)
         if (partySize - mine.partySize > left) {
           throw new PartyRefusedError(
-            left > 0
-              ? `There's only room for ${left} more ${capacityUnit(line.kind, left)} in this line`
-              : "This line is full, so your party can't grow"
+            left > 0 ? roomLeftMessage(line, left) : "This line is full, so your party can't grow"
           )
         }
       }

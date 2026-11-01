@@ -9,7 +9,7 @@ export interface CapacityView {
   maxCapacity: number | null
   hasCapacityLimit: boolean
   isFull: boolean
-  /** How much of the capacity is used (see capacityUsed) */
+  /** How much of the capacity is used (see capacityUsed); 0 when hidden */
   capacityUsed: number
 }
 
@@ -29,8 +29,17 @@ export function capacityView(
     maxCapacity: hidden ? null : line.maxCapacity,
     hasCapacityLimit,
     isFull: line.maxCapacity !== null && used >= line.maxCapacity,
-    capacityUsed: used,
+    capacityUsed: hidden && hasCapacityLimit ? 0 : used,
   }
+}
+
+/**
+ * "Only room for 3 more guests" -- unless the owner hides capacity, where
+ * the number would give the limit away.
+ */
+export function roomLeftMessage(line: { hideCapacity: boolean; kind: LineKind }, left: number): string {
+  if (line.hideCapacity) return "Your party doesn't fit in this line right now. Try a smaller party."
+  return `There's only room for ${left} more ${capacityUnit(line.kind, left)} in this line`
 }
 
 /**

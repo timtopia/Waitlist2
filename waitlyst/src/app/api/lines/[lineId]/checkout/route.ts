@@ -8,7 +8,11 @@ import { rateLimit } from "@/lib/rate-limit"
 import { shortName } from "@/lib/privacy"
 import { tradeBlocker } from "@/lib/trading"
 
-const MAX_ABANDONED_CHECKOUTS_PER_HOUR = 3
+// Checkouts the buyer cancelled or let time out, per line, before they must
+// wait. Each one locks the person ahead for up to 30 minutes, so the window
+// is long enough that the limit actually bites.
+const MAX_ABANDONED_CHECKOUTS = 3
+const ABANDON_WINDOW_MS = 6 * 60 * 60 * 1000
 
 const checkoutLimiter = rateLimit({ interval: 60_000, limit: 10 })
 
@@ -80,19 +84,20 @@ export async function POST(
 
     // Starting a checkout locks both spots until Stripe's session expires
     // (at least 30 minutes), so someone could keep the person ahead from
-    // selling by starting checkouts and abandoning them. A few tries are
-    // normal; past that, wait.
+    // selling by starting checkouts and abandoning them. Only walk-aways the
+    // buyer chose count -- not a seller leaving or being called mid-checkout.
     const recentAbandoned = await prisma.transaction.count({
       where: {
         lineId,
         buyerId: result.userId,
         status: "FAILED",
-        createdAt: { gt: new Date(Date.now() - 60 * 60 * 1000) },
+        abandonedByBuyer: true,
+        createdAt: { gt: new Date(Date.now() - ABANDON_WINDOW_MS) },
       },
     })
-    if (recentAbandoned >= MAX_ABANDONED_CHECKOUTS_PER_HOUR) {
+    if (recentAbandoned >= MAX_ABANDONED_CHECKOUTS) {
       return NextResponse.json(
-        { error: "You've started and abandoned several purchases here recently. Please try again later." },
+        { error: "You've started and cancelled several purchases here recently, which holds up the person ahead. Please try again in a few hours." },
         { status: 429 }
       )
     }
@@ -202,12 +207,28 @@ export async function POST(
           )
           if (!locked) throw new Error("POSITIONS_LOCKED")
 
+          // A re-price that landed before our lock took hold: the buyer must
+          // not pay the old price. (Once locked, the price can't change.)
+          const fresh = await tx.linePosition.findUnique({
+            where: { id: targetPosition.id },
+            select: { askingPrice: true, userId: true },
+          })
+          if (fresh?.userId !== targetPosition.userId || fresh.askingPrice !== askingPrice) {
+            throw new Error("LISTING_CHANGED")
+          }
+
           return txn
         })
       } catch (error) {
         if (error instanceof Error && error.message === "POSITIONS_LOCKED") {
           return NextResponse.json(
             { error: "This position is currently involved in another transaction. Please wait." },
+            { status: 409 }
+          )
+        }
+        if (error instanceof Error && error.message === "LISTING_CHANGED") {
+          return NextResponse.json(
+            { error: "The listing just changed. Review it before buying.", code: "STALE_LISTING" },
             { status: 409 }
           )
         }

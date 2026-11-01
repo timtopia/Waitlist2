@@ -36,9 +36,10 @@ export async function POST(
     let frontPosition = firstUnserved
     if (requestedId && requestedId !== firstUnserved?.id) {
       if (result.line.kind !== "RESTAURANT") {
+        // Usually the page is stale: someone ahead left or was skipped
         return NextResponse.json(
-          { error: "Only restaurant lines can call people out of order" },
-          { status: 400 }
+          { error: "The front of the line changed. Refresh to see who's next." },
+          { status: 409 }
         )
       }
       frontPosition = await prisma.linePosition.findFirst({

@@ -25,6 +25,8 @@ export interface MemberStatus {
   position: number
   /** People ahead who haven't been served yet */
   ahead: number
+  /** When they were last called, so a second call can alert again */
+  calledAt?: string | null
 }
 
 /**
@@ -53,6 +55,7 @@ export function getMemberStatus(line: StatusLine, userId: string | undefined): M
     phase: getMemberPhase({ fulfilled: mine.fulfilled, ahead, calledAt: mine.calledAt }),
     position: mine.position,
     ahead,
+    calledAt: mine.calledAt ? String(mine.calledAt) : null,
   }
 }
 
@@ -63,7 +66,8 @@ export type MemberEvent =
   | { kind: "moved"; from: number; to: number }
   /** Moved back a place: someone bought their spot */
   | { kind: "sold"; to: number }
-  | { kind: "removed"; wasServed: boolean }
+  /** wasCalled: they'd been called (most often skipped as a no-show) */
+  | { kind: "removed"; wasServed: boolean; wasCalled: boolean }
   | { kind: "announcement"; text: string }
   | { kind: "paused" }
   | { kind: "resumed" }
@@ -77,7 +81,7 @@ export function diffMemberStatus(prev: StatusLine, next: StatusLine, userId: str
   if (before && !after) {
     // Only being served counts as done; a called no-show who is then
     // removed was not served.
-    return [{ kind: "removed", wasServed: before.phase === "served" }]
+    return [{ kind: "removed", wasServed: before.phase === "served", wasCalled: before.phase === "called" }]
   }
   if (!after) return []
 
@@ -87,6 +91,9 @@ export function diffMemberStatus(prev: StatusLine, next: StatusLine, userId: str
       if (after.phase === "called") events.push({ kind: "called" })
       else if (after.phase === "served") events.push({ kind: "served" })
       else if (after.phase === "next") events.push({ kind: "next" })
+    } else if (after.phase === "called" && after.calledAt !== before.calledAt) {
+      // "Call again": the host is calling them a second time
+      events.push({ kind: "called" })
     }
     if (after.position < before.position && after.phase === "waiting") {
       events.push({ kind: "moved", from: before.position, to: after.position })
@@ -138,7 +145,9 @@ export function describeMemberEvent(event: MemberEvent, lineName: string): Membe
         ? { title: "All done", body: `You've left ${lineName} after being served.`, toast: true, tone: "info" }
         // Leaving from this tab is handled by the caller; reaching here means
         // it happened elsewhere -- another device, or the organizer.
-        : { title: "You're no longer in line", body: `You're no longer in ${lineName}. You left from another device, or the organizer removed you.`, toast: true, tone: "warning" }
+        : event.wasCalled
+          ? { title: "You're no longer in line", body: `You were called in ${lineName} but didn't show up in time, so your place went to the next party -- or the organizer removed you.`, toast: true, tone: "warning" }
+          : { title: "You're no longer in line", body: `You're no longer in ${lineName}. You left from another device, or the organizer removed you.`, toast: true, tone: "warning" }
     case "announcement":
       return { title: `Update from ${lineName}`, body: event.text, toast: false, tone: "info" }
     case "paused":

@@ -32,7 +32,8 @@ export default async function EmbedPage({ params }: Props) {
   }
 
   const { _sum } = await prisma.linePosition.aggregate({
-    where: { lineId },
+    // Served people stay listed until cleared; they aren't waiting
+    where: { lineId, fulfilled: false },
     _sum: { partySize: true },
   })
   const positionCount = _sum.partySize ?? 0
