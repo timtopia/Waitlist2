@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { runAfterResponse } from "@/lib/after-response"
-import { firstName } from "@/lib/privacy"
+import { servingLabel } from "@/lib/privacy"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { sendEmail } from "@/lib/email"
@@ -65,10 +65,7 @@ export async function POST(
     const userName = frontPosition.user?.name || "Next person"
     // The banner and "now serving" are shown to anyone viewing the line, so
     // they carry a first name only.
-    const publicName = firstName(frontPosition.user?.name) || "Next person"
-    const servingLabel = result.line.kind === "RESTAURANT"
-      ? `${publicName} (party of ${frontPosition.partySize})`
-      : publicName
+    const nowServing = servingLabel(result.line.kind, frontPosition.user?.name, frontPosition.partySize)
 
     // Once called, this spot is at the counter and stops being tradeable.
     // A swap still on the payment page would push them back after they were
@@ -84,7 +81,7 @@ export async function POST(
         // The owner's own announcement is left alone: the called party is
         // told by their status card, and everyone sees "Now serving".
         data: {
-          nowServing: servingLabel,
+          nowServing,
           nowServingUserId: frontPosition.userId,
           nowServingAt: calledAt,
         },
@@ -92,7 +89,7 @@ export async function POST(
       prisma.linePosition.update({
         where: { id: frontPosition.id },
         // A new call: whatever they answered last time no longer applies
-        data: { calledAt, askingPrice: null, response: null, respondedAt: null },
+        data: { calledAt, askingPrice: null, response: null, respondedAt: null, graceMinutes: 0 },
       }),
       prisma.swapOffer.updateMany({
         where: {

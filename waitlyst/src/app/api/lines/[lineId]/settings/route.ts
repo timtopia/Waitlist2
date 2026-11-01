@@ -3,6 +3,7 @@ import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { countCapacityUsed } from "@/lib/capacity-server"
 import { setLineActive } from "@/lib/line-pause"
+import { abandonPendingTransaction } from "@/lib/stripe"
 import { validateString, validateNumber, validateUrl, validateImageUrl } from "@/lib/validate"
 
 export async function PATCH(
@@ -171,8 +172,9 @@ export async function PATCH(
         allowedUpdates.maxAskingPrice = null
       } else {
         const cap = parseFloat(updates.maxAskingPrice)
-        if (isNaN(cap) || cap <= 0) {
-          return NextResponse.json({ error: "Max asking price must be a positive number" }, { status: 400 })
+        // Listings and offers start at $1, so a lower cap would block them all
+        if (isNaN(cap) || cap < 1) {
+          return NextResponse.json({ error: "Max asking price must be at least $1.00" }, { status: 400 })
         }
         if (cap > 10000) {
           return NextResponse.json({ error: "Max asking price must be no more than $10,000" }, { status: 400 })
@@ -221,6 +223,28 @@ export async function PATCH(
         prisma.linePosition.updateMany({ where: { lineId, askingPrice: { gt: cap } }, data: { askingPrice: null } }),
         prisma.swapOffer.updateMany({ where: { lineId, status: "PENDING", amount: { gt: cap } }, data: { status: "EXPIRED" } }),
       ])
+    }
+
+    // A buyer already on the payment page (or holding an accepted offer)
+    // would otherwise complete a swap the owner just ruled out
+    const offRules = updatedLine.allowResale === false
+      ? {}
+      : typeof allowedUpdates.maxAskingPrice === "number"
+        ? { amount: { gt: allowedUpdates.maxAskingPrice } }
+        : null
+    if (offRules) {
+      const inFlight = await prisma.transaction.findMany({
+        where: { lineId, status: "PENDING", ...offRules },
+        select: { id: true },
+      })
+      for (const { id } of inFlight) {
+        if (await abandonPendingTransaction(id, { offerId: null })) {
+          await prisma.swapOffer.updateMany({
+            where: { transactionId: id, status: "ACCEPTED" },
+            data: { status: "EXPIRED" },
+          })
+        }
+      }
     }
 
     return NextResponse.json(updatedLine)

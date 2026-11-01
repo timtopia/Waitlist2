@@ -99,7 +99,7 @@ export async function POST(req: Request) {
     }
 
     if (maxAskingPrice !== undefined && maxAskingPrice !== null) {
-      const maxPriceErr = validateNumber(maxAskingPrice, "Max asking price", { min: 0.01, max: 10000 })
+      const maxPriceErr = validateNumber(maxAskingPrice, "Max asking price", { min: 1, max: 10000 }) // listings start at $1
       if (maxPriceErr) {
         return NextResponse.json({ error: maxPriceErr }, { status: 400 })
       }

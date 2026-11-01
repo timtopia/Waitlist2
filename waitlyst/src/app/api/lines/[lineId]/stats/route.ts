@@ -48,10 +48,17 @@ export async function GET(
     // money that goes to sellers).
     const ownerFeeEarned = settledCompleted.reduce((sum, t) => sum + t.ownerFee, 0)
     const ownerFeePending = unsettledCompleted.reduce((sum, t) => sum + t.ownerFee, 0)
+    // Collected from the buyer but not yet sent to the owner's payout
+    // account (no account yet, or the transfer failed): "earned" isn't "paid"
+    const ownerFeeAwaitingPayout = transactions
+      .filter((t) => t.status === "COMPLETED" && t.capturedAt && !t.ownerPaidAt && t.ownerFee > 0)
+      .reduce((sum, t) => sum + t.ownerFee, 0)
 
     return NextResponse.json({
       ownerFeeEarned,
       ownerFeePending,
+      ownerFeeAwaitingPayout,
+      kind: result.line.kind,
       totalTransactions: transactions.length,
       completedCount: settledCompleted.length,
       refundedCount: refunded.length,

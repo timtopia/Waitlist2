@@ -25,6 +25,8 @@ interface Position {
   /** What they told the host after being called; owner and self only */
   response?: "ON_MY_WAY" | "RUNNING_LATE" | null
   respondedAt?: string | null
+  /** Extra minutes the host gave them to show up */
+  graceMinutes?: number
   /** Only sent to the owner and to the party itself */
   note?: string | null
   quotedMinutes?: number | null
@@ -250,6 +252,23 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
       cancelled = true
     }
   }, [lineId, myLockUntil])
+
+  async function handleGiveMoreTime(positionId: string) {
+    setLoadingAction(`grace-${positionId}`)
+    try {
+      const res = await fetch(`/api/lines/${lineId}/grace`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ positionId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) addToast("Gave them 5 more minutes", "success")
+      else addToast(data.error || "Couldn't give more time", "error")
+      onRefresh()
+    } finally {
+      setLoadingAction(null)
+    }
+  }
 
   async function handleCancelMyCheckout() {
     setLoadingAction("cancel-checkout")
@@ -1099,8 +1118,21 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                           )
                         })()}
                         {isCreator && pos.calledAt && !pos.fulfilled && responseWindowMinutes && !pos.user.isWalkIn && !isPaused && (() => {
-                          const left = timeLeft(callDeadline(pos.calledAt, responseWindowMinutes, pos.respondedAt))
-                          return left ? <span className="text-xs text-ink/50">{left} left to show up</span> : null
+                          const left = timeLeft(callDeadline(pos.calledAt, responseWindowMinutes, pos.respondedAt, pos.graceMinutes))
+                          if (!left) return null
+                          return (
+                            <span className="text-xs text-ink/50">
+                              {left} left to show up{" "}
+                              {/* Running late and the host is happy to wait: more time without re-calling */}
+                              <button
+                                onClick={() => handleGiveMoreTime(pos.id)}
+                                disabled={loadingAction === `grace-${pos.id}`}
+                                className="font-mono uppercase tracking-widest text-accent hover:underline underline-offset-4 disabled:opacity-50"
+                              >
+                                +5 min
+                              </button>
+                            </span>
+                          )
                         })()}
                         {pos.askingPrice != null && !isCurrentUser && (
                           <span className="font-mono text-xs uppercase tracking-widest text-accent">

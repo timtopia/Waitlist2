@@ -44,6 +44,8 @@ interface Summary {
   expiredAmount?: number
   ownerFeeCaptured: number
   ownerFeePending: number
+  /** Collected from buyers but not yet sent to the owner's payout account */
+  ownerFeeAwaitingPayout?: number
 }
 
 interface SettlementData {
@@ -563,7 +565,11 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
           )}
           {stripeEnabled && connectOnboarded && (summary.ownerFeeCaptured > 0 || summary.ownerFeePending > 0) && (
             <div className="mt-4 pt-4 border-t border-rule flex items-center justify-between">
-              <p className="text-xs text-ink/50">Payouts are connected -- captured earnings go to your bank automatically.</p>
+              <p className="text-xs text-ink/50">
+                {(summary.ownerFeeAwaitingPayout ?? 0) > 0
+                  ? `Payouts are connected, but ${formatCurrency(summary.ownerFeeAwaitingPayout ?? 0)} of your collected fees hasn't reached your payout account yet.`
+                  : "Payouts are connected -- collected fees go to your payout account automatically."}
+              </p>
               <Link
                 href="/profile"
                 className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4 flex-shrink-0"

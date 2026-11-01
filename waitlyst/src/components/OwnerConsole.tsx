@@ -98,7 +98,9 @@ export function OwnerConsole({
         const data = await res.json()
         setEarnings({ earned: data.ownerFeeEarned ?? 0, pending: data.ownerFeePending ?? 0 })
         if (data.service) {
-          setPace({ medianWaitMinutes: data.service.medianWaitMinutes, servedLastHour: data.service.servedLastHour })
+          // The console is for right now: a typical wait over all time would
+          // let a slow Tuesday drag down tonight's number
+          setPace({ medianWaitMinutes: data.service.recentMedianWaitMinutes, servedLastHour: data.service.servedLastHour })
         }
       }
     } catch {
@@ -479,7 +481,7 @@ export function OwnerConsole({
             {pace && (pace.servedLastHour > 0 || pace.medianWaitMinutes !== null) && (
               <span>
                 {pace.servedLastHour} {isRestaurant ? "seated" : "served"} in the last hour
-                {pace.medianWaitMinutes !== null && <>, typical wait {Math.round(pace.medianWaitMinutes)} min</>}
+                {pace.medianWaitMinutes !== null && <>, typical wait lately {Math.round(pace.medianWaitMinutes)} min</>}
               </span>
             )}
           </p>

@@ -26,8 +26,19 @@ describe("serviceStats", () => {
       noShows: 0,
       waiting: 1,
       medianWaitMinutes: 20,
+      recentMedianWaitMinutes: 20,
       servedLastHour: 2,
     })
+  })
+
+  it("keeps a recent typical wait from the last few hours only", () => {
+    const stats = serviceStats(
+      [{ outcome: "SERVED", joinedAt: at(24 * 60 + 90), servedAt: at(24 * 60) }], // yesterday, waited 90
+      [{ fulfilled: true, joinedAt: at(20), fulfilledAt: at(10) }], // just now, waited 10
+      now
+    )
+    expect(stats.medianWaitMinutes).toBe(50)
+    expect(stats.recentMedianWaitMinutes).toBe(10)
   })
 
   it("has no median wait before anyone is served", () => {

@@ -837,7 +837,7 @@ describe("Stats API", () => {
     expect(data.pendingSettlement).toBe(50)
     expect(data.netRevenue).toBe(100)
     expect(data.service).toEqual({
-      served: 1, left: 1, removed: 0, noShows: 0, waiting: 1, medianWaitMinutes: 12, servedLastHour: 1,
+      served: 1, left: 1, removed: 0, noShows: 0, waiting: 1, medianWaitMinutes: 12, recentMedianWaitMinutes: 12, servedLastHour: 1,
     })
   })
 })

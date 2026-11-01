@@ -9,12 +9,14 @@ import { PositionNotFoundError, removeByOrganizer } from "./queue-exit"
 export function responseDeadline(
   calledAt: Date,
   windowMinutes: number,
-  respondedAt: Date | null
+  respondedAt: Date | null,
+  /** Extra time the host gave them */
+  graceMinutes = 0
 ): Date {
   const windowMs = windowMinutes * 60_000
   let deadline = calledAt.getTime() + windowMs
   if (respondedAt) deadline = Math.max(deadline, respondedAt.getTime() + windowMs)
-  return new Date(deadline)
+  return new Date(deadline + graceMinutes * 60_000)
 }
 
 /**
@@ -35,12 +37,12 @@ export async function expireMissedCalls(lineId: string, windowMinutes: number, n
       // A paused line is stopped on purpose; nobody runs out of time
       line: { isActive: true },
     },
-    select: { id: true, calledAt: true, respondedAt: true },
+    select: { id: true, calledAt: true, respondedAt: true, graceMinutes: true },
   })
 
   let skipped = 0
   for (const p of called) {
-    if (responseDeadline(p.calledAt!, windowMinutes, p.respondedAt) > now) continue
+    if (responseDeadline(p.calledAt!, windowMinutes, p.respondedAt, p.graceMinutes ?? 0) > now) continue
     try {
       await removeByOrganizer(lineId, p.id, "payout", true, true)
       skipped++
