@@ -193,7 +193,7 @@ export function describeMemberEvent(
         // Leaving from this tab is handled by the caller; reaching here means
         // it happened elsewhere -- another device, or the organizer.
         : event.wasCalled
-          ? { title: "You're no longer in line", body: `You were called in ${lineName} but didn't show up in time, so your place went to the next party -- or ${organizer} removed you.`, toast: true, tone: "warning" }
+          ? { title: "You're no longer in line", body: `You were called in ${lineName} but didn't show up in time, so your place went to the next ${isRestaurant ? "party" : "person"} -- or ${organizer} removed you.`, toast: true, tone: "warning" }
           : { title: "You're no longer in line", body: `You're no longer in ${lineName}. You left from another device, or ${organizer} removed you.`, toast: true, tone: "warning" }
     case "announcement":
       return { title: `Update from ${lineName}`, body: event.text, toast: false, tone: "info" }

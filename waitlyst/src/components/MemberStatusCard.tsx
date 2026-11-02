@@ -34,6 +34,8 @@ interface MemberStatusCardProps {
   onRespond?: (response: "ON_MY_WAY" | "RUNNING_LATE") => Promise<void>
   notificationPermission?: NotificationState
   onEnableNotifications?: () => void
+  /** The line emails "you're next" / "you're called" */
+  emailEnabled?: boolean
   /** Restaurant lines count parties ahead, not people */
   isRestaurant?: boolean
   /** Whether spots on this line can be listed for swap at all */
@@ -59,6 +61,7 @@ export function MemberStatusCard({
   onRespond,
   notificationPermission = "unsupported",
   onEnableNotifications,
+  emailEnabled = false,
   isRestaurant = false,
   allowResale = true,
 }: MemberStatusCardProps) {
@@ -175,8 +178,16 @@ export function MemberStatusCard({
               accent ? "bg-accent text-paper" : done ? "bg-green-700 text-paper" : "bg-ink text-paper"
             }`}
           >
-            <span className="font-mono text-xs uppercase tracking-widest opacity-60 leading-none">#</span>
-            <span className="font-mono tabular-nums text-2xl sm:text-3xl leading-none mt-1">{place}</span>
+            {done ? (
+              // Seated parties stay listed, so the raw spot number would look
+              // like they'd moved back at the moment they sat down
+              <span className="text-3xl sm:text-4xl leading-none" role="img" aria-label={isRestaurant ? "Seated" : "Served"}>✓</span>
+            ) : (
+              <>
+                <span className="font-mono text-xs uppercase tracking-widest opacity-60 leading-none">#</span>
+                <span className="font-mono tabular-nums text-2xl sm:text-3xl leading-none mt-1">{place}</span>
+              </>
+            )}
           </div>
 
           <div className="flex-1 min-w-0 space-y-1.5">
@@ -217,6 +228,18 @@ export function MemberStatusCard({
             )}
           </div>
         )}
+
+        {/* Always mounted, and only changes at a threshold, so a screen
+            reader hears the warning and the expiry without the ticking */}
+        <p className="sr-only" aria-live="assertive">
+          {phase === "called" && deadline
+            ? !left
+              ? "Your time to show up has run out."
+              : left === "under a minute"
+                ? "Under a minute left to show up."
+                : ""
+            : ""}
+        </p>
 
         {phase === "called" && (
           <div className="mt-4 space-y-2">
@@ -283,6 +306,15 @@ export function MemberStatusCard({
               : isRestaurant
               ? "The line is paused. You keep your place, and the host may still call you."
               : "The line is paused. You keep your place while it's paused."}
+          </p>
+        )}
+
+        {/* Most phones have no browser alerts; say how they'll hear instead */}
+        {!done && notificationPermission === "unsupported" && (
+          <p className="mt-4 pt-3 border-t border-rule text-xs text-ink/60">
+            {emailEnabled
+              ? "We'll email you when you're next and when you're called. This page also updates on its own."
+              : "Keep this page open -- it updates on its own when your turn comes."}
           </p>
         )}
 

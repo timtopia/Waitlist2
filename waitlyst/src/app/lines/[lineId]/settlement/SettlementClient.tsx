@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useSearchParams, useRouter, usePathname } from "next/navigation"
 import { Card, CardContent, CardHeader } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
+import { buttonClasses } from "@/components/ui/buttonStyles"
 import { ConfirmModal } from "@/components/ui/ConfirmModal"
 import { useToast } from "@/components/ui/Toast"
 import { formatCurrency } from "@/lib/format"
@@ -224,12 +225,15 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
       if (res.ok) {
         addToast(
           action === "capture"
-            ? "Payment captured successfully"
+            ? isDrop ? "Payment collected" : "Payment captured successfully"
             : wasStuck
             ? "Stuck checkout cancelled -- positions unlocked"
-            : "Authorization cancelled, hold released",
+            : isDrop ? "Payment returned to the buyer" : "Authorization cancelled, hold released",
           "success"
         )
+        // Payouts waiting on a seller's setup (and changes made from another
+        // device) only show after a refetch; the optimistic row doesn't know
+        await fetchData()
       } else {
         const err = await res.json().catch(() => ({}))
         addToast(err.error || "Action failed", "error")
@@ -377,17 +381,27 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
         Collect by {formatDeadline(txn.captureBefore)}
       </span>
     )
+    // On drops payments are collected straight away; an open one here is a
+    // collection that failed, not a hold waiting on fulfilment
+    if (isDrop) {
+      return (
+        <span className="inline-flex flex-col items-center">
+          <span className="font-mono text-xs uppercase tracking-widest text-amber-700">Collection failed</span>
+          {deadline}
+        </span>
+      )
+    }
     if (txn.buyerFulfilled) {
       return (
         <span className="inline-flex flex-col items-center">
-          <span className="font-mono text-xs uppercase tracking-widest text-green-700">Fulfilled</span>
+          <span className="font-mono text-xs uppercase tracking-widest text-green-700">Seated</span>
           {deadline}
         </span>
       )
     }
     return (
       <span className="inline-flex flex-col items-center">
-        <span className="font-mono text-xs uppercase tracking-widest text-amber-700">Not fulfilled</span>
+        <span className="font-mono text-xs uppercase tracking-widest text-amber-700">Not seated</span>
         {deadline}
       </span>
     )
@@ -467,11 +481,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
     return (
       <div className="max-w-5xl mx-auto px-4 py-8 text-center">
         <p className="text-ink/60">Failed to load settlement data.</p>
-        <Link href="/dashboard">
-          <Button variant="secondary" className="mt-4">
-            Back to Dashboard
-          </Button>
-        </Link>
+        <Link href="/dashboard" className={buttonClasses({ variant: "secondary", className: "mt-4" })}>Back to Dashboard</Link>
       </div>
     )
   }
@@ -489,9 +499,11 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
       {/* Bulk Confirm Modal */}
       <ConfirmModal
         open={bulkConfirm === "capture-all"}
-        title="Capture All Payments"
-        message={`This will collect all ${completedUnsettled.length} payment(s) still on hold, including buyers you haven't ${isDrop ? "served" : "seated"} yet. Total: ${formatCurrency(summary.pendingAmount)}.`}
-        confirmLabel="Capture All"
+        title={isDrop ? "Retry Collecting Payments" : "Capture All Payments"}
+        message={isDrop
+          ? `Try again to collect the ${completedUnsettled.length} swap payment(s) that couldn't be collected automatically. Total: ${formatCurrency(summary.pendingAmount)}.`
+          : `This will collect all ${completedUnsettled.length} payment(s) still on hold, including buyers you haven't seated yet. Total: ${formatCurrency(summary.pendingAmount)}.`}
+        confirmLabel={isDrop ? "Collect All" : "Capture All"}
         variant="primary"
         isLoading={actionLoading === "capture-all"}
         onConfirm={() => handleBulkAction("capture-all")}

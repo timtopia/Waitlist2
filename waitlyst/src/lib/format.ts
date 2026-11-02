@@ -66,6 +66,7 @@ export function formatDateTime(iso: string): string {
 }
 
 /** Currency: "$25.00" or "$1,234.56" */
+const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" })
 export function formatCurrency(amount: number): string {
-  return `$${amount.toFixed(2)}`
+  return usd.format(amount)
 }

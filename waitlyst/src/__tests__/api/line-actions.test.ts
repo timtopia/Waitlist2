@@ -731,7 +731,7 @@ describe("PATCH /api/lines/[lineId]/settings", () => {
     expect(data.error).toContain("Capacity")
   })
 
-  it("should clamp ownerFeePercent to 0-50 range", async () => {
+  it("rejects an ownerFeePercent over 50 instead of quietly clamping it", async () => {
     mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
     mockPrisma.line.findUnique.mockResolvedValue({
       id: "line-1",
@@ -749,12 +749,9 @@ describe("PATCH /api/lines/[lineId]/settings", () => {
     })
 
     const response = await PATCH(req, { params: Promise.resolve({ lineId: "line-1" }) })
-    expect(response.status).toBe(200)
-
-    expect(mockPrisma.line.update).toHaveBeenCalledWith({
-      where: { id: "line-1" },
-      data: { ownerFeePercent: 50 },
-    })
+    expect(response.status).toBe(400)
+    expect((await response.json()).error).toContain("50")
+    expect(mockPrisma.line.update).not.toHaveBeenCalled()
   })
 })
 

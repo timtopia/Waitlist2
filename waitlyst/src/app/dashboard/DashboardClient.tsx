@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { Card, CardContent, CardHeader } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
+import { buttonClasses } from "@/components/ui/buttonStyles"
 import { Input } from "@/components/ui/Input"
 import { ConfirmModal } from "@/components/ui/ConfirmModal"
 import { DropdownMenu, DropdownMenuItem } from "@/components/ui/DropdownMenu"
@@ -56,7 +57,10 @@ const phaseLabel: Record<MemberPhase, { text: (ahead: number) => string; classNa
   waiting: { text: (ahead) => `${ahead} ahead of you`, className: "text-ink/60" },
 }
 
-type StatusFilter = "all" | "active" | "paused"
+type StatusFilter = "all" | "active" | "paused" | "closed"
+
+/** A drop whose closing time passed is still isActive, but nobody can join */
+const isClosedBySchedule = (l: { closesAt?: string | null }) => !!l.closesAt && new Date(l.closesAt) <= new Date()
 type SortOption = "newest" | "oldest" | "most-members"
 
 interface LineStats {
@@ -144,8 +148,9 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
       : lines
     return {
       all: searchFiltered.length,
-      active: searchFiltered.filter(l => l.isActive).length,
+      active: searchFiltered.filter(l => l.isActive && !isClosedBySchedule(l)).length,
       paused: searchFiltered.filter(l => !l.isActive).length,
+      closed: searchFiltered.filter(l => l.isActive && isClosedBySchedule(l)).length,
     }
   }, [lines, searchText])
 
@@ -161,9 +166,11 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
 
     // Status filter
     if (statusFilter === "active") {
-      result = result.filter(l => l.isActive)
+      result = result.filter(l => l.isActive && !isClosedBySchedule(l))
     } else if (statusFilter === "paused") {
       result = result.filter(l => !l.isActive)
+    } else if (statusFilter === "closed") {
+      result = result.filter(l => l.isActive && isClosedBySchedule(l))
     }
 
     // Sort
@@ -494,12 +501,8 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                   To run one for your restaurant, shop, or drop, create a line.
                 </p>
                 <div className="flex gap-3">
-                  <Link href="/lines/new">
-                    <Button size="sm">Create a Line</Button>
-                  </Link>
-                  <Link href="/browse">
-                    <Button size="sm" variant="secondary">Browse Lines</Button>
-                  </Link>
+                  <Link href="/lines/new" className={buttonClasses({ size: "sm" })}>Create a Line</Link>
+                  <Link href="/browse" className={buttonClasses({ variant: "secondary", size: "sm" })}>Browse Lines</Link>
                 </div>
               </div>
               <button
@@ -737,9 +740,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
           {positions.length === 0 ? (
             <div className="text-center py-6">
               <p className="text-ink/60 mb-4">You haven&apos;t joined any lines yet.</p>
-              <Link href="/browse">
-                <Button variant="secondary">Browse Lines</Button>
-              </Link>
+              <Link href="/browse" className={buttonClasses({ variant: "secondary" })}>Browse Lines</Link>
             </div>
           ) : filteredPositions.length === 0 ? (
             <div className="text-center py-6">
@@ -801,15 +802,13 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                 <option value="most-members">Most members</option>
               </select>
             )}
-            <Link href="/lines/new">
-              <Button size="sm">Create Line</Button>
-            </Link>
+            <Link href="/lines/new" className={buttonClasses({ size: "sm" })}>Create Line</Link>
           </div>
         </CardHeader>
         <CardContent>
           {lines.length > 0 && (
             <div className="flex items-center gap-5 mb-4">
-              {(["all", "active", "paused"] as const).map((filter) => {
+              {(["all", "active", "paused", "closed"] as const).filter((f) => f !== "closed" || statusCounts.closed > 0).map((filter) => {
                 const count = statusCounts[filter]
                 const isSelected = statusFilter === filter
                 const label = filter.charAt(0).toUpperCase() + filter.slice(1)
@@ -840,9 +839,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
           {lines.length === 0 ? (
             <div className="text-center py-6">
               <p className="text-ink/60 mb-4">You haven&apos;t created any lines yet.</p>
-              <Link href="/lines/new">
-                <Button variant="secondary">Create Your First Line</Button>
-              </Link>
+              <Link href="/lines/new" className={buttonClasses({ variant: "secondary" })}>Create Your First Line</Link>
             </div>
           ) : filteredLines.length === 0 ? (
             <div className="text-center py-6">

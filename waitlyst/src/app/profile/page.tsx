@@ -5,6 +5,8 @@ import { redirect } from "next/navigation"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { ProfileClient } from "./ProfileClient"
+import { runAfterResponse } from "@/lib/after-response"
+import { payOutstandingPayouts } from "@/lib/stripe"
 
 export const metadata: Metadata = {
   title: "Profile",
@@ -52,14 +54,16 @@ export default async function ProfilePage() {
       take: 500,
     }),
     // Transactions on lines this user owns (for owner fee earnings)
-    ownedLineIds.length > 0
-      ? prisma.transaction.findMany({
-          where: {
-            lineId: { in: ownedLineIds },
-            ownerFee: { gt: 0 },
-          },
-        })
-      : Promise.resolve([]),
+    // ownerId keeps fees from lines since deleted (they're still paid out)
+    prisma.transaction.findMany({
+      where: {
+        OR: [
+          ...(ownedLineIds.length > 0 ? [{ lineId: { in: ownedLineIds } }] : []),
+          { ownerId: userId },
+        ],
+        ownerFee: { gt: 0 },
+      },
+    }),
     // Spots you're still holding; served ones stay on record but aren't "active"
     prisma.linePosition.count({
       where: { userId, fulfilled: false },
@@ -107,6 +111,13 @@ export default async function ProfilePage() {
   const ownerPendingPayment = ownerTransactions
     .filter((t) => t.status === "PENDING")
     .reduce((sum, t) => sum + t.ownerFee, 0)
+
+  // Payouts only retried when someone finished payout setup, so one that
+  // failed for an already-set-up payee (restricted account, API error)
+  // sat forever. Visiting the profile retries it.
+  if (user.stripeConnectOnboarded && sellerAwaitingSetup + ownerAwaitingSetup > 0) {
+    runAfterResponse(() => payOutstandingPayouts(userId))
+  }
 
   // The history lists money that actually moved: completed and refunded
   // purchases. Abandoned or failed checkouts never charged anyone.

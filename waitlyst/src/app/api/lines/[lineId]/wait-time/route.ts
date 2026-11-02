@@ -1,13 +1,25 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { RESTAURANT_PACE_WINDOW_MS, estimateMinutesPerPerson } from "@/lib/wait-time"
+import { rateLimit } from "@/lib/rate-limit"
 
 export const dynamic = "force-dynamic"
+
+// Public and unauthenticated; same per-IP budget as the line page itself
+// (a whole restaurant's guests can share one Wi-Fi address)
+const limiter = rateLimit({ interval: 60_000, limit: 300 })
 
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ lineId: string }> }
 ) {
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "anonymous"
+  if (!limiter.check(ip).success) {
+    return NextResponse.json(
+      { error: "Too many requests. Please try again later." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    )
+  }
   const { lineId } = await params
 
   try {
@@ -28,6 +40,9 @@ export async function GET(
       prisma.linePosition.findMany({
         where: { lineId, fulfilledAt: { not: null } },
         select: { fulfilledAt: true },
+        // A big drop can have thousands served and not yet cleared
+        orderBy: { fulfilledAt: "desc" },
+        take: 200,
       }),
       prisma.queueVisit.findMany({
         where: { lineId, servedAt: { not: null } },

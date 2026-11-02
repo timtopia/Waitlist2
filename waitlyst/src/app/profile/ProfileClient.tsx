@@ -6,6 +6,7 @@ import Link from "next/link"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
+import { buttonClasses } from "@/components/ui/buttonStyles"
 import { formatDate, formatDateTime, formatCurrency } from "@/lib/format"
 
 interface UserData {
@@ -317,9 +318,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                 Member since {formatDate(user.createdAt)}
               </p>
             </div>
-            <Link href="/dashboard">
-              <Button variant="secondary" size="sm">Dashboard</Button>
-            </Link>
+            <Link href="/dashboard" className={buttonClasses({ variant: "secondary", size: "sm" })}>Dashboard</Link>
           </div>
         </CardContent>
       </Card>
@@ -351,7 +350,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
               <p className="text-sm text-ink">
                 {formatCurrency(awaitingSetup)} has been collected for you and is waiting.
                 {connectOnboarded
-                  ? " It's being sent to your payout account."
+                  ? " We're retrying the transfer to your payout account. If it's still here later, check your payout account for anything Stripe needs from you."
                   : " Set up payouts below to receive it."}
               </p>
             </div>

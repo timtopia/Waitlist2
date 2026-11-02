@@ -4,7 +4,8 @@ import { prisma } from "@/lib/prisma"
 import { countCapacityUsed } from "@/lib/capacity-server"
 import { setLineActive } from "@/lib/line-pause"
 import { abandonPendingTransaction } from "@/lib/stripe"
-import { validateString, validateNumber, validateUrl, validateImageUrl } from "@/lib/validate"
+import { validateString, validateNumber, validateUrl, validateImageUrl, cleanText } from "@/lib/validate"
+import { callDeadline } from "@/lib/call-deadline"
 
 export async function PATCH(
   req: Request,
@@ -35,7 +36,9 @@ export async function PATCH(
       if (nameErr) {
         return NextResponse.json({ error: nameErr }, { status: 400 })
       }
-      allowedUpdates.name = updates.name.trim()
+      const name = cleanText(updates.name)
+      if (!name) return NextResponse.json({ error: "Name is required" }, { status: 400 })
+      allowedUpdates.name = name
     }
     // Validate description (max 500 chars)
     if (updates.description !== undefined) {
@@ -43,7 +46,7 @@ export async function PATCH(
         return NextResponse.json({ error: "Description must be 500 characters or fewer" }, { status: 400 })
       }
       allowedUpdates.description = typeof updates.description === "string"
-        ? updates.description.trim() || null
+        ? cleanText(updates.description, { multiline: true }) || null
         : null
     }
     // Schedule fields. An unparseable date used to reach the database and
@@ -85,9 +88,10 @@ export async function PATCH(
     }
     // Capacity field
     if (updates.maxCapacity !== undefined) {
-      const cap = updates.maxCapacity === null ? null : parseInt(updates.maxCapacity)
+      // Number, not parseInt: "100abc" or 150.5 is a mistake, not 100 or 150
+      const cap = updates.maxCapacity === null ? null : Number(updates.maxCapacity)
       if (cap !== null) {
-        if (isNaN(cap) || cap < 1) {
+        if (!Number.isInteger(cap) || cap < 1) {
           return NextResponse.json({ error: "Capacity must be a positive whole number" }, { status: 400 })
         }
         // Verify capacity is not less than the guests already in line
@@ -97,7 +101,7 @@ export async function PATCH(
             {
               error: result.line.kind === "RESTAURANT"
                 ? `Capacity cannot be less than the ${currentCount} guests currently in line`
-                : `Capacity cannot be less than the ${currentCount} people currently in line`,
+                : `Capacity cannot be less than the ${currentCount} spots already taken (people in line plus people already served)`,
             },
             { status: 400 }
           )
@@ -121,9 +125,12 @@ export async function PATCH(
       }
       allowedUpdates.kind = updates.kind
     }
-    // Owner fee percentage (clamped to 0-50)
-    if (typeof updates.ownerFeePercent === "number") {
-      const fee = Math.max(0, Math.min(updates.ownerFeePercent, 50))
+    // Owner fee percentage, 0-50. Rejected like on create rather than
+    // quietly clamped, so "saved" never means a different fee than typed.
+    if (updates.ownerFeePercent !== undefined) {
+      const feeErr = validateNumber(updates.ownerFeePercent, "Owner fee percent", { min: 0, max: 50 })
+      if (feeErr) return NextResponse.json({ error: feeErr }, { status: 400 })
+      const fee: number = updates.ownerFeePercent
       // Offer fees are worked out when the offer is accepted, so raising the
       // fee would make buyers pay more than they agreed to. Wait until open
       // offers are settled.
@@ -239,6 +246,33 @@ export async function PATCH(
       where: { id: lineId },
       data: allowedUpdates,
     })
+
+    // A shorter (or newly turned on) show-up window must not instantly skip
+    // parties called under the old one. Give each the difference as extra
+    // time, so the new window only bites on calls made from now on.
+    const newWindow = allowedUpdates.responseWindowMinutes
+    const oldWindow = result.line.responseWindowMinutes
+    if (typeof newWindow === "number" && (oldWindow == null || newWindow < oldWindow)) {
+      const now = Date.now()
+      const called = await prisma.linePosition.findMany({
+        where: { lineId, fulfilled: false, calledAt: { not: null }, user: { isWalkIn: false } },
+        select: { id: true, calledAt: true, respondedAt: true, graceMinutes: true },
+      })
+      for (const p of called) {
+        const calledAt = p.calledAt!.toISOString()
+        const respondedAt = p.respondedAt?.toISOString() ?? null
+        const before = oldWindow
+          ? callDeadline(calledAt, oldWindow, respondedAt, p.graceMinutes)!.getTime()
+          : now + newWindow * 60_000
+        const after = callDeadline(calledAt, newWindow, respondedAt, p.graceMinutes)!.getTime()
+        if (after < before) {
+          await prisma.linePosition.update({
+            where: { id: p.id },
+            data: { graceMinutes: (p.graceMinutes ?? 0) + Math.ceil((before - after) / 60_000) },
+          })
+        }
+      }
+    }
 
     // Listings and offers made under the old rules would otherwise stay up
     // and only fail when someone tries to act on them.

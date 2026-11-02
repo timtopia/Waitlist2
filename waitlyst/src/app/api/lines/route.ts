@@ -5,7 +5,7 @@ import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { rateLimit, lineCreateLimiter } from "@/lib/rate-limit"
 import { capacityView } from "@/lib/capacity"
-import { validateString, validateNumber, validateUrl, validateImageUrl } from "@/lib/validate"
+import { cleanText, validateString, validateNumber, validateUrl, validateImageUrl } from "@/lib/validate"
 
 const browseLimiter = rateLimit({ interval: 60_000, limit: 30 })
 
@@ -130,8 +130,8 @@ export async function POST(req: Request) {
 
     const line = await prisma.line.create({
       data: {
-        name: name.trim(),
-        description: description?.trim() || null,
+        name: cleanText(name),
+        description: typeof description === "string" ? cleanText(description, { multiline: true }) || null : null,
         createdById: result.userId,
         isPublic: Boolean(isPublic),
         opensAt: opensAt ? new Date(opensAt) : null,

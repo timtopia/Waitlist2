@@ -3,13 +3,24 @@ import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { lineViewer, shortName } from "@/lib/privacy"
 import { buyerTotal } from "@/lib/fees"
+import { rateLimit } from "@/lib/rate-limit"
 
 export const dynamic = "force-dynamic"
 
+// Public, and each hit runs several queries; same per-IP budget as the line page
+const limiter = rateLimit({ interval: 60_000, limit: 300 })
+
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ lineId: string }> }
 ) {
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "anonymous"
+  if (!limiter.check(ip).success) {
+    return NextResponse.json(
+      { error: "Too many requests. Please try again later." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    )
+  }
   const { lineId } = await params
 
   try {

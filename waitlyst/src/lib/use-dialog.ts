@@ -48,7 +48,10 @@ export function useDialog<T extends HTMLElement = HTMLDivElement>(open: boolean,
     return () => {
       document.removeEventListener("keydown", onKeyDown)
       document.body.style.overflow = previousOverflow
-      previouslyFocused?.focus?.()
+      // The button that opened it may be gone (its row was just removed);
+      // dropping focus to <body> sent keyboard users back to the top
+      if (previouslyFocused?.isConnected) previouslyFocused.focus?.()
+      else document.querySelector<HTMLElement>("[data-dialog-fallback]")?.focus()
     }
   }, [open])
 

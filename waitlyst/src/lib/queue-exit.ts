@@ -40,7 +40,9 @@ export async function removeByOrganizer(
   /** Record it as a no-show rather than a plain removal */
   noShow = false,
   /** Skipped automatically for not showing up in time (changes the email) */
-  missedCall = false
+  missedCall = false,
+  /** Cleared because the host closed the line (changes the email) */
+  closing = false
 ): Promise<RemovalResult> {
   const position = await prisma.linePosition.findUnique({ where: { id: positionId, lineId } })
   if (!position) throw new PositionNotFoundError()
@@ -88,7 +90,8 @@ export async function removeByOrganizer(
         line.name,
         refunded.length > 0,
         `${getBaseUrl()}/lines/${lineId}`,
-        missedCall,
+        // A host-marked no-show was called and didn't come, same as a timeout
+        missedCall || noShow ? "missed" : closing ? "closed" : "removed",
         collectedCount > 0,
         line.kind === "RESTAURANT"
       )

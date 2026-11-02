@@ -492,6 +492,23 @@ describe("releaseFunds (capture + payouts)", () => {
     expect(fakeStripe.transfers.create).not.toHaveBeenCalled()
   })
 
+  it("collect and refund racing on one purchase: only one goes through", async () => {
+    connect("sam", "acct_sam")
+    fakeStripe.paymentIntents.retrieve.mockResolvedValue({ id: "pi_x", status: "requires_capture" })
+    fakeStripe.paymentIntents.capture.mockResolvedValue({ id: "pi_x", status: "succeeded", latest_charge: "ch_1", transfer_data: null })
+    const { releaseAndSettle, returnBuyerFunds } = await import("@/lib/stripe")
+
+    const purchase = txn()
+    const [collected, refunded] = await Promise.all([releaseAndSettle(purchase), returnBuyerFunds([{ ...purchase }])])
+
+    // The collect claimed it first: the buyer isn't also refunded after the seller was paid
+    expect(collected).toBe(true)
+    expect(refunded).toEqual([])
+    expect(fakeStripe.refunds.create).not.toHaveBeenCalled()
+    expect(fakeStripe.paymentIntents.cancel).not.toHaveBeenCalled()
+    expect(db.transactions[0]).toMatchObject({ status: "COMPLETED", settledAt: expect.any(Date) })
+  })
+
   it("releaseAndSettle records capture and payouts, and leaves a lapsed hold open", async () => {
     connect("sam", "acct_sam")
     fakeStripe.paymentIntents.capture.mockResolvedValue({ id: "pi_x", status: "succeeded", latest_charge: "ch_1", transfer_data: null })

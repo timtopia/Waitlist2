@@ -672,7 +672,7 @@ describe("QueueDisplay", () => {
       await waitFor(() => {
         expect(screen.getByText("$50.00")).toBeInTheDocument()
         expect(screen.getByText("$20.00")).toBeInTheDocument()
-        expect(screen.getByText("Net: $-30.00")).toBeInTheDocument()
+        expect(screen.getByText("Net: -$30.00")).toBeInTheDocument()
       })
     })
 

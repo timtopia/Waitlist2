@@ -2,6 +2,12 @@ import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { getPlatformFeePercent } from "@/lib/fees"
+import { cleanText } from "@/lib/validate"
+import { rateLimit } from "@/lib/rate-limit"
+
+// Every new announcement notifies everyone in the line, so a script can't
+// be allowed to post one a second.
+const announceLimiter = rateLimit({ interval: 60_000, limit: 10 })
 
 export async function PATCH(
   req: Request,
@@ -15,6 +21,13 @@ export async function PATCH(
 
   const result = await requireLineOwner(lineId)
   if (result instanceof NextResponse) return result
+
+  if (!announceLimiter.check(`announce:${result.userId}`).success) {
+    return NextResponse.json(
+      { error: "Too many announcement changes. Please wait a minute." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    )
+  }
 
   try {
     // Validate announcement
@@ -30,11 +43,12 @@ export async function PATCH(
     }
 
     // Update announcement
-    const isClearing = announcement === null || announcement === undefined || announcement.trim() === ""
+    const cleaned = typeof announcement === "string" ? cleanText(announcement) : ""
+    const isClearing = cleaned === ""
     const updatedLine = await prisma.line.update({
       where: { id: lineId },
       data: {
-        announcement: isClearing ? null : announcement.trim(),
+        announcement: isClearing ? null : cleaned,
         announcementAt: isClearing ? null : new Date(),
       },
       include: {

@@ -64,3 +64,16 @@ describe("sendEmail", () => {
     expect(await sendEmail("a@test.com", "Hi", "<p>Hi</p>")).toBe(false)
   })
 })
+
+describe("removedFromLineEmail", () => {
+  it("tells guests a closed line closed, with no 'mistake' line, and says host on restaurants", async () => {
+    const { removedFromLineEmail } = await import("@/lib/email-templates")
+    const closed = removedFromLineEmail("Ann", "Joe's", false, "http://x", "closed", false, true)
+    expect(closed.html).toContain("has closed its line for now")
+    expect(closed.html).not.toContain("mistake")
+
+    const removed = removedFromLineEmail("Ann", "Joe's", false, "http://x", "removed", false, true)
+    expect(removed.html).toContain("contact the host")
+    expect(removed.html).not.toContain("organizer")
+  })
+})

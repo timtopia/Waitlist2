@@ -350,8 +350,8 @@ export function OwnerConsole({
         addToast(
           data.isActive
             ? "Line resumed -- people can join again"
-            : isRestaurant && !allowResale
-              ? "Line paused -- no online joins until you resume. Walk-ins and calls still work."
+            : isRestaurant
+              ? `Line paused -- no online joins${allowResale ? " or swaps" : ""} until you resume. Walk-ins and calls still work.`
               : "Line paused -- no new joins or swaps, and it's hidden from Browse until you resume",
           "success"
         )
@@ -402,23 +402,41 @@ export function OwnerConsole({
         return
       }
       // Tonight's "45 min wait, patio closed" shouldn't greet tomorrow's guests
-      if (hasAnnouncement) await post("announcement", { announcement: null }, "PATCH")
-      if (positions.length > 0) {
-        for (const p of positions) removedByHost.current.add(p.id)
-        const { ok, data } = await post("batch-remove", { positionIds: positions.map((p) => p.id), action })
+      const announcementCleared = hasAnnouncement
+        ? (await post("announcement", { announcement: null }, "PATCH")).ok
+        : true
+      const announcementNote = announcementCleared ? "" : " The announcement couldn't be cleared."
+      // The list on screen can be a poll old; someone may have joined just
+      // before the pause landed. Clear what the server has now.
+      let ids = positions.map((p) => p.id)
+      try {
+        const fresh = await fetch(`/api/lines/${lineId}`, { cache: "no-store" })
+        if (fresh.ok) {
+          const latest = await fresh.json()
+          if (Array.isArray(latest?.positions)) ids = latest.positions.map((p: { id: string }) => p.id)
+        }
+      } catch {
+        // Offline: fall back to what's on screen
+      }
+      if (ids.length > 0) {
+        for (const id of ids) removedByHost.current.add(id)
+        const { ok, data } = await post("batch-remove", { positionIds: ids, action, reason: "closed" })
         if (!ok) {
           addToast(data.error || "The line is paused, but clearing it failed", "error")
           return
         }
         const moneyProblems = (data.refundFailedCount ?? 0) + (data.collectFailedCount ?? 0)
+        const notRemoved = data.failed ?? 0
         addToast(
-          moneyProblems > 0
-            ? `Closed. ${moneyProblems} payment(s) need attention on the settlement page.`
-            : `Closed for now: the line is paused and empty.`,
-          moneyProblems > 0 ? "info" : "success"
+          notRemoved > 0
+            ? `Closed, but ${notRemoved} ${notRemoved === 1 ? "party" : "parties"} couldn't be removed -- check the list.${announcementNote}`
+            : moneyProblems > 0
+              ? `Closed. ${moneyProblems} payment(s) need attention on the settlement page.${announcementNote}`
+              : `Closed for now: the line is paused and empty.${announcementNote}`,
+          notRemoved > 0 || moneyProblems > 0 || !announcementCleared ? "info" : "success"
         )
       } else {
-        addToast("Closed for now: the line is paused.", "success")
+        addToast(`Closed for now: the line is paused.${announcementNote}`, announcementCleared ? "success" : "info")
       }
     } finally {
       setBusy(null)

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { setLineActive } from "@/lib/line-pause"
+import { hostActionLimiter } from "@/lib/rate-limit"
 
 export async function POST(
   req: Request,
@@ -10,6 +11,14 @@ export async function POST(
 
   const result = await requireLineOwner(lineId)
   if (result instanceof NextResponse) return result
+
+  // Pause and resume each notify everyone in the line
+  if (!hostActionLimiter().check(`pause:${result.userId}`).success) {
+    return NextResponse.json(
+      { error: "Too many pause changes. Please wait a minute." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    )
+  }
 
   // Callers say which state they want. Flipping whatever is stored meant a
   // double-click, or the owner on two devices, could land on the opposite

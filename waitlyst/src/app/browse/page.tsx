@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { LineCard } from "@/components/LineCard"
 import { Button } from "@/components/ui/Button"
+import { buttonClasses } from "@/components/ui/buttonStyles"
 import { getLineStatus } from "@/lib/line-status"
 
 // Note: metadata for this page is exported from ./layout.tsx since this is a client component
@@ -159,9 +160,7 @@ export default function BrowsePage() {
             aren&apos;t listed here.
           </p>
         </div>
-        <Link href="/lines/new">
-          <Button>Start a line</Button>
-        </Link>
+        <Link href="/lines/new" className={buttonClasses()}>Start a line</Link>
       </div>
 
       {/* Search & Filters */}
@@ -234,9 +233,7 @@ export default function BrowsePage() {
                 Joining a particular place? Use the link or QR code they gave you.
                 Running one? Start your own.
               </p>
-              <Link href="/lines/new">
-                <Button>Start a line</Button>
-              </Link>
+              <Link href="/lines/new" className={buttonClasses()}>Start a line</Link>
             </>
           ) : (
             <>

@@ -2,6 +2,7 @@ import Link from "next/link"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { StatsBar } from "@/components/StatsBar"
+import { getPlatformFeePercent } from "@/lib/fees"
 
 export const revalidate = 60 // Cache landing page for 60 seconds
 
@@ -36,6 +37,7 @@ const faqs = [
   ["Can't find the line you were told about?", "Private lines aren't listed on the board. Open the link or scan the QR code the restaurant, shop, or organizer shared."],
   ["How will I know it's my turn?", "Your spot updates live on the line's page, and you get a heads-up when you're called."],
   ["Do I have to buy or sell my spot?", "Never. Swaps only happen on lines where the owner turns them on, both people have to agree, and payment goes through Stripe."],
+  ["What does it cost?", `Creating and joining lines is free. On lines with paid swaps, the buyer pays a ${getPlatformFeePercent()}% Waitlyst fee on top of the price (plus any cut the owner sets). Nobody else pays anything.`],
 ]
 
 const features = [
@@ -71,7 +73,7 @@ export default async function HomePage() {
           <p className="mt-8 text-lg sm:text-xl text-ink/70 max-w-2xl leading-relaxed">
             Waitlyst runs virtual lines for restaurants, shops, product drops,
             and events. People join from their phone, see exactly where they
-            stand, and can trade spots with the person beside them when the
+            stand, and can buy the spot just ahead of them when the
             owner allows it.
           </p>
           <div className="mt-10 flex flex-col sm:flex-row gap-3">

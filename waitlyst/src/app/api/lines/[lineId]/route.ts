@@ -162,7 +162,7 @@ export async function DELETE(
     // Who to tell, read before their positions disappear with the line
     const members = await prisma.linePosition.findMany({
       where: { lineId },
-      select: { user: { select: { id: true, name: true, email: true, emailNotifications: true } } },
+      select: { fulfilled: true, user: { select: { id: true, name: true, email: true, emailNotifications: true } } },
     })
 
     // Get unsettled transactions to refund
@@ -225,8 +225,11 @@ export async function DELETE(
 
     const buyers = new Set(transactionsToRefund.map((t) => t.buyerId))
     const browseUrl = `${getBaseUrl()}/browse`
-    for (const { user } of members) {
+    for (const { user, fulfilled } of members) {
       if (!user.email || !user.emailNotifications) continue
+      // A party already seated (or served) lost nothing -- "your place is
+      // gone" would only alarm them -- unless a payment of theirs was refunded
+      if (fulfilled && !buyers.has(user.id)) continue
       const { subject, html } = lineDeletedEmail(user.name || "there", result.line.name, buyers.has(user.id), browseUrl)
       runAfterResponse(() => sendEmail(user.email!, subject, html))
     }
