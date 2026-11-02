@@ -15,7 +15,9 @@ import { createHash } from "crypto"
 import { emailEnabled, sendEmail } from "@/lib/email"
 import { lineDeletedEmail } from "@/lib/email-templates"
 
-const getLimiter = rateLimit({ interval: 60_000, limit: 60 })
+// Per IP: a venue's guests often share one Wi-Fi address, and each open
+// line page polls
+const getLimiter = rateLimit({ interval: 60_000, limit: 300 })
 
 /** Only check for unsent "it's open" emails this long after a line opens */
 const REMINDER_WINDOW_MS = 24 * 60 * 60 * 1000
