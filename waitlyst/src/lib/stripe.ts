@@ -500,7 +500,14 @@ export async function releaseFunds(txn: ReleasableTransaction): Promise<ReleaseR
       return null
     }
 
-    const paid = await transferPayouts(stripe, txn, paymentIntent)
+    // The money is collected now, so this must report success even if paying
+    // out fails: refunds only look at unsettled purchases, and refunding one
+    // whose payouts already went out would pay the buyer back from the
+    // platform. Unpaid shares are retried by payOutstandingPayouts.
+    const paid = await transferPayouts(stripe, txn, paymentIntent).catch((error) => {
+      console.error(`releaseFunds: payouts failed for transaction ${txn.id}:`, error)
+      return { seller: false, owner: false }
+    })
     return {
       capturedAt: now,
       sellerPaidAt: paid.seller ? now : null,
