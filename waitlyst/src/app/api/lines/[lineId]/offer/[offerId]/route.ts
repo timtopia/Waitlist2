@@ -81,23 +81,20 @@ export async function PATCH(
 
     // Handle decline
     if (action === "decline") {
-      // createdAt restarts the cooldown before they can send another
+      // Guarded like accept: a raise or withdrawal landing mid-decline
+      // shouldn't be silently declined at a price the seller never saw.
       const declined = await prisma.swapOffer.updateMany({
-        where: {
-          id: offerId,
-          status: "PENDING",
-          ...(typeof expectedAmount === "number" ? { amount: expectedAmount } : {}),
-        },
+        where: { id: offerId, status: "PENDING", amount: offer.amount },
+        // createdAt restarts the cooldown before they can send another
         data: { status: "DECLINED", createdAt: new Date() },
       })
       if (declined.count === 0) {
         return NextResponse.json(
-          { error: "This offer just changed. Refresh to see the latest." },
+          { error: "This offer just changed. Refresh to see it." },
           { status: 409 }
         )
       }
-      const updated = await prisma.swapOffer.findUniqueOrThrow({ where: { id: offerId } })
-      return NextResponse.json(updated)
+      return NextResponse.json({ ...offer, status: "DECLINED" })
     }
 
     if (isOfferExpired(offer)) {

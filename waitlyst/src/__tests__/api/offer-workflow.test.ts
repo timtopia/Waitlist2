@@ -219,6 +219,87 @@ describe("POST /api/lines/[lineId]/offer", () => {
   })
 })
 
+describe("GET /api/lines/[lineId]/offer -- off the market", () => {
+  it("retires pending offers when either side has been called or served", async () => {
+    const me = freshUser("ben")
+    mockAuth.mockResolvedValue({ user: { id: me } })
+    mockPrisma.swapOffer.findMany.mockResolvedValue([
+      { id: "to-called", lineId: "line-1", fromUserId: me, toUserId: "sam", amount: 10, status: "PENDING", createdAt: new Date(), expiresAt: inHours(24) },
+      { id: "from-served", lineId: "line-1", fromUserId: "cal", toUserId: me, amount: 5, status: "PENDING", createdAt: new Date(), expiresAt: inHours(24) },
+    ])
+    mockPrisma.linePosition.findMany.mockResolvedValue([
+      { userId: "sam", position: 1, fulfilled: false, calledAt: new Date() },
+      { userId: me, position: 2, fulfilled: false, calledAt: null },
+      { userId: "cal", position: 3, fulfilled: true, calledAt: null },
+    ])
+    mockPrisma.transaction.findMany.mockResolvedValue([])
+    mockPrisma.line.findUnique.mockResolvedValue({ nowServingUserId: null })
+
+    const { GET } = await import("@/app/api/lines/[lineId]/offer/route")
+    await GET(new Request("http://localhost/api/lines/line-1/offer"), { params: Promise.resolve({ lineId: "line-1" }) })
+    expect(mockPrisma.swapOffer.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["to-called", "from-served"] }, status: "PENDING" },
+      data: { status: "EXPIRED" },
+    })
+  })
+})
+
+describe("PATCH /api/lines/[lineId]/offer/[offerId] decline", () => {
+  const decline = async () => {
+    const { PATCH } = await import("@/app/api/lines/[lineId]/offer/[offerId]/route")
+    return PATCH(new Request("http://localhost/x", { method: "PATCH", body: JSON.stringify({ action: "decline" }) }), ctx())
+  }
+  function setupDecline() {
+    const seller = freshUser("sam")
+    mockAuth.mockResolvedValue({ user: { id: seller } })
+    mockPrisma.swapOffer.findUnique.mockResolvedValue({
+      id: "offer-1", lineId: "line-1", fromUserId: "ben", toUserId: seller, amount: 10, status: "PENDING", createdAt: new Date(), expiresAt: inHours(24),
+    })
+  }
+
+  it("declines only at the amount the seller saw", async () => {
+    setupDecline()
+    const res = await decline()
+    expect(res.status).toBe(200)
+    expect((await res.json()).status).toBe("DECLINED")
+    expect(mockPrisma.swapOffer.updateMany).toHaveBeenCalledWith({
+      where: { id: "offer-1", status: "PENDING", amount: 10 },
+      data: { status: "DECLINED", createdAt: expect.any(Date) },
+    })
+  })
+
+  it("refuses if the offer was raised or withdrawn mid-decline", async () => {
+    setupDecline()
+    mockPrisma.swapOffer.updateMany.mockResolvedValueOnce({ count: 0 })
+    const res = await decline()
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toBe("This offer just changed. Refresh to see it.")
+  })
+})
+
+describe("GET /api/lines/[lineId]/offer/[offerId]/checkout", () => {
+  it("cleans up an expired payment window like the webhook would, and says the offer went back", async () => {
+    const buyer = freshUser("ben")
+    mockAuth.mockResolvedValue({ user: { id: buyer } })
+    mockPrisma.swapOffer.findUnique.mockResolvedValue({
+      id: "offer-1", lineId: "line-1", fromUserId: buyer, toUserId: "sam", amount: 10, status: "ACCEPTED", transactionId: "txn-1",
+    })
+    mockPrisma.transaction.findFirst.mockResolvedValue({ id: "txn-1", status: "PENDING", stripePaymentId: "cs_1" })
+    const retrieve = vi.fn().mockResolvedValue({ id: "cs_1", status: "expired", url: null })
+    stripeMocks.getStripe.mockReturnValueOnce({ checkout: { sessions: { retrieve } } } as never)
+
+    const { GET } = await import("@/app/api/lines/[lineId]/offer/[offerId]/checkout/route")
+    const res = await GET(new Request("http://localhost/x"), ctx())
+    expect(res.status).toBe(410)
+    expect((await res.json()).error).toBe("That payment window closed. Your offer went back to them to accept again.")
+    expect(stripeMocks.abandonPendingTransaction).toHaveBeenCalledWith("txn-1", {
+      offerId: "offer-1",
+      expireSession: false,
+      byBuyer: true,
+    })
+  })
+})
+
 describe("PATCH /api/lines/[lineId]/offer/[offerId] accept", () => {
   function setupAccept(seller: string, expiresAt = inHours(24)) {
     mockAuth.mockResolvedValue({ user: { id: seller } })

@@ -85,6 +85,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
   const [bulkConfirm, setBulkConfirm] = useState<"capture-all" | "cancel-all-unfulfilled" | null>(null)
   const [connectOnboarded, setConnectOnboarded] = useState(stripeConnectOnboarded)
   const [connectLoading, setConnectLoading] = useState(false)
+  const [dashboardLoading, setDashboardLoading] = useState(false)
 
   useEffect(() => {
     const connectStatus = searchParams.get("connect")
@@ -119,6 +120,23 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
     } catch {
       addToast("Failed to start payout setup", "error")
       setConnectLoading(false)
+    }
+  }
+
+  async function handleOpenPayoutDashboard() {
+    setDashboardLoading(true)
+    try {
+      const res = await fetch("/api/stripe/connect/dashboard", { method: "POST" })
+      const result = await res.json()
+      if (res.ok && result.url) {
+        window.open(result.url, "_blank", "noopener,noreferrer")
+      } else {
+        addToast(result.error || "Couldn't open the payout dashboard", "error")
+      }
+    } catch {
+      addToast("Couldn't open the payout dashboard", "error")
+    } finally {
+      setDashboardLoading(false)
     }
   }
 
@@ -473,9 +491,9 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
       />
       <ConfirmModal
         open={bulkConfirm === "cancel-all-unfulfilled"}
-        title="Cancel Unfulfilled Payments"
-        message={`This will release the payment hold for ${releasableCount} transaction(s) whose buyers left without being ${kind === "RESTAURANT" ? "seated" : "served"}. They will not be charged. Buyers still in line aren't affected.`}
-        confirmLabel="Cancel All Unfulfilled"
+        title="Release Holds for Buyers Not Served"
+        message={`This will release the payment hold for ${releasableCount} transaction(s) awaiting capture whose buyer left without being served. They will not be charged. Buyers still in line aren't affected.`}
+        confirmLabel="Release All Not Served"
         variant="danger"
         isLoading={actionLoading === "cancel-all-unfulfilled"}
         onConfirm={() => handleBulkAction("cancel-all-unfulfilled")}
@@ -494,6 +512,12 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
           <h1 className="text-2xl font-semibold tracking-tight">
             Settlement &mdash; {lineName}
           </h1>
+          <a
+            href={`/api/lines/${lineId}/export?type=swaps`}
+            className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4 mt-1 inline-block"
+          >
+            Export swaps CSV
+          </a>
           <p className="text-sm text-ink/60 mt-1 max-w-2xl">
             {kind === "RESTAURANT"
               ? "Paid swaps on this line are held on the buyer's card until you seat them. Seating a guest collects their payment automatically, and so does the guest leaving. Anything still held below you can capture, or release to give the buyer their money back. Settle holds the same evening, since card holds lapse after about a week."
@@ -536,15 +560,15 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
               <p className="font-mono text-2xl tabular-nums">
                 {formatCurrency(summary.totalAmount)}
               </p>
-              <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Total Amount</p>
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Paid to sellers</p>
             </div>
             <div className="text-center">
               <p className="font-mono text-2xl tabular-nums text-green-700">{summary.fulfilled}</p>
-              <p className="font-mono text-xs uppercase tracking-widest text-ink/60">{isDrop ? "Buyer served" : "Fulfilled"}</p>
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Awaiting capture: served</p>
             </div>
             <div className="text-center">
-              <p className={`font-mono text-2xl tabular-nums ${isDrop ? "text-ink/60" : "text-amber-700"}`}>{summary.unfulfilled}</p>
-              <p className="font-mono text-xs uppercase tracking-widest text-ink/60">{isDrop ? "Buyer still in line" : "Unfulfilled"}</p>
+              <p className="font-mono text-2xl tabular-nums text-amber-700">{summary.unfulfilled}</p>
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Awaiting capture: not served</p>
             </div>
           </div>
           <div className="mt-4 pt-4 border-t border-rule grid grid-cols-2 gap-4">
@@ -584,12 +608,14 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
                   ? `Payouts are connected, but ${formatCurrency(summary.ownerFeeAwaitingPayout ?? 0)} of your collected fees hasn't reached your payout account yet.`
                   : "Payouts are connected -- collected fees go to your payout account automatically."}
               </p>
-              <Link
-                href="/profile"
-                className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4 flex-shrink-0"
+              <button
+                type="button"
+                onClick={handleOpenPayoutDashboard}
+                disabled={dashboardLoading}
+                className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4 flex-shrink-0 disabled:opacity-50"
               >
-                View Payout Dashboard &rarr;
-              </Link>
+                {dashboardLoading ? "Opening..." : <>View Payout Dashboard &rarr;</>}
+              </button>
             </div>
           )}
           {(summary.expiringCount ?? 0) > 0 && (
@@ -643,7 +669,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
               onClick={() => setBulkConfirm("cancel-all-unfulfilled")}
               disabled={actionLoading !== null}
             >
-              Cancel All Unfulfilled ({releasableCount})
+              Release All Not Served ({releasableCount})
             </Button>
           )}
         </div>

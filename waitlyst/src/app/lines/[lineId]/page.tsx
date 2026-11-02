@@ -77,6 +77,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: line.name,
     description,
+    // Private lines are reached by link only; keep them out of search results
+    ...(!line.isPublic && { robots: { index: false, follow: false } }),
     openGraph: {
       title: `${line.name} - Waitlyst`,
       description,
@@ -99,9 +101,10 @@ export default async function LineDetailPage({ params }: Props) {
   // A bad or deleted link gets the real 404 page (with somewhere to go)
   if (!line) notFound()
 
-  // Build JSON-LD structured data
+  // Build JSON-LD structured data, for public lines only: a private line
+  // shouldn't hand search engines its details
   let jsonLd: Record<string, unknown> | null = null
-  if (line) {
+  if (line.isPublic) {
     const cleared = await servedAndCleared(line)
     const description = buildDescription(line, cleared)
 

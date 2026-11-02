@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useDialog } from "@/lib/use-dialog"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "./ui/Button"
 import { ConfirmModal } from "./ui/ConfirmModal"
 import { useToast } from "./ui/Toast"
@@ -17,7 +17,6 @@ interface ConsolePosition {
   calledAt?: string | null
   response?: "ON_MY_WAY" | "RUNNING_LATE" | null
   respondedAt?: string | null
-  /** Extra minutes the host gave them to show up */
   graceMinutes?: number
   partySize?: number
   user: { id: string; name: string | null; isWalkIn?: boolean }
@@ -38,7 +37,7 @@ interface OwnerConsoleProps {
   /** Paid swaps are on, so there can be payments to review even with no owner fee */
   allowResale?: boolean
   purchaseLimit?: number | null
-  /** Minutes a called party has to show up before being skipped */
+  /** Minutes a called party has to show up; null when there's no limit */
   responseWindowMinutes?: number | null
 }
 
@@ -91,36 +90,46 @@ export function OwnerConsole({
   const [walkInSize, setWalkInSize] = useState(2)
   const [walkInNote, setWalkInNote] = useState("")
   const [copied, setCopied] = useState(false)
-  // Tick so the up-next party's show-up countdown stays current
+  const walkInButtonRef = useRef<HTMLButtonElement>(null)
+  // Hand focus back to "+ Add walk-in" when the form closes, not on first render
+  const walkInWasOpen = useRef(false)
+  useEffect(() => {
+    if (walkInOpen) {
+      walkInWasOpen.current = true
+    } else if (walkInWasOpen.current) {
+      walkInWasOpen.current = false
+      walkInButtonRef.current?.focus()
+    }
+  }, [walkInOpen])
+  // Ticks so a called party's "4 min left" keeps up between polls
   const [clock, setClock] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = setInterval(() => setClock(Date.now()), 30_000)
+    return () => clearInterval(timer)
+  }, [])
 
   const waiting = positions.filter((p) => !p.fulfilled)
   const served = positions.filter((p) => p.fulfilled)
   const upNext = waiting[0] ?? null
   const afterNext = waiting[1] ?? null
-  const isServingUpNext = !!upNext && (!!upNext.calledAt || nowServingUserId === upNext.user.id)
   // Already called out of order: serving the up-next party won't call anyone
   const canCallAfterNext = !!afterNext && !afterNext.calledAt
+  const isServingUpNext = !!upNext && (!!upNext.calledAt || nowServingUserId === upNext.user.id)
   const upNextLocked = !!upNext?.lockedUntil && new Date(upNext.lockedUntil) > new Date()
-  // Parties called out of order sit behind the up-next one; keep them in view
-  const calledOthers = waiting.filter((p) => p !== upNext && !!p.calledAt)
-  // Walk-ins and paused lines have no running clock (see expireMissedCalls)
-  const upNextDeadline =
-    upNext?.calledAt && responseWindowMinutes && !upNext.user.isWalkIn && isActive
-      ? callDeadline(upNext.calledAt, responseWindowMinutes, upNext.respondedAt, upNext.graceMinutes)
-      : null
-  const upNextLeft = timeLeft(upNextDeadline, clock)
-  const hasDeadline = !!upNextDeadline
-  useEffect(() => {
-    if (!hasDeadline) return
-    const timer = setInterval(() => setClock(Date.now()), 30_000)
-    return () => clearInterval(timer)
-  }, [hasDeadline])
   // Restaurants seat parties; everyone else serves people
   const servedWord = isRestaurant ? "seated" : "served"
   const markServedLabel = isRestaurant ? "Mark Seated" : "Mark Served"
   // Only restaurant swaps sit on hold until seating; drop swaps settle at once
   const heldPayments = allowResale && isRestaurant
+  // Parties called out of order, or still called behind the one up next
+  const alsoCalled = waiting.slice(1).filter((p) => p.calledAt)
+
+  /** Time left for a called party to show up, as QueueDisplay counts it */
+  function showUpTimeLeft(p: ConsolePosition): string | null {
+    // Walk-ins have no phone to answer, and paused lines hold the timers
+    if (!p.calledAt || !responseWindowMinutes || p.user.isWalkIn || !isActive) return null
+    return timeLeft(callDeadline(p.calledAt, responseWindowMinutes, p.respondedAt, p.graceMinutes), clock)
+  }
 
   const fetchEarnings = useCallback(async () => {
     try {
@@ -163,7 +172,12 @@ export function OwnerConsole({
       // this call someone else
       const { ok, data } = await post("call-next", { positionId: upNext.id })
       if (ok) {
-        addToast(`Called ${data.calledUser} to the front`, "success")
+        addToast(
+          data.isWalkIn
+            ? `${data.calledUser} is a walk-in -- call them out at the stand`
+            : `Called ${data.calledUser} to the front`,
+          "success"
+        )
       } else {
         addToast(data.error || "Failed to call next person", "error")
       }
@@ -202,33 +216,6 @@ export function OwnerConsole({
     }
   }
 
-  /** Seat or serve a party that was called out of order */
-  async function handleServeCalled(p: ConsolePosition) {
-    setBusy(`serve-${p.id}`)
-    try {
-      const { ok, data } = await post("fulfill", { positionId: p.id })
-      if (ok) addToast(`${p.user.name || "Guest"} marked as ${servedWord}`, "success")
-      else addToast(data.error || `Failed to mark as ${servedWord}`, "error")
-    } finally {
-      setBusy(null)
-      onChanged()
-    }
-  }
-
-  /** Running late and the host is happy to wait: more time without re-calling */
-  async function handleGiveMoreTime() {
-    if (!upNext) return
-    setBusy("grace")
-    try {
-      const { ok, data } = await post("grace", { positionId: upNext.id })
-      if (ok) addToast("Gave them 5 more minutes", "success")
-      else addToast(data.error || "Couldn't give more time", "error")
-    } finally {
-      setBusy(null)
-      onChanged()
-    }
-  }
-
   /** The called party never showed: skip them without digging through the list */
   async function handleNoShow() {
     if (!upNext) return
@@ -238,6 +225,38 @@ export function OwnerConsole({
       const { ok, data } = await post("remove-position", { positionId: upNext.id, action: "payout", noShow: true })
       if (ok) addToast(`Marked ${upNext.user.name || "them"} as a no-show`, "success")
       else addToast(data.error || "Couldn't mark as a no-show", "error")
+    } finally {
+      setBusy(null)
+      onChanged()
+    }
+  }
+
+  /** Running late and the host is happy to wait: more time without re-calling */
+  async function handleGiveMoreTime(p: ConsolePosition) {
+    setBusy(`grace-${p.id}`)
+    try {
+      const { ok, data } = await post("grace", { positionId: p.id })
+      if (ok) addToast("Gave them 5 more minutes", "success")
+      else addToast(data.error || "Couldn't give more time", "error")
+    } finally {
+      setBusy(null)
+      onChanged()
+    }
+  }
+
+  /** Seat or no-show a party that was called but isn't first in line */
+  async function handleAlsoCalled(p: ConsolePosition, action: "seat" | "no-show") {
+    const name = p.user.name || "Guest"
+    setBusy(`${action}-${p.id}`)
+    try {
+      const { ok, data } = action === "seat"
+        ? await post("fulfill", { positionId: p.id })
+        : await post("remove-position", { positionId: p.id, action: "payout", noShow: true })
+      if (ok) {
+        addToast(action === "seat" ? `${name} marked as ${servedWord}` : `Marked ${name} as a no-show`, "success")
+      } else {
+        addToast(data.error || (action === "seat" ? `Failed to mark as ${servedWord}` : "Couldn't mark as a no-show"), "error")
+      }
     } finally {
       setBusy(null)
       onChanged()
@@ -410,8 +429,17 @@ export function OwnerConsole({
               {isRestaurant ? "Close for the night?" : "Close the line?"}
             </h3>
             <p className="text-sm text-ink/60 mb-4">
-              This pauses the line so no one new can join, and removes all {positions.length}{" "}
-              {positions.length === 1 ? "person" : "people"} still on it. Everyone still waiting is told they&apos;re no longer in line.
+              This pauses the line so no one new can join, and clears the list
+              {waiting.length > 0 && (
+                <>
+                  , removing the {waiting.length}{" "}
+                  {isRestaurant
+                    ? waiting.length === 1 ? "party" : "parties"
+                    : waiting.length === 1 ? "person" : "people"}{" "}
+                  still waiting
+                </>
+              )}
+              . Everyone still waiting is told they&apos;re no longer in line.
               {" "}Export CSV from the ⋯ menu first if you want a copy of the list.
               {heldPayments && " Choose what happens to swap payments still on hold:"}
             </p>
@@ -510,19 +538,23 @@ export function OwnerConsole({
                   {upNext.response === "ON_MY_WAY" ? "Says they're on the way" : "Says they're running late"}
                 </p>
               )}
-              {isServingUpNext && upNextLeft && (
-                <p className="text-xs text-ink/60">
-                  {upNextLeft} left to show up{" "}
-                  <button
-                    onClick={handleGiveMoreTime}
-                    disabled={!!busy}
-                    aria-label={`Give ${upNext.user.name || "this party"} 5 more minutes`}
-                    className="font-mono uppercase tracking-widest text-accent hover:underline underline-offset-4 disabled:opacity-50"
-                  >
-                    +5 min
-                  </button>
-                </p>
-              )}
+              {(() => {
+                const left = showUpTimeLeft(upNext)
+                if (!left) return null
+                return (
+                  <p className="text-xs text-ink/60">
+                    {left} left to show up{" "}
+                    <button
+                      onClick={() => handleGiveMoreTime(upNext)}
+                      disabled={!!busy}
+                      aria-label={`Give ${upNext.user.name || "this party"} 5 more minutes`}
+                      className="font-mono uppercase tracking-widest text-accent hover:underline underline-offset-4 disabled:opacity-50"
+                    >
+                      +5 min
+                    </button>
+                  </p>
+                )
+              })()}
               {purchaseLimit && (
                 <p className="text-xs text-ink/60">Limit {purchaseLimit} per person</p>
               )}
@@ -589,31 +621,51 @@ export function OwnerConsole({
           </div>
         )}
 
-        {calledOthers.length > 0 && (
-          <div className="mt-3 border-t border-rule pt-3">
-            <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Called</p>
-            <ul className="mt-1 divide-y divide-rule">
-              {calledOthers.map((p) => (
-                <li key={p.id} className="flex items-center justify-between gap-3 py-1.5">
-                  <span className="text-sm text-ink min-w-0 truncate">
-                    <span className="font-mono tabular-nums text-accent mr-2">#{p.position}</span>
-                    {p.user.name || "Anonymous"}
-                    {isRestaurant && <span className="text-ink/60"> · party of {p.partySize ?? 1}</span>}
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleServeCalled(p)}
-                    isLoading={busy === `serve-${p.id}`}
-                    disabled={!!busy || (!!p.lockedUntil && new Date(p.lockedUntil) > new Date())}
-                    aria-label={`${markServedLabel}: ${p.user.name || "Anonymous"}`}
-                  >
-                    {markServedLabel}
-                  </Button>
+        {alsoCalled.length > 0 && (
+          <ul className="mt-3 border-t border-rule pt-3 space-y-2" aria-label="Also called">
+            {alsoCalled.map((p) => {
+              const name = p.user.name || "Anonymous"
+              const left = showUpTimeLeft(p)
+              return (
+                <li key={p.id} className="flex items-center justify-between gap-3 flex-wrap text-sm">
+                  <p className="min-w-0 text-ink/80">
+                    <span className="font-mono text-xs uppercase tracking-widest text-ink/60 mr-2">Also called:</span>
+                    <span className="font-mono tabular-nums text-accent mr-1">#{p.position}</span>
+                    {name}
+                    {isRestaurant && ` (party of ${p.partySize ?? 1})`}
+                    {p.response && (
+                      <span className={p.response === "ON_MY_WAY" ? "text-green-700" : "text-amber-700"}>
+                        {" · "}{p.response === "ON_MY_WAY" ? "on the way" : "running late"}
+                      </span>
+                    )}
+                    {left && <span className="text-ink/60">{" · "}{left} left</span>}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleAlsoCalled(p, "seat")}
+                      isLoading={busy === `seat-${p.id}`}
+                      disabled={!!busy || (!!p.lockedUntil && new Date(p.lockedUntil) > new Date())}
+                      aria-label={`${markServedLabel}: ${name}`}
+                    >
+                      {markServedLabel}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleAlsoCalled(p, "no-show")}
+                      isLoading={busy === `no-show-${p.id}`}
+                      disabled={!!busy}
+                      aria-label={`No-show: ${name}`}
+                    >
+                      No-show
+                    </Button>
+                  </div>
                 </li>
-              ))}
-            </ul>
-          </div>
+              )
+            })}
+          </ul>
         )}
 
         {(isRestaurant && waiting.length > 0) || (pace && (pace.servedLastHour > 0 || pace.medianWaitMinutes !== null)) ? (
@@ -681,6 +733,7 @@ export function OwnerConsole({
           </form>
         ) : (
           <button
+            ref={walkInButtonRef}
             onClick={() => setWalkInOpen(true)}
             className="mt-3 font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"
           >

@@ -104,7 +104,7 @@ export async function POST(
           fulfilledUser.name || "there",
           line.name,
           lineUrl,
-          line.kind === "RESTAURANT"
+          { isRestaurant: line.kind === "RESTAURANT" }
         )
         runAfterResponse(() => sendEmail(fulfilledUser.email!, subject, html))
       }

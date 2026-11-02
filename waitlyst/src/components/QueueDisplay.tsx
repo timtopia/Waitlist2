@@ -66,6 +66,7 @@ const QUOTE_CHOICES = [5, 10, 15, 20, 25, 30, 45, 60, 75, 90, 120]
 
 function formatTimeLeft(iso: string): string {
   const minutes = Math.max(0, (new Date(iso).getTime() - Date.now()) / 60000)
+  if (minutes <= 0) return "0 min"
   if (minutes < 60) return `${Math.max(1, Math.round(minutes))} min`
   return `${Math.round(minutes / 60)} hr`
 }
@@ -138,6 +139,8 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
   // Seating collects held payments and serving emails the person, and
   // neither can be undone, so the host confirms first.
   const [fulfillConfirm, setFulfillConfirm] = useState<{ positionId: string; name: string } | null>(null)
+  // Calling a party again wipes their reply and any extra time they were given
+  const [recallConfirm, setRecallConfirm] = useState<{ positionId: string; message: string } | null>(null)
   const [waitTimeData, setWaitTimeData] = useState<{ estimatedMinutesPerPerson: number | null; basedOn: number } | null>(null)
   const [connectLoading, setConnectLoading] = useState(false)
 
@@ -343,12 +346,12 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
       addToast("Offers must be at least $1.00", "error")
       return
     }
-    if (sentOfferToFront?.status === "PENDING" && amount <= sentOfferToFront.amount) {
-      addToast(`A raise has to be more than your current ${formatCurrency(sentOfferToFront.amount)} offer`, "error")
-      return
-    }
     if (maxAskingPrice != null && amount > maxAskingPrice) {
       addToast(`Amount exceeds max price of ${formatCurrency(maxAskingPrice)}`, "error")
+      return
+    }
+    if (sentOfferToFront?.status === "PENDING" && amount <= sentOfferToFront.amount) {
+      addToast(`Raise above your current ${formatCurrency(sentOfferToFront.amount)}`, "error")
       return
     }
 
@@ -626,7 +629,12 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
       })
       const data = await res.json()
       if (res.ok) {
-        addToast(`Called ${data.calledUser} (party of ${data.partySize})`, "success")
+        addToast(
+          data.isWalkIn
+            ? `${data.calledUser} is a walk-in — call them out at the stand`
+            : `Called ${data.calledUser} (party of ${data.partySize})`,
+          "success"
+        )
         onRefresh()
       } else {
         addToast(data.error || "Failed to call this party", "error")
@@ -960,6 +968,21 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
         onCancel={() => setFulfillConfirm(null)}
       />
 
+      {/* Call-again confirmation */}
+      <ConfirmModal
+        open={!!recallConfirm}
+        title="Call again"
+        message={recallConfirm?.message ?? ""}
+        confirmLabel="Call again"
+        isLoading={!!recallConfirm && loadingAction === `call-${recallConfirm.positionId}`}
+        onConfirm={async () => {
+          if (!recallConfirm) return
+          await handleCall(recallConfirm.positionId)
+          setRecallConfirm(null)
+        }}
+        onCancel={() => setRecallConfirm(null)}
+      />
+
       {/* Leave Confirmation */}
       <ConfirmModal
         open={showLeaveConfirm}
@@ -1024,7 +1047,13 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
       )}
 
       {positions.length === 0 ? (
-        <p className="text-center text-ink/60 py-8">No one in line yet.</p>
+        <p className="text-center text-ink/60 py-8">
+          {isCreator
+            ? "No one in line yet. Share the line's link so people can join."
+            : isPaused
+            ? "No one in line yet."
+            : "No one in line yet — be the first."}
+        </p>
       ) : (
         <div className="space-y-2">
           {/* Select mode toggle for creators */}
@@ -1247,7 +1276,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                         ) : (
                           <p className="text-xs text-ink/60 mt-0.5">
                             Party of {pos.partySize ?? 1}
-                            {isCurrentUser && pos.calledAt && !pos.fulfilled && " · Party size changed? Tell the host at the stand."}
+                            {isCurrentUser && pos.calledAt && !pos.fulfilled && " (ask the host to change)"}
                           </p>
                         )
                       )}
@@ -1316,7 +1345,20 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                       )}
                       {isCreator && isRestaurant && !isCurrentUser && !pos.fulfilled && (
                         <button
-                          onClick={() => handleCall(pos.id)}
+                          onClick={() => {
+                            if (pos.calledAt && (pos.response || pos.graceMinutes)) {
+                              const name = pos.user.name || "this party"
+                              const replyLabel = pos.response === "ON_MY_WAY" ? "On the way" : "Running late"
+                              setRecallConfirm({
+                                positionId: pos.id,
+                                message: pos.response
+                                  ? `Call ${name} again? Their "${replyLabel}" reply and extra time will be cleared.`
+                                  : `Call ${name} again? Their extra time will be cleared.`,
+                              })
+                              return
+                            }
+                            handleCall(pos.id)
+                          }}
                           disabled={loadingAction === `call-${pos.id}`}
                           className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[2.25rem] font-mono text-xs uppercase tracking-widest text-accent border border-rule hover:border-accent transition-colors disabled:opacity-50"
                           title={`Call this party of ${pos.partySize ?? 1}`}
@@ -1361,30 +1403,37 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                       </p>
                       <p className="text-xs text-ink/60 mt-0.5">
                         You&apos;d receive {formatCurrency(offer.amount)} and move back one spot.
+                        {isRestaurant && " You're paid once the buyer is seated."}
                         {offer.expiresAt && ` Expires in ${formatTimeLeft(offer.expiresAt)}.`}
                       </p>
-                      {allowResale && (
+                      {allowResale && !isPaused && !offMarket(pos) && (
                         <p className="text-xs text-ink/60 mt-0.5">
                           Want more? Decline and list your spot at your price. They can buy it right away.
                         </p>
                       )}
-                      <div className="flex items-center gap-2 mt-2">
-                        <Button
-                          size="sm"
-                          onClick={() => handleRespondToOffer(offer, "accept")}
-                          isLoading={loadingAction === `offer-${offer.id}`}
-                        >
-                          Accept
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleRespondToOffer(offer, "decline")}
-                          isLoading={loadingAction === `offer-${offer.id}`}
-                        >
-                          Decline
-                        </Button>
-                      </div>
+                      {isPaused ? (
+                        <p className="text-xs text-ink/60 mt-2">
+                          Swaps are paused. You can answer this when the line resumes.
+                        </p>
+                      ) : allowResale && !offMarket(pos) && (
+                        <div className="flex items-center gap-2 mt-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handleRespondToOffer(offer, "accept")}
+                            isLoading={loadingAction === `offer-${offer.id}`}
+                          >
+                            Accept
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleRespondToOffer(offer, "decline")}
+                            isLoading={loadingAction === `offer-${offer.id}`}
+                          >
+                            Decline
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   )
                 })}
@@ -1522,12 +1571,13 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                         List Your Spot For Sale
                       </button>
                     )}
-                    {isRestaurant && (pos.askingPrice != null || listPriceFormOpen) && (
+                    {/* With an offer pending, the offer card above already says this */}
+                    {isRestaurant && (pos.askingPrice != null || listPriceFormOpen) && !hasIncomingOffer && (
                       <p className="mt-1 text-xs text-ink/60">
                         You&apos;re paid once the buyer is seated. If the host releases their card instead, you aren&apos;t paid.
                       </p>
                     )}
-                    {stripeEnabled && !hasPayoutSetup && (pos.askingPrice != null || listPriceFormOpen) && (
+                    {stripeEnabled && !hasPayoutSetup && (pos.askingPrice != null || listPriceFormOpen || hasIncomingOffer) && (
                       <div className="mt-2 flex items-center justify-between gap-3 bg-accent/5 border border-accent/30 px-3 py-2">
                         <p className="text-xs text-ink/70">
                           You haven&apos;t connected a payout account yet. If your spot sells, we hold your money until you connect one.
@@ -1577,7 +1627,11 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                         </p>
                         <p className="text-xs text-ink/60 mt-0.5">
                           Pay {formatCurrency(buyerTotal(sentOfferToFront.amount))} (incl. fees) to take their spot.{" "}
-                          {pos.lockedUntil ? `Both spots are held for you for ${formatTimeLeft(pos.lockedUntil)} more.` : "Both spots are held for you for up to 30 minutes."}
+                          {!pos.lockedUntil
+                            ? "Both spots are held for you for up to 30 minutes."
+                            : isLocked
+                            ? `Both spots are held for you for ${formatTimeLeft(pos.lockedUntil)} more.`
+                            : "The payment window has closed."}
                         </p>
                         <div className="flex items-center gap-2 mt-2">
                           <Button
@@ -1604,7 +1658,10 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                           {sentOfferToFront.expiresAt && ` (expires in ${formatTimeLeft(sentOfferToFront.expiresAt)})`}
                         </p>
                         <button
-                          onClick={() => setOfferFormOpen(pos.user.id)}
+                          onClick={() => {
+                            setOfferAmount(sentOfferToFront.amount.toFixed(2))
+                            setOfferFormOpen(pos.user.id)
+                          }}
                           className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"
                         >
                           Raise
@@ -1640,7 +1697,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                             min={sentOfferToFront?.status === "PENDING" ? (sentOfferToFront.amount + 0.01).toFixed(2) : "1"}
                             max={maxAskingPrice ?? undefined}
                             step="0.01"
-                            placeholder={sentOfferToFront?.status === "PENDING" ? `More than ${sentOfferToFront.amount.toFixed(2)}` : "0.00"}
+                            placeholder="0.00"
                             aria-label="Your offer"
                             value={offerAmount}
                             onChange={(e) => setOfferAmount(e.target.value)}
@@ -1672,6 +1729,11 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                               : "text-ink/60"
                           }`}>
                             Max: {formatCurrency(maxAskingPrice)}
+                          </span>
+                        )}
+                        {sentOfferToFront?.status === "PENDING" && (
+                          <span className="text-xs font-mono tabular-nums text-ink/60">
+                            Current offer: {formatCurrency(sentOfferToFront.amount)}
                           </span>
                         )}
                         {parseFloat(offerAmount) >= 1 && (

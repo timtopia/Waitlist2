@@ -63,7 +63,8 @@ export type MemberEvent =
   | { kind: "called" }
   | { kind: "next" }
   | { kind: "served" }
-  | { kind: "moved"; from: number; to: number }
+  /** to: their new spot number; ahead: unserved people still in front */
+  | { kind: "moved"; from: number; to: number; ahead: number }
   /** Moved back a place: someone bought their spot */
   | { kind: "sold"; to: number }
   /** wasCalled: they'd been called (most often skipped as a no-show) */
@@ -95,8 +96,10 @@ export function diffMemberStatus(prev: StatusLine, next: StatusLine, userId: str
       // "Call again": the host is calling them a second time
       events.push({ kind: "called" })
     }
-    if (after.position < before.position && after.phase === "waiting") {
-      events.push({ kind: "moved", from: before.position, to: after.position })
+    // Served people stay in the line until cleared, so seating someone ahead
+    // moves you up without changing your spot number: count the people ahead.
+    if ((after.position < before.position || after.ahead < before.ahead) && after.phase === "waiting") {
+      events.push({ kind: "moved", from: before.position, to: after.position, ahead: after.ahead })
     }
     // The only way back is a swap: the person behind bought this spot
     if (after.position > before.position && after.phase !== "served") {
@@ -135,12 +138,15 @@ export function describeMemberEvent(event: MemberEvent, lineName: string, isRest
       return { title: "You're next", body: `You're at the front of ${lineName}. Get ready.`, toast: true, tone: "info" }
     case "served":
       return isRestaurant
-        ? { title: "You've been seated", body: `Enjoy your meal at ${lineName}.`, toast: true, tone: "success" }
+        ? { title: "You've been seated", body: `The host seated you at ${lineName}.`, toast: true, tone: "success" }
         : { title: "You've been served", body: `${lineName} marked you as served.`, toast: true, tone: "success" }
-    case "moved":
+    case "moved": {
       // Every shuffle in a long line would be noise; only alert near the front.
-      if (event.to > MOVED_ALERT_THRESHOLD) return null
-      return { title: `You're #${event.to}`, body: `You moved up in ${lineName}.`, toast: false, tone: "info" }
+      // The place shown counts unserved people, since served ones stay listed.
+      const place = event.ahead + 1
+      if (place > MOVED_ALERT_THRESHOLD) return null
+      return { title: `You're #${place}`, body: `You moved up in ${lineName}.`, toast: false, tone: "info" }
+    }
     case "sold":
       return { title: "Your spot sold", body: `Someone bought your place in ${lineName}. You're now #${event.to}.`, toast: true, tone: "success" }
     case "removed":
@@ -165,5 +171,6 @@ export function memberTabTitle(status: MemberStatus | null, lineName: string, is
   if (!status) return null
   if (status.phase === "called") return `Your turn! · ${lineName}`
   if (status.phase === "served") return `${isRestaurant ? "Seated" : "Served"} · ${lineName}`
-  return `#${status.position} · ${lineName}`
+  // Served people stay listed until cleared, so the spot number overcounts
+  return `#${status.ahead + 1} · ${lineName}`
 }

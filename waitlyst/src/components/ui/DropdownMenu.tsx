@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 export interface DropdownMenuItem {
   label: string
@@ -19,11 +19,22 @@ interface DropdownMenuProps {
 
 export function DropdownMenu({ items, separatorBefore = [], label = "More actions" }: DropdownMenuProps) {
   const [open, setOpen] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+
+  // Closing hands focus back to the "⋮" button, so keyboard users aren't
+  // dropped at the top of the page when the menu unmounts.
+  const close = () => {
+    setOpen(false)
+    triggerRef.current?.focus()
+  }
 
   useEffect(() => {
     if (!open) return
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false)
+      if (event.key === "Escape") {
+        setOpen(false)
+        triggerRef.current?.focus()
+      }
     }
     document.addEventListener("keydown", onKeyDown)
     return () => document.removeEventListener("keydown", onKeyDown)
@@ -32,6 +43,7 @@ export function DropdownMenu({ items, separatorBefore = [], label = "More action
   return (
     <div className="relative">
       <button
+        ref={triggerRef}
         onClick={(e) => {
           e.preventDefault()
           setOpen(!open)
@@ -61,8 +73,9 @@ export function DropdownMenu({ items, separatorBefore = [], label = "More action
                 <button
                   role="menuitem"
                   onClick={() => {
+                    // Close first, so an item that opens a dialog keeps focus
+                    close()
                     item.onClick()
-                    setOpen(false)
                   }}
                   disabled={item.disabled}
                   className={`w-full text-left px-4 py-2 text-sm disabled:opacity-50 ${

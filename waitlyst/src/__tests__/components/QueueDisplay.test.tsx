@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react"
 import { QueueDisplay } from "@/components/QueueDisplay"
 import { useSession } from "next-auth/react"
+import { useToast } from "@/components/ui/Toast"
 
 // Mock fetch
 global.fetch = vi.fn()
@@ -67,6 +68,21 @@ describe("QueueDisplay", () => {
       />
     )
 
+    expect(screen.getByText("No one in line yet — be the first.")).toBeInTheDocument()
+  })
+
+  it("gives the owner and paused lines their own empty-state copy", () => {
+    ;(useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      data: { user: { id: "creator-1" } },
+      status: "authenticated",
+    })
+
+    const { rerender } = render(
+      <QueueDisplay lineId="line-1" positions={[]} onRefresh={mockOnRefresh} isCreator={true} />
+    )
+    expect(screen.getByText(/Share the line's link/)).toBeInTheDocument()
+
+    rerender(<QueueDisplay lineId="line-1" positions={[]} onRefresh={mockOnRefresh} isPaused={true} />)
     expect(screen.getByText("No one in line yet.")).toBeInTheDocument()
   })
 
@@ -925,6 +941,127 @@ describe("QueueDisplay", () => {
       await waitFor(() => {
         expect(screen.queryByText(/Remove Alice/)).not.toBeInTheDocument()
       })
+    })
+  })
+
+  describe("Experience pass", () => {
+    const asUser = (id: string) =>
+      (useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+        data: { user: { id } },
+        status: "authenticated",
+      })
+    const pendingOffer = (amount = 15) => ({
+      id: "offer-1", lineId: "line-1", fromUserId: "user-2", toUserId: "user-1",
+      amount, status: "PENDING", createdAt: new Date().toISOString(),
+    })
+    const withToast = () => {
+      const addToast = vi.fn()
+      ;(useToast as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ addToast })
+      return addToast
+    }
+
+    it("tells the host to call a walk-in out at the stand", async () => {
+      asUser("creator-1")
+      const addToast = withToast()
+      ;(fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+        if (url.includes("/call-next")) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ calledUser: "Alice", partySize: 2, isWalkIn: true }),
+          })
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ sent: [], received: [] }) })
+      })
+
+      render(<QueueDisplay lineId="line-1" positions={mockPositions} onRefresh={mockOnRefresh} isCreator={true} isRestaurant={true} />)
+      fireEvent.click(screen.getAllByText("Call")[0])
+
+      await waitFor(() => {
+        expect(addToast).toHaveBeenCalledWith("Alice is a walk-in — call them out at the stand", "success")
+      })
+    })
+
+    it("confirms before re-calling a party that already replied", async () => {
+      asUser("creator-1")
+      const positions = mockPositions.map((p) =>
+        p.id === "pos-1" ? { ...p, calledAt: new Date().toISOString(), response: "RUNNING_LATE" as const, graceMinutes: 5 } : p
+      )
+      render(<QueueDisplay lineId="line-1" positions={positions} onRefresh={mockOnRefresh} isCreator={true} isRestaurant={true} />)
+
+      fireEvent.click(screen.getAllByRole("button", { name: "Call again" })[0])
+      expect(screen.getByText(`Call Alice again? Their "Running late" reply and extra time will be cleared.`)).toBeInTheDocument()
+      expect(fetch).not.toHaveBeenCalledWith("/api/lines/line-1/call-next", expect.anything())
+    })
+
+    it("tells a called guest to ask the host to change their party size", () => {
+      asUser("user-1")
+      const positions = mockPositions.map((p) =>
+        p.id === "pos-1" ? { ...p, calledAt: new Date().toISOString(), partySize: 3 } : p
+      )
+      render(<QueueDisplay lineId="line-1" positions={positions} onRefresh={mockOnRefresh} isRestaurant={true} />)
+
+      expect(screen.getByText(/Party of 3\s*\(ask the host to change\)/)).toBeInTheDocument()
+    })
+
+    it("holds an incoming offer while swaps are paused", async () => {
+      asUser("user-1")
+      mockOffers([], [pendingOffer()])
+      render(<QueueDisplay lineId="line-1" positions={mockPositions} onRefresh={mockOnRefresh} isPaused={true} />)
+
+      expect(await screen.findByText("Swaps are paused. You can answer this when the line resumes.")).toBeInTheDocument()
+      expect(screen.queryByText("Accept")).not.toBeInTheDocument()
+    })
+
+    it("hides Accept once the seller has been called", async () => {
+      asUser("user-1")
+      mockOffers([], [pendingOffer()])
+      const positions = mockPositions.map((p) => (p.id === "pos-1" ? { ...p, calledAt: new Date().toISOString() } : p))
+      render(<QueueDisplay lineId="line-1" positions={positions} onRefresh={mockOnRefresh} />)
+
+      await screen.findByText(/Swap offer: \$15\.00/)
+      expect(screen.queryByText("Accept")).not.toBeInTheDocument()
+    })
+
+    it("warns about payouts and seated payment on an incoming offer", async () => {
+      asUser("user-2")
+      mockOffers([], [{ ...pendingOffer(), fromUserId: "user-3", toUserId: "user-2" }])
+      render(
+        <QueueDisplay lineId="line-1" positions={mockPositions} onRefresh={mockOnRefresh} isRestaurant={true} stripeEnabled={true} hasPayoutSetup={false} />
+      )
+
+      expect(await screen.findByText(/You're paid once the buyer is seated\./)).toBeInTheDocument()
+      expect(screen.getByText(/haven't connected a payout account/)).toBeInTheDocument()
+    })
+
+    it("says the payment window closed instead of '1 min' once it has", async () => {
+      asUser("user-2")
+      mockOffers([{
+        id: "offer-1", lineId: "line-1", fromUserId: "user-2", toUserId: "user-1",
+        amount: 20, status: "ACCEPTED", createdAt: new Date().toISOString(), awaitingPayment: true,
+      }])
+      const expired = new Date(Date.now() - 60_000).toISOString()
+      const positions = mockPositions.map((p) => (p.id === "pos-1" ? { ...p, lockedUntil: expired } : p))
+      render(<QueueDisplay lineId="line-1" positions={positions} onRefresh={mockOnRefresh} />)
+
+      expect(await screen.findByText(/The payment window has closed\./)).toBeInTheDocument()
+      expect(screen.queryByText(/held for you for/)).not.toBeInTheDocument()
+    })
+
+    it("prefills a raise and rejects one that isn't higher", async () => {
+      asUser("user-2")
+      const addToast = withToast()
+      mockOffers([pendingOffer(20)].map((o) => ({ ...o, fromUserId: "user-2", toUserId: "user-1" })))
+      render(<QueueDisplay lineId="line-1" positions={mockPositions} onRefresh={mockOnRefresh} />)
+
+      fireEvent.click(await screen.findByText("Raise"))
+      const input = screen.getByPlaceholderText("0.00") as HTMLInputElement
+      expect(input.value).toBe("20.00")
+      expect(input.min).toBe("20.01")
+      expect(screen.getByText("Current offer: $20.00")).toBeInTheDocument()
+
+      fireEvent.click(screen.getByText("Raise Offer"))
+      expect(addToast).toHaveBeenCalledWith("Raise above your current $20.00", "error")
+      expect(fetch).not.toHaveBeenCalledWith("/api/lines/line-1/offer", expect.objectContaining({ method: "POST" }))
     })
   })
 })

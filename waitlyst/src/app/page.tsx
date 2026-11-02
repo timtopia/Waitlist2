@@ -91,10 +91,10 @@ export default async function HomePage() {
                   Browse open lines
                 </Link>
                 <Link
-                  href="#how-it-works"
+                  href="/lines/new"
                   className="inline-flex items-center justify-center px-8 py-3.5 border border-ink font-medium hover:bg-ink hover:text-paper transition-colors"
                 >
-                  How it works
+                  Start a line
                 </Link>
               </>
             )}
@@ -183,7 +183,7 @@ export default async function HomePage() {
                 Take a number.
               </h2>
               <p className="mt-2 text-paper/60">
-                Sign in with Google to start your first line or join one.
+                Start your own line in about a minute. Joining one? Just open the link you were given.
               </p>
             </div>
             <Link

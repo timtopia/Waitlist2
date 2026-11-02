@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
+import { buyerTotal } from "@/lib/fees"
 
 function escapeCsvField(value: string): string {
   // Spreadsheets run a cell starting with = + - @ (or a tab/CR) as a formula,
@@ -13,7 +14,76 @@ function escapeCsvField(value: string): string {
   return value
 }
 
-// Export line positions as CSV (owner only)
+function money(value: number): string {
+  return `$${value.toFixed(2)}`
+}
+
+function safeFileName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+}
+
+function swapStatus(txn: { status: string; holdExpiredAt: Date | null; capturedAt: Date | null; settledAt: Date | null }): string {
+  if (txn.holdExpiredAt) return "Hold expired"
+  switch (txn.status) {
+    case "PENDING": return "Awaiting payment"
+    case "FAILED": return "Failed"
+    case "REFUNDED": return "Refunded"
+    default:
+      if (txn.capturedAt) return "Collected"
+      return txn.settledAt ? "Released" : "Held"
+  }
+}
+
+/** Every swap on the line, for the owner's own bookkeeping */
+async function exportSwaps(lineId: string, lineName: string): Promise<Response> {
+  const transactions = await prisma.transaction.findMany({
+    where: { lineId },
+    orderBy: { createdAt: "asc" },
+  })
+
+  const userIds = new Set<string>()
+  for (const txn of transactions) {
+    userIds.add(txn.buyerId)
+    userIds.add(txn.sellerId)
+  }
+  const users = await prisma.user.findMany({
+    where: { id: { in: Array.from(userIds) } },
+    select: { id: true, name: true },
+  })
+  const nameOf = new Map(users.map((u) => [u.id, u.name || "Anonymous"]))
+
+  const headers = [
+    "Date", "Buyer", "Seller", "Amount", "Your Fee", "Platform Fee",
+    "Buyer Paid", "Status", "Collected At", "Fee Paid Out",
+  ]
+  const rows = transactions.map((txn) => [
+    txn.createdAt.toISOString(),
+    escapeCsvField(nameOf.get(txn.buyerId) || "Anonymous"),
+    escapeCsvField(nameOf.get(txn.sellerId) || "Anonymous"),
+    money(txn.amount),
+    money(txn.ownerFee),
+    money(txn.platformFee),
+    money(buyerTotal(txn)),
+    swapStatus(txn),
+    txn.capturedAt ? txn.capturedAt.toISOString() : "",
+    txn.ownerPaidAt ? txn.ownerPaidAt.toISOString() : "",
+  ].join(","))
+
+  const csv = [headers.join(","), ...rows].join("\n")
+  return new Response(csv, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/csv",
+      "Content-Disposition": `attachment; filename="${safeFileName(lineName)}-swaps.csv"`,
+    },
+  })
+}
+
+// Export line positions as CSV (owner only). ?type=swaps exports the line's
+// swap transactions instead.
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ lineId: string }> }
@@ -24,6 +94,10 @@ export async function GET(
   if (result instanceof NextResponse) return result
 
   try {
+    if (new URL(req.url).searchParams.get("type") === "swaps") {
+      return await exportSwaps(lineId, result.line.name)
+    }
+
     // Fetch all positions with user info, ordered by position
     const positions = await prisma.linePosition.findMany({
       where: { lineId },
@@ -98,10 +172,7 @@ export async function GET(
     const csv = [headers.join(","), ...rows, ...pastRows].join("\n")
 
     // Sanitize line name for filename
-    const safeName = result.line.name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "")
+    const safeName = safeFileName(result.line.name)
 
     return new Response(csv, {
       status: 200,
