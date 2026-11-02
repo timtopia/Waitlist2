@@ -1,3 +1,5 @@
+import { OFFER_TTL_MS } from "./offers"
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -33,7 +35,7 @@ function wrapTemplate(title: string, body: string, ctaText: string, ctaUrl: stri
               <table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0;">
                 <tr>
                   <td style="border-radius:6px;background-color:#2563eb;">
-                    <a href="${ctaUrl}" style="display:inline-block;padding:12px 24px;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;">${ctaText}</a>
+                    <a href="${escapeHtml(ctaUrl)}" style="display:inline-block;padding:12px 24px;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;">${ctaText}</a>
                   </td>
                 </tr>
               </table>
@@ -68,7 +70,11 @@ export function positionCalledEmail(
 ): { subject: string; html: string } {
   const safeName = escapeHtml(userName)
   const safeLine = escapeHtml(lineName)
-  const subject = `You're up! You've been called in ${lineName}`
+  // The subject is often all that shows on a lock screen, so it carries the
+  // what and the deadline on its own
+  const subject = `${opts.isRestaurant ? `Your table is ready at ${lineName}` : `You're up in ${lineName}`}${
+    opts.windowMinutes ? ` -- arrive within ${opts.windowMinutes} min` : ""
+  }`
   const deadline = opts.windowMinutes
     ? `You have ${opts.windowMinutes} min to get there, or your place goes to the next ${opts.isRestaurant ? "party" : "person"}. Open the line and tap "On my way" if you need a little more time.`
     : "Please come forward as soon as possible so you don't lose your spot."
@@ -138,25 +144,39 @@ export function swapOfferEmail(
   const body = `
     <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">New swap offer, ${safeName}!</h2>
     <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">Someone offered <strong>${formattedAmount}</strong> to swap positions with you in <strong>${safeLine}</strong>.</p>
-    <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Review the offer and accept or decline it before it expires.</p>
+    <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Accept or decline it within ${OFFER_TTL_MS / 3_600_000} hours -- after that it expires and nothing changes. It also lapses if either of you is called first.</p>
   `
   return { subject, html: wrapTemplate(subject, body, "View Offer", lineUrl) }
+}
+
+export interface SwapAcceptedOptions {
+  /** The offerer still has to pay; minutes before the accepted swap lapses */
+  payWithinMinutes?: number
+  /** What the offerer will be charged, fees included */
+  amount?: number
 }
 
 export function swapAcceptedEmail(
   userName: string,
   lineName: string,
-  lineUrl: string
+  lineUrl: string,
+  opts: SwapAcceptedOptions = {}
 ): { subject: string; html: string } {
   const safeName = escapeHtml(userName)
   const safeLine = escapeHtml(lineName)
-  const subject = `Your swap offer was accepted in ${lineName}`
+  const mustPay = !!opts.payWithinMinutes
+  const formattedAmount = opts.amount?.toLocaleString("en-US", { style: "currency", currency: "USD" })
+  const subject = mustPay
+    ? `Offer accepted in ${lineName} -- pay within ${opts.payWithinMinutes} min to swap`
+    : `Your swap offer was accepted in ${lineName}`
   const body = `
     <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">Offer accepted, ${safeName}!</h2>
     <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">Your swap offer in <strong>${safeLine}</strong> has been accepted.</p>
-    <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Head over to the line to complete the swap.</p>
+    <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">${mustPay
+      ? `Open the line and pay${formattedAmount ? ` <strong>${formattedAmount}</strong>` : ""} within <strong>${opts.payWithinMinutes} minutes</strong> to take their place. If you don't, the swap is called off, you keep your current spot, and you aren't charged.`
+      : "You've traded places with them -- open the line to see your new position."}</p>
   `
-  return { subject, html: wrapTemplate(subject, body, "Go to Line", lineUrl) }
+  return { subject, html: wrapTemplate(subject, body, mustPay ? "Pay and Swap" : "Go to Line", lineUrl) }
 }
 
 export function lineOpeningEmail(

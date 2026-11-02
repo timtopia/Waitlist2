@@ -370,7 +370,8 @@ describe("QueueDisplay", () => {
     })
     mockOffers([{
       id: "offer-1", lineId: "line-1", fromUserId: "user-2", toUserId: "user-1",
-      amount: 5, status: "DECLINED", createdAt: new Date().toISOString(),
+      // Declined long enough ago that the resend cooldown is over
+      amount: 5, status: "DECLINED", createdAt: new Date(Date.now() - 11 * 60_000).toISOString(),
     }])
 
     render(<QueueDisplay lineId="line-1" positions={mockPositions} onRefresh={mockOnRefresh} />)
@@ -378,6 +379,22 @@ describe("QueueDisplay", () => {
     const button = await screen.findByText("Make a New Offer")
     fireEvent.click(button)
     expect(screen.getByText("Send Offer")).toBeInTheDocument()
+  })
+
+  it("tells the buyer when they can offer again right after a decline", async () => {
+    ;(useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      data: { user: { id: "user-2" } },
+      status: "authenticated",
+    })
+    mockOffers([{
+      id: "offer-1", lineId: "line-1", fromUserId: "user-2", toUserId: "user-1",
+      amount: 5, status: "DECLINED", createdAt: new Date().toISOString(),
+    }])
+
+    render(<QueueDisplay lineId="line-1" positions={mockPositions} onRefresh={mockOnRefresh} />)
+
+    expect(await screen.findByText(/You can make a new one in 10 min/)).toBeInTheDocument()
+    expect(screen.queryByText("Make a New Offer")).not.toBeInTheDocument()
   })
 
   it("shows the seller that an accepted offer is waiting on the buyer's payment", async () => {

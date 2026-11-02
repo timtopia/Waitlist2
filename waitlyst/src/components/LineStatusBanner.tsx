@@ -146,7 +146,10 @@ export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount,
         <div className="border border-rule border-l-2 border-l-accent bg-white px-4 py-3">
           <p className="font-mono text-xs uppercase tracking-widest text-accent">Line is Full</p>
           <p className="text-sm text-ink/60 mt-1">
-            {maxCapacity === null ? `All ${capacityUnit(kind, 2)} have been taken.` : `All ${maxCapacity} ${capacityUnit(kind, maxCapacity)} have been taken.`}
+            {kind === "RESTAURANT"
+              // "All 40 guests have been taken" read oddly; tell them what to do
+              ? "The waitlist is full right now. Places open up as parties are seated, so check back soon or ask the host."
+              : maxCapacity === null ? `All ${capacityUnit(kind, 2)} have been taken.` : `All ${maxCapacity} ${capacityUnit(kind, maxCapacity)} have been taken.`}
           </p>
         </div>
       )}

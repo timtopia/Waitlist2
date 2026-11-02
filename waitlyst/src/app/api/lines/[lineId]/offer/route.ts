@@ -5,15 +5,11 @@ import { prisma } from "@/lib/prisma"
 import { rateLimit } from "@/lib/rate-limit"
 import { sendEmail } from "@/lib/email"
 import { swapOfferEmail } from "@/lib/email-templates"
-import { MIN_OFFER_AMOUNT, isOfferExpired, newOfferExpiry } from "@/lib/offers"
+import { MIN_OFFER_AMOUNT, OFFER_COOLDOWN_MS, isOfferExpired, newOfferExpiry } from "@/lib/offers"
 import { tradeBlocker, MAX_ABANDONED_CHECKOUTS, ABANDON_WINDOW_MS } from "@/lib/trading"
 import { getBaseUrl } from "@/lib/stripe"
 import { formatCurrency } from "@/lib/format"
 
-// Between one declined or withdrawn offer and the next to the same person,
-// and between raise emails. Measured from createdAt, which restarts on every
-// send, raise, decline and withdrawal.
-const OFFER_COOLDOWN_MS = 10 * 60 * 1000
 const offerLimiter = rateLimit({ interval: 60_000, limit: 10 })
 
 export async function POST(
@@ -32,7 +28,7 @@ export async function POST(
   }
 
   const { lineId } = await params
-  const body = await req.json()
+  const body = await req.json().catch(() => ({}))
   const toUserId = body?.toUserId
   // Stored to the cent, so every place that shows or charges it agrees
   const amount = typeof body?.amount === "number" ? Math.round(body.amount * 100) / 100 : body?.amount

@@ -215,15 +215,23 @@ export function MemberStatusCard({
 
         {phase === "called" && (
           <div className="mt-4 space-y-2">
-            {left && (
+            {left ? (
               <p className="text-sm font-medium text-accent">
-                Show up within {left}, or your place goes to the next person.
+                Show up within {left}, or your place goes to the next {isRestaurant ? "party" : "person"}.
+              </p>
+            ) : deadline && (
+              // The countdown used to just vanish at zero, leaving a late
+              // guest unsure whether they still had a place
+              <p className="text-sm font-medium text-accent">
+                {isRestaurant
+                  ? "Your time to show up has run out. Go to the host stand now and tell them you're here; you may be skipped at any moment."
+                  : "Your time to show up has run out. Go now; you may be skipped at any moment."}
               </p>
             )}
             {purchaseLimit && (
               <p className="text-sm text-ink/70">Limit: {purchaseLimit} per person.</p>
             )}
-            {onRespond && (
+            {onRespond && (left || !deadline) && (
               <div className="flex flex-wrap items-center gap-2">
                 {(["ON_MY_WAY", "RUNNING_LATE"] as const).map((r) => (
                   <Button

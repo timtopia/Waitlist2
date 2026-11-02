@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, fireEvent, waitFor } from "@testing-library/react"
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react"
 import { OwnerConsole } from "@/components/OwnerConsole"
 
 vi.mock("next/link", () => ({
@@ -196,6 +196,10 @@ describe("OwnerConsole", () => {
     )
     await waitFor(() => expect(screen.getByRole("button", { name: "No-show: Dana" })).not.toBeDisabled())
     fireEvent.click(screen.getByRole("button", { name: "No-show: Dana" }))
+    // Destructive, so it asks first -- and names who, with their party size
+    expect(screen.getByText(/Remove Dana \(party of 4\) from the line as a no-show/)).toBeInTheDocument()
+    expect(fetchMock.mock.calls.map((c) => c[0])).not.toContain("/api/lines/line-1/remove-position")
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "No-show" }))
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/lines/line-1/remove-position",
@@ -230,5 +234,17 @@ describe("OwnerConsole", () => {
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith("/api/lines/line-1/pause", expect.objectContaining({ method: "POST" }))
     )
+  })
+
+  it("shows the up-next party's size, wait and note so the host can match a table", () => {
+    const joinedAt = new Date(Date.now() - 12 * 60_000).toISOString()
+    render(
+      <OwnerConsole
+        {...baseProps}
+        isRestaurant
+        positions={[{ ...pos("p1", 1, "Bob"), partySize: 5, joinedAt, note: "high chair" }]}
+      />
+    )
+    expect(screen.getByText("Party of 5 · waiting 12 min · high chair")).toBeInTheDocument()
   })
 })

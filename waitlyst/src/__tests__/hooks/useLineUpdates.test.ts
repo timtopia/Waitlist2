@@ -98,6 +98,15 @@ describe("useLineUpdates", () => {
     expect(result.current.stale).toBe(false)
   })
 
+  it("reports stale while rate limited", async () => {
+    respondWith('{"v":1}')
+    const { result } = renderHook(() => useLineUpdates("line-1", vi.fn(), { intervalMs: 1000 }))
+    await advance(2000)
+    fetchMock.mockResolvedValue({ ok: false, status: 429, headers: new Headers() })
+    await act(() => advance(1000))
+    expect(result.current.stale).toBe(true)
+  })
+
   it("doesn't start a poll while one is still in flight", async () => {
     let resolve: (value: unknown) => void = () => {}
     fetchMock.mockReturnValue(new Promise((r) => { resolve = r }))

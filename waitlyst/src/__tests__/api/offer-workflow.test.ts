@@ -268,6 +268,14 @@ describe("PATCH /api/lines/[lineId]/offer/[offerId] decline", () => {
     })
   })
 
+  it("refuses to answer if the buyer raised after the seller's screen loaded", async () => {
+    setupDecline()
+    const { PATCH } = await import("@/app/api/lines/[lineId]/offer/[offerId]/route")
+    const res = await PATCH(new Request("http://localhost/x", { method: "PATCH", body: JSON.stringify({ action: "decline", expectedAmount: 8 }) }), ctx())
+    expect(res.status).toBe(409)
+    expect(mockPrisma.swapOffer.updateMany).not.toHaveBeenCalled()
+  })
+
   it("refuses if the offer was raised or withdrawn mid-decline", async () => {
     setupDecline()
     mockPrisma.swapOffer.updateMany.mockResolvedValueOnce({ count: 0 })
@@ -387,11 +395,31 @@ describe("DELETE /api/lines/[lineId]/offer/[offerId] (withdraw)", () => {
     const res = await withdraw()
     expect(res.status).toBe(200)
     // Kept as WITHDRAWN so the person in front can see it was taken back
-    expect(mockPrisma.swapOffer.update).toHaveBeenCalledWith({
-      where: { id: "offer-1" },
+    expect(mockPrisma.swapOffer.updateMany).toHaveBeenCalledWith({
+      where: { id: "offer-1", status: "PENDING" },
       data: { status: "WITHDRAWN", transactionId: null, createdAt: expect.any(Date) },
     })
     expect(mockPrisma.swapOffer.delete).not.toHaveBeenCalled()
+  })
+
+  it("refuses if the person in front accepted mid-withdraw, so their checkout isn't orphaned", async () => {
+    const me = freshUser("ben")
+    mockAuth.mockResolvedValue({ user: { id: me } })
+    mockPrisma.swapOffer.findUnique.mockResolvedValue({ id: "offer-1", lineId: "line-1", fromUserId: me, toUserId: "sam", status: "PENDING" })
+    mockPrisma.swapOffer.updateMany.mockResolvedValueOnce({ count: 0 })
+    const res = await withdraw()
+    expect(res.status).toBe(409)
+  })
+
+  it("won't mark a back-out withdrawn if the payment completed meanwhile", async () => {
+    const me = freshUser("ben")
+    mockAuth.mockResolvedValue({ user: { id: me } })
+    mockPrisma.swapOffer.findUnique.mockResolvedValue({ id: "offer-1", lineId: "line-1", fromUserId: me, toUserId: "sam", status: "ACCEPTED", transactionId: "txn-pending" })
+    mockPrisma.transaction.findFirst.mockResolvedValue({ id: "txn-pending" })
+    stripeMocks.abandonPendingTransaction.mockResolvedValueOnce(false)
+    const res = await withdraw()
+    expect(res.status).toBe(409)
+    expect(mockPrisma.swapOffer.updateMany).not.toHaveBeenCalled()
   })
 
   it("backing out of an accepted-but-unpaid offer abandons the checkout and frees both spots", async () => {

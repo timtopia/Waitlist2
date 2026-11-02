@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useDialog } from "@/lib/use-dialog"
 import { useRouter } from "next/navigation"
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { Card, CardContent, CardHeader } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
@@ -200,22 +200,28 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
   const [activities, setActivities] = useState<Activity[]>([])
   const [activitiesLoading, setActivitiesLoading] = useState(true)
 
-  useEffect(() => {
-    async function fetchActivities() {
-      try {
-        const res = await fetch("/api/activity")
-        if (res.ok) {
-          const data = await res.json()
-          if (Array.isArray(data)) {
-            setActivities(data)
-          }
+  // Refetched with the dashboard poll below: router.refresh() doesn't re-run
+  // this client fetch, so a sale or refund that lands while the tab sits open
+  // (or in the background) would otherwise never show up
+  const fetchActivities = useCallback(async () => {
+    try {
+      const res = await fetch("/api/activity", { cache: "no-store" })
+      if (res.ok) {
+        const data = await res.json()
+        if (Array.isArray(data)) {
+          setActivities(data)
         }
-      } finally {
-        setActivitiesLoading(false)
       }
+    } catch {
+      // Offline: keep showing the last feed
+    } finally {
+      setActivitiesLoading(false)
     }
-    fetchActivities()
   }, [])
+
+  useEffect(() => {
+    fetchActivities()
+  }, [fetchActivities])
 
   // Poll for dashboard updates — only when tab is visible, every 60 seconds
   useEffect(() => {
@@ -224,7 +230,10 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
     function start() {
       if (!interval) {
         interval = setInterval(() => {
-          if (document.visibilityState === "visible") router.refresh()
+          if (document.visibilityState === "visible") {
+            router.refresh()
+            fetchActivities()
+          }
         }, 60000)
       }
     }
@@ -236,6 +245,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
     function onVisibility() {
       if (document.visibilityState === "visible") {
         router.refresh() // Immediate refresh when tab comes back
+        fetchActivities()
         start()
       } else {
         stop()
@@ -249,7 +259,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
       document.removeEventListener("visibilitychange", onVisibility)
       stop()
     }
-  }, [router])
+  }, [router, fetchActivities])
 
   // Sync lines state when server data changes
   useEffect(() => {
@@ -452,7 +462,9 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                   Welcome to Waitlyst!
                 </h2>
                 <p className="text-ink/60 mb-4">
-                  Get started by creating your first line or browsing existing ones.
+                  Lines you join and lines you run both show up here. To join one,
+                  open the link or QR code you were given, or browse public lines.
+                  To run one for your restaurant, shop, or drop, create a line.
                 </p>
                 <div className="flex gap-3">
                   <Link href="/lines/new">
@@ -477,7 +489,8 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
         </Card>
       )}
 
-      {/* Search Bar */}
+      {/* Search Bar: nothing to search until there's a line or a spot */}
+      {(lines.length > 0 || positions.length > 0) && (
       <div className="relative mb-6">
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
           <svg className="h-4 w-4 text-ink/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -488,6 +501,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
           ref={searchInputRef}
           type="text"
           placeholder="Search lines by name..."
+          aria-label="Search your lines"
           value={searchText}
           onChange={(e) => setSearchText(e.target.value)}
           className="pl-9 pr-9"
@@ -499,6 +513,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
               searchInputRef.current?.focus()
             }}
             className="absolute inset-y-0 right-0 pr-3 flex items-center text-ink/60 hover:text-ink"
+            aria-label="Clear search"
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -506,6 +521,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
           </button>
         )}
       </div>
+      )}
 
       {/* Stats Modal */}
       {statsModal && (

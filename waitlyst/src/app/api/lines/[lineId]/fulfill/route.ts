@@ -125,7 +125,7 @@ export async function POST(
     }
     if (message === "Position already fulfilled") {
       return NextResponse.json(
-        { error: "This position has already been fulfilled" },
+        { error: "Already marked as seated or served -- someone may have just done it" },
         { status: 400 }
       )
     }

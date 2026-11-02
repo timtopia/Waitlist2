@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { useSession } from "next-auth/react"
 import { formatCurrency } from "@/lib/format"
 import { calcFees } from "@/lib/fees"
+import { OFFER_COOLDOWN_MS } from "@/lib/offers"
 import { formatWaitTime } from "@/lib/wait-time"
 import { MAX_PARTY_SIZE } from "@/lib/capacity"
 
@@ -63,6 +64,8 @@ interface BuyConfirm {
 
 /** Waits a host typically quotes at the stand, in minutes */
 const QUOTE_CHOICES = [5, 10, 15, 20, 25, 30, 45, 60, 75, 90, 120]
+
+const NO_CONNECTION = "No connection. That wasn't sent -- try again when you have signal."
 
 function formatTimeLeft(iso: string): string {
   const minutes = Math.max(0, (new Date(iso).getTime() - Date.now()) / 60000)
@@ -141,6 +144,9 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
   const [fulfillConfirm, setFulfillConfirm] = useState<{ positionId: string; name: string } | null>(null)
   // Calling a party again wipes their reply and any extra time they were given
   const [recallConfirm, setRecallConfirm] = useState<{ positionId: string; message: string } | null>(null)
+  // Withdrawing starts a cooldown, and backing out of an accepted offer
+  // counts toward the walk-away limit, so the buyer confirms first.
+  const [withdrawConfirm, setWithdrawConfirm] = useState<{ offerId: string; accepted: boolean } | null>(null)
   const [waitTimeData, setWaitTimeData] = useState<{ estimatedMinutesPerPerson: number | null; basedOn: number } | null>(null)
   const [connectLoading, setConnectLoading] = useState(false)
 
@@ -378,7 +384,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
 
   async function handleRespondToOffer(offer: SwapOffer, action: "accept" | "decline") {
     const offerId = offer.id
-    setLoadingAction(`offer-${offerId}`)
+    setLoadingAction(`offer-${offerId}-${action}`)
     try {
       // The amount they saw, so a raise landing just before the click is
       // rejected rather than accepted or declined sight unseen.
@@ -403,7 +409,8 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
         onRefresh()
       } else {
         addToast(data.error || "Failed to respond to offer", "error")
-        if (res.status === 409) fetchOffers()
+        // Raised, withdrawn, expired or already answered: show what it is now
+        fetchOffers()
       }
     } finally {
       setLoadingAction(null)
@@ -457,6 +464,8 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
         onRefresh()
       } else {
         addToast(data.error || "Failed to withdraw offer", "error")
+        // They may have just answered it
+        fetchOffers()
       }
     } finally {
       setLoadingAction(null)
@@ -550,6 +559,10 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
         addToast(data.error || "Couldn't leave the line. Please try again.", "error")
         onRefresh()
       }
+    } catch {
+      // A dropped connection used to fail silently, leaving them unsure
+      // whether they were still holding a table
+      addToast(NO_CONNECTION, "error")
     } finally {
       setLoadingAction(null)
     }
@@ -657,9 +670,11 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
         addToast(`Updated to a party of ${partySize}`, "success")
         onRefresh()
       } else {
-        const data = await res.json()
+        const data = await res.json().catch(() => ({}))
         addToast(data.error || "Failed to update your party size", "error")
       }
+    } catch {
+      addToast(NO_CONNECTION, "error")
     } finally {
       setLoadingAction(null)
     }
@@ -677,9 +692,11 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
         addToast(note.trim() ? "Note saved" : "Note removed", "success")
         onRefresh()
       } else {
-        const data = await res.json()
+        const data = await res.json().catch(() => ({}))
         addToast(data.error || "Failed to save the note", "error")
       }
+    } catch {
+      addToast(NO_CONNECTION, "error")
     } finally {
       setLoadingAction(null)
     }
@@ -728,7 +745,9 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
         onRefresh()
       } else {
         const data = await res.json()
-        addToast(data.error || "Failed to fulfill", "error")
+        addToast(data.error || `Failed to mark as ${isRestaurant ? "seated" : "served"}`, "error")
+        // Another host device may have just seated them: show the real state
+        onRefresh()
       }
     } finally {
       setLoadingAction(null)
@@ -983,15 +1002,39 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
         onCancel={() => setRecallConfirm(null)}
       />
 
+      {/* Withdraw / back-out confirmation */}
+      <ConfirmModal
+        open={!!withdrawConfirm}
+        title={withdrawConfirm?.accepted ? "Back out of this swap?" : "Withdraw your offer?"}
+        message={withdrawConfirm?.accepted
+          ? "They already accepted, so backing out releases both spots and counts as a cancelled payment -- several of those and you can't buy or make offers here for a while. You won't be charged."
+          : `You won't be able to send them another offer for ${Math.round(OFFER_COOLDOWN_MS / 60_000)} minutes.`}
+        confirmLabel={withdrawConfirm?.accepted ? "Back Out" : "Withdraw"}
+        variant="danger"
+        isLoading={!!withdrawConfirm && loadingAction === `withdraw-${withdrawConfirm.offerId}`}
+        onConfirm={async () => {
+          if (!withdrawConfirm) return
+          await handleWithdrawOffer(withdrawConfirm.offerId)
+          setWithdrawConfirm(null)
+        }}
+        onCancel={() => setWithdrawConfirm(null)}
+      />
+
       {/* Leave Confirmation */}
       <ConfirmModal
         open={showLeaveConfirm}
         title="Leave Line"
-        message={!allowResale
+        message={(!allowResale
           ? `Leave this line? You'll lose your place${isRestaurant ? " and the host will give your table to the next party" : ""}.`
           : isRestaurant
           ? "Are you sure you want to leave this line? You'll lose your place. If you bought a spot, your card is charged for it now -- leaving doesn't release the hold or refund it."
-          : "Are you sure you want to leave this line? You'll lose your place. Spots you bought stay paid for -- leaving doesn't refund them."}
+          : "Are you sure you want to leave this line? You'll lose your place. Spots you bought stay paid for -- leaving doesn't refund them.")
+          + (currentUserPosition?.fulfilled ? "" : " If you rejoin, you'll start again at the back.")
+          // Guests whose plans changed often only need a different party
+          // size; leaving and rejoining would cost them their place
+          + (isRestaurant && currentUserPosition && !currentUserPosition.calledAt && !currentUserPosition.fulfilled
+            ? " Party size changed? Cancel and update it next to your name instead -- you keep your place."
+            : "")}
         confirmLabel="Leave Line"
         variant="danger"
         isLoading={loadingAction === "leave"}
@@ -1369,9 +1412,10 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                       {isCreator && !isCurrentUser && !pos.fulfilled && (
                         <button
                           onClick={() => setFulfillConfirm({ positionId: pos.id, name: pos.user.name || (isRestaurant ? "this party" : "this person") })}
-                          disabled={loadingAction === `fulfill-${pos.id}`}
+                          // A swap in progress can't be seated until it settles (the server refuses too)
+                          disabled={loadingAction === `fulfill-${pos.id}` || !!isLocked}
                           className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[2.25rem] font-mono text-xs uppercase tracking-widest text-green-700 border border-rule hover:border-green-700 transition-colors disabled:opacity-50"
-                          title={isRestaurant ? "Mark as seated" : "Mark as fulfilled"}
+                          title={isLocked ? "A swap for this spot is in progress -- wait for it to finish" : isRestaurant ? "Mark as seated" : "Mark as fulfilled"}
                         >
                           {loadingAction === `fulfill-${pos.id}` && (
                             <div className="w-3 h-3 border-2 border-green-700 border-t-transparent rounded-full animate-spin" />
@@ -1420,7 +1464,8 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                           <Button
                             size="sm"
                             onClick={() => handleRespondToOffer(offer, "accept")}
-                            isLoading={loadingAction === `offer-${offer.id}`}
+                            isLoading={loadingAction === `offer-${offer.id}-accept`}
+                            disabled={loadingAction === `offer-${offer.id}-decline`}
                           >
                             Accept
                           </Button>
@@ -1428,7 +1473,8 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                             size="sm"
                             variant="ghost"
                             onClick={() => handleRespondToOffer(offer, "decline")}
-                            isLoading={loadingAction === `offer-${offer.id}`}
+                            isLoading={loadingAction === `offer-${offer.id}-decline`}
+                            disabled={loadingAction === `offer-${offer.id}-accept`}
                           >
                             Decline
                           </Button>
@@ -1644,7 +1690,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => handleWithdrawOffer(sentOfferToFront.id)}
+                            onClick={() => setWithdrawConfirm({ offerId: sentOfferToFront.id, accepted: true })}
                             isLoading={loadingAction === `withdraw-${sentOfferToFront.id}`}
                           >
                             Back Out
@@ -1667,27 +1713,39 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                           Raise
                         </button>
                         <button
-                          onClick={() => handleWithdrawOffer(sentOfferToFront.id)}
+                          onClick={() => setWithdrawConfirm({ offerId: sentOfferToFront.id, accepted: false })}
                           disabled={loadingAction === `withdraw-${sentOfferToFront.id}`}
                           className="font-mono text-xs uppercase tracking-widest text-ink/60 hover:text-ink underline underline-offset-4 disabled:opacity-50"
                         >
                           Withdraw
                         </button>
                       </div>
-                    ) : sentOfferToFront && ["DECLINED", "EXPIRED", "WITHDRAWN"].includes(sentOfferToFront.status) && offerFormOpen !== pos.user.id ? (
+                    ) : sentOfferToFront && ["DECLINED", "EXPIRED", "WITHDRAWN"].includes(sentOfferToFront.status) && offerFormOpen !== pos.user.id ? ((() => {
+                      // The server holds off a new offer for a while after a
+                      // decline or withdrawal; say so up front instead of
+                      // letting them type one only to have it bounced.
+                      const cooldownLeft = sentOfferToFront.status === "EXPIRED"
+                        ? 0
+                        : new Date(sentOfferToFront.createdAt).getTime() + OFFER_COOLDOWN_MS - Date.now()
+                      return (
                       <div className="flex items-center gap-3 flex-wrap">
                         <p className="text-sm text-ink/60">
                           {sentOfferToFront.status === "WITHDRAWN"
                             ? `You withdrew your ${formatCurrency(sentOfferToFront.amount)} offer.`
                             : `Your ${formatCurrency(sentOfferToFront.amount)} offer ${sentOfferToFront.status === "DECLINED" ? "was declined" : "expired"}.`}
+                          {cooldownLeft > 0 && ` You can make a new one in ${Math.ceil(cooldownLeft / 60_000)} min.`}
                         </p>
+                        {cooldownLeft <= 0 && (
                         <button
                           onClick={() => setOfferFormOpen(pos.user.id)}
                           className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"
                         >
                           Make a New Offer
                         </button>
+                        )}
                       </div>
+                      )
+                    })()
                     ) : offerFormOpen === pos.user.id ? (
                       <div className="flex items-center gap-2 flex-wrap">
                         <div className="relative flex-1 sm:flex-none">

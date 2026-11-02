@@ -12,7 +12,7 @@ import {
 import { paymentsUnavailable } from "@/lib/payments-mode"
 import { calculateFees } from "@/lib/fees"
 import { sendEmail } from "@/lib/email"
-import { swapAcceptedEmail } from "@/lib/email-templates"
+import { swapAcceptedEmail, type SwapAcceptedOptions } from "@/lib/email-templates"
 import { rateLimit } from "@/lib/rate-limit"
 import { shortName } from "@/lib/privacy"
 import { isOfferExpired } from "@/lib/offers"
@@ -76,6 +76,15 @@ export async function PATCH(
       return NextResponse.json(
         { error: `Offer has already been ${offer.status.toLowerCase()}` },
         { status: 400 }
+      )
+    }
+
+    // The buyer raised after the recipient's screen loaded: answering would
+    // accept or decline a price they never saw.
+    if (typeof expectedAmount === "number" && Math.abs(expectedAmount - offer.amount) > 0.001) {
+      return NextResponse.json(
+        { error: `They just raised their offer to $${offer.amount.toFixed(2)}. Take another look before answering.` },
+        { status: 409 }
       )
     }
 
@@ -328,7 +337,12 @@ export async function PATCH(
           data: { stripePaymentId: checkoutSession.id },
         })
 
-        notifyOffererAccepted(offer.fromUserId, line.name, lineId)
+        // The offerer may not be watching: tell them they owe a payment and
+        // how long they have (the lock outlasts the checkout by a minute)
+        notifyOffererAccepted(offer.fromUserId, line.name, lineId, {
+          payWithinMinutes: Math.floor(LOCK_DURATION_MS / 60_000) - 1,
+          amount: fees.totalPrice,
+        })
 
         // IMPORTANT: this response goes to the SELLER (only the offer's
         // recipient can call accept), but it's the BUYER who owes money.
@@ -436,13 +450,27 @@ export async function DELETE(
         ? await prisma.transaction.findFirst({ where: { id: offer.transactionId, status: "PENDING" } })
         : null
       if (!pending) {
+        // No transaction yet: their accept is still setting up the payment
         return NextResponse.json(
-          { error: "This swap already went through and can't be withdrawn" },
-          { status: 400 }
+          { error: offer.transactionId
+            ? "This swap already went through and can't be withdrawn"
+            : "They're accepting your offer right now. Refresh in a moment to pay or back out." },
+          { status: offer.transactionId ? 400 : 409 }
         )
       }
-      // Backing out after the seller accepted counts as a walk-away
-      await abandonPendingTransaction(pending.id, { offerId: null, byBuyer: true })
+      // Backing out after the seller accepted counts as a walk-away.
+      // False means the payment went through (or the window closed) meanwhile
+      const abandoned = await abandonPendingTransaction(pending.id, { offerId: null, byBuyer: true })
+      const completed = !abandoned && (await prisma.transaction.findFirst({
+        where: { id: pending.id, status: "COMPLETED" },
+        select: { id: true },
+      }))
+      if (completed) {
+        return NextResponse.json(
+          { error: "Your payment already went through, so this swap can't be withdrawn. Refresh to see your new spot." },
+          { status: 409 }
+        )
+      }
     } else if (offer.status !== "PENDING") {
       return NextResponse.json(
         { error: `This offer was already ${offer.status.toLowerCase()}` },
@@ -452,10 +480,22 @@ export async function DELETE(
 
     // Kept (not deleted) so the person in front sees it was taken back.
     // createdAt restarts the cooldown before they can send another.
-    await prisma.swapOffer.update({
-      where: { id: offerId },
+    // Guarded on the status we saw: if the person in front accepted a
+    // pending offer mid-withdraw, an unconditional write would orphan their
+    // fresh checkout and leave both spots locked with no way to pay.
+    const withdrawn = await prisma.swapOffer.updateMany({
+      // (A lapsed checkout may have just reopened an accepted offer.)
+      where: offer.status === "ACCEPTED"
+        ? { id: offerId, OR: [{ status: "ACCEPTED", transactionId: offer.transactionId }, { status: "PENDING" }] }
+        : { id: offerId, status: "PENDING" },
       data: { status: "WITHDRAWN", transactionId: null, createdAt: new Date() },
     })
+    if (withdrawn.count === 0) {
+      return NextResponse.json(
+        { error: "They just answered your offer. Refresh to see what they said." },
+        { status: 409 }
+      )
+    }
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Withdraw offer error:", error)
@@ -466,7 +506,12 @@ export async function DELETE(
   }
 }
 
-function notifyOffererAccepted(offererId: string, lineName: string, lineId: string) {
+function notifyOffererAccepted(
+  offererId: string,
+  lineName: string,
+  lineId: string,
+  opts: SwapAcceptedOptions = {}
+) {
   runAfterResponse(() => prisma.user
     .findUnique({
       where: { id: offererId },
@@ -477,7 +522,8 @@ function notifyOffererAccepted(offererId: string, lineName: string, lineId: stri
       const { subject, html } = swapAcceptedEmail(
         offerer.name || "there",
         lineName,
-        `${getBaseUrl()}/lines/${lineId}`
+        `${getBaseUrl()}/lines/${lineId}`,
+        opts
       )
       return sendEmail(offerer.email, subject, html)
     }))

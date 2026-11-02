@@ -78,8 +78,10 @@ export function useLineUpdates(
           headers: etagRef.current ? { "If-None-Match": etagRef.current } : undefined,
           signal: pollSignal(),
         })
-        // A server error says nothing about the line; what's shown is out of date
-        if (res.status >= 500) {
+        // A server error or a rate limit says nothing about the line; what's
+        // shown is out of date, and someone relying on it to see their turn
+        // coming shouldn't be told otherwise
+        if (res.status >= 500 || res.status === 429) {
           setStale(true)
           return
         }

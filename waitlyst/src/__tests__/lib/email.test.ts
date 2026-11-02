@@ -32,6 +32,21 @@ describe("sendEmail", () => {
     expect(send).not.toHaveBeenCalled()
   })
 
+  it("sends a plain-text version alongside the HTML, keeping link URLs", async () => {
+    vi.stubEnv("EMAIL_FROM", "Waitlyst <hello@waitlyst.app>")
+    send.mockResolvedValue({ data: { id: "e1" }, error: null })
+    const { sendEmail } = await import("@/lib/email")
+    const { positionCalledEmail } = await import("@/lib/email-templates")
+    const { subject, html } = positionCalledEmail("Ann & Bo", "Dinner", "https://waitlyst.test/lines/1?a=1&b=2", { windowMinutes: 10 })
+
+    await sendEmail("a@test.com", subject, html)
+    const { text } = send.mock.calls[0][0]
+    expect(text).toContain("You're up, Ann & Bo!")
+    expect(text).toContain("You have 10 min to get there")
+    expect(text).toContain("Go to Line: https://waitlyst.test/lines/1?a=1&b=2")
+    expect(text).not.toMatch(/<|&amp;/)
+  })
+
   it("reports failure when Resend refuses the email instead of throwing", async () => {
     vi.stubEnv("EMAIL_FROM", "Waitlyst <hello@waitlyst.app>")
     send.mockResolvedValue({ data: null, error: { name: "validation_error", message: "domain not verified" } })

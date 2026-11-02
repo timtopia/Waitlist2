@@ -83,6 +83,8 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [bulkConfirm, setBulkConfirm] = useState<"capture-all" | "cancel-all-unfulfilled" | null>(null)
+  // Releasing a hold or killing a checkout can't be undone, so ask first
+  const [cancelConfirm, setCancelConfirm] = useState<Transaction | null>(null)
   const [connectOnboarded, setConnectOnboarded] = useState(stripeConnectOnboarded)
   const [connectLoading, setConnectLoading] = useState(false)
   const [dashboardLoading, setDashboardLoading] = useState(false)
@@ -395,7 +397,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
         <Button
           size="sm"
           variant="danger"
-          onClick={() => handleAction("cancel", txn.id)}
+          onClick={() => setCancelConfirm(txn)}
           isLoading={isLoading}
         >
           Cancel Stuck Checkout
@@ -433,7 +435,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
           <Button
             size="sm"
             variant="secondary"
-            onClick={() => handleAction("cancel", txn.id)}
+            onClick={() => setCancelConfirm(txn)}
             isLoading={isLoading}
           >
             Cancel (Release)
@@ -488,6 +490,25 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
         isLoading={actionLoading === "capture-all"}
         onConfirm={() => handleBulkAction("capture-all")}
         onCancel={() => setBulkConfirm(null)}
+      />
+      <ConfirmModal
+        open={cancelConfirm !== null}
+        title={cancelConfirm?.status === "PENDING" ? "Cancel Checkout" : "Release Payment Hold"}
+        message={
+          cancelConfirm?.status === "PENDING"
+            ? `Cancel ${cancelConfirm.buyerName}'s unfinished checkout for ${formatCurrency(cancelConfirm.amount)} (started ${formatDeadline(cancelConfirm.createdAt)})? If they're still on the payment page, their payment will fail and both spots unlock.`
+            : cancelConfirm
+              ? `Release the hold on ${cancelConfirm.buyerName}'s card for ${formatCurrency(cancelConfirm.amount)}? They won't be charged, ${cancelConfirm.sellerName} won't be paid for the spot${cancelConfirm.ownerFee > 0 ? `, and you give up your ${formatCurrency(cancelConfirm.ownerFee)} fee` : ""}. This can't be undone.`
+              : ""
+        }
+        confirmLabel={cancelConfirm?.status === "PENDING" ? "Cancel Checkout" : "Release Hold"}
+        variant="danger"
+        onConfirm={() => {
+          const target = cancelConfirm
+          setCancelConfirm(null)
+          if (target) handleAction("cancel", target.id)
+        }}
+        onCancel={() => setCancelConfirm(null)}
       />
       <ConfirmModal
         open={bulkConfirm === "cancel-all-unfulfilled"}
@@ -560,7 +581,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
               <p className="font-mono text-2xl tabular-nums">
                 {formatCurrency(summary.totalAmount)}
               </p>
-              <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Paid to sellers</p>
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/60" title="Asking price of every paid swap, including any not yet collected or still waiting on the seller's payout setup. Excludes your fee.">Swap sales</p>
             </div>
             <div className="text-center">
               <p className="font-mono text-2xl tabular-nums text-green-700">{summary.fulfilled}</p>

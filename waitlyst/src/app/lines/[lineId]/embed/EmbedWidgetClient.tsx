@@ -210,6 +210,20 @@ export function EmbedWidgetClient({
           </div>
         )}
 
+        {/* Announces status changes picked up by the refresh (not the
+            ticking countdowns) to screen readers */}
+        <p className="sr-only" aria-live="polite">
+          {status.state === "not_yet_open"
+            ? "Opens soon"
+            : status.state === "paused"
+            ? "Line paused"
+            : status.state === "closed"
+            ? "Line closed"
+            : status.state === "full"
+            ? "Line full"
+            : "Line open"}
+        </p>
+
         {/* Status Section */}
         {status.state === "not_yet_open" && (() => {
           const msLeft = status.opensAt.getTime() - now.getTime()
@@ -294,7 +308,7 @@ export function EmbedWidgetClient({
                 {capacityUsed} / {maxCapacity}
               </span>
             </div>
-            <div className="w-full bg-ink/10 h-2">
+            <div className="w-full bg-ink/10 h-2" aria-hidden="true">
               <div
                 className={`h-2 transition-all duration-500 ${
                   capacityUsed >= maxCapacity
@@ -330,8 +344,11 @@ export function EmbedWidgetClient({
         ) : null}
 
         {/* Join Button */}
+        {/* Without an href a full/closed line's button can't be focused or
+            activated by keyboard either, not just by pointer */}
         <a
-          href={lineUrl}
+          href={canJoin ? lineUrl : undefined}
+          aria-disabled={canJoin ? undefined : true}
           target="_blank"
           rel="noopener noreferrer"
           className={`block w-full text-center py-2.5 font-semibold text-sm transition-colors ${
@@ -356,7 +373,7 @@ export function EmbedWidgetClient({
           href={typeof window !== "undefined" ? window.location.origin : "/"}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center justify-center gap-1 font-mono text-xs uppercase tracking-widest text-ink/60 hover:text-ink/60 transition-colors"
+          className="flex items-center justify-center gap-1 font-mono text-xs uppercase tracking-widest text-ink/60 hover:text-ink transition-colors"
         >
           Powered by
           <span className="font-semibold">Waitlyst</span>
