@@ -19,7 +19,10 @@ export function useDialog<T extends HTMLElement = HTMLDivElement>(open: boolean,
     if (!open) return
     const previouslyFocused = document.activeElement as HTMLElement | null
     const container = containerRef.current
-    const focusable = "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled])"
+    const focusable = "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
+    // Stop the page behind from scrolling under the modal (phones especially)
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
     const target = container?.querySelector<HTMLElement>("[data-autofocus]")
       ?? container?.querySelector<HTMLElement>(focusable)
     target?.focus()
@@ -44,6 +47,7 @@ export function useDialog<T extends HTMLElement = HTMLDivElement>(open: boolean,
     document.addEventListener("keydown", onKeyDown)
     return () => {
       document.removeEventListener("keydown", onKeyDown)
+      document.body.style.overflow = previousOverflow
       previouslyFocused?.focus?.()
     }
   }, [open])

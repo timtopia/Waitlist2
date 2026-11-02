@@ -16,6 +16,34 @@ export function emailEnabled(): boolean {
 }
 
 /**
+ * Plain-text version of an email's HTML. Some mail apps, watches and lock
+ * screen previews only show text, and HTML-only mail is more likely to be
+ * filed as spam -- so every email carries both. Links keep their URL so the
+ * call to action still works without HTML.
+ */
+export function htmlToText(html: string): string {
+  return html
+    .replace(/<head[\s\S]*?<\/head>/gi, "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<a\s[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, (_, href: string, label: string) => {
+      const text = label.replace(/<[^>]+>/g, "").trim()
+      return text ? `${text}: ${href}` : href
+    })
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|h[1-6]|tr|div|table)>/gi, "\n\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/[ \t]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+}
+
+/**
  * Send an email via Resend. Fire-and-forget — never throws.
  * Returns true if sent, false if skipped or errored.
  */
@@ -36,6 +64,7 @@ export async function sendEmail(
       to,
       subject,
       html,
+      text: htmlToText(html),
     })
     if (error) {
       console.error("Resend refused email:", error)

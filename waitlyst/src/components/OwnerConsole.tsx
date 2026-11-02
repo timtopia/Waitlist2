@@ -8,6 +8,7 @@ import { ConfirmModal } from "./ui/ConfirmModal"
 import { useToast } from "./ui/Toast"
 import { formatCurrency } from "@/lib/format"
 import { callDeadline, timeLeft } from "@/lib/call-deadline"
+import { MAX_PARTY_SIZE } from "@/lib/capacity"
 
 interface ConsolePosition {
   id: string
@@ -19,6 +20,9 @@ interface ConsolePosition {
   respondedAt?: string | null
   graceMinutes?: number
   partySize?: number
+  /** Host-only: high chair, patio... */
+  note?: string | null
+  joinedAt?: string
   user: { id: string; name: string | null; isWalkIn?: boolean }
 }
 
@@ -51,7 +55,7 @@ interface Pace {
   servedLastHour: number
 }
 
-/** "4 × 2, 1 × 6" -- the waiting parties by size, biggest group first */
+/** "4 × 2, 1 × 6" -- the waiting parties by size, smallest first */
 function partyMix(parties: ConsolePosition[]): string {
   const bySize = new Map<number, number>()
   for (const p of parties) bySize.set(p.partySize ?? 1, (bySize.get(p.partySize ?? 1) ?? 0) + 1)
@@ -81,7 +85,8 @@ export function OwnerConsole({
   const [busy, setBusy] = useState<string | null>(null)
   const [earnings, setEarnings] = useState<Earnings | null>(null)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
-  const [showNoShowConfirm, setShowNoShowConfirm] = useState(false)
+  // Whoever the host tapped No-show on: the party up next or one also called
+  const [noShowTarget, setNoShowTarget] = useState<ConsolePosition | null>(null)
   const [closeChoice, setCloseChoice] = useState(false)
   const closeDialogRef = useDialog(closeChoice, () => setCloseChoice(false))
   const [pace, setPace] = useState<Pace | null>(null)
@@ -218,12 +223,13 @@ export function OwnerConsole({
 
   /** The called party never showed: skip them without digging through the list */
   async function handleNoShow() {
-    if (!upNext) return
-    setShowNoShowConfirm(false)
-    setBusy("no-show")
+    const target = noShowTarget
+    if (!target) return
+    setNoShowTarget(null)
+    setBusy(target.id === upNext?.id ? "no-show" : `no-show-${target.id}`)
     try {
-      const { ok, data } = await post("remove-position", { positionId: upNext.id, action: "payout", noShow: true })
-      if (ok) addToast(`Marked ${upNext.user.name || "them"} as a no-show`, "success")
+      const { ok, data } = await post("remove-position", { positionId: target.id, action: "payout", noShow: true })
+      if (ok) addToast(`Marked ${target.user.name || "them"} as a no-show`, "success")
       else addToast(data.error || "Couldn't mark as a no-show", "error")
     } finally {
       setBusy(null)
@@ -244,19 +250,14 @@ export function OwnerConsole({
     }
   }
 
-  /** Seat or no-show a party that was called but isn't first in line */
-  async function handleAlsoCalled(p: ConsolePosition, action: "seat" | "no-show") {
+  /** Seat a party that was called but isn't first in line */
+  async function handleSeatAlsoCalled(p: ConsolePosition) {
     const name = p.user.name || "Guest"
-    setBusy(`${action}-${p.id}`)
+    setBusy(`seat-${p.id}`)
     try {
-      const { ok, data } = action === "seat"
-        ? await post("fulfill", { positionId: p.id })
-        : await post("remove-position", { positionId: p.id, action: "payout", noShow: true })
-      if (ok) {
-        addToast(action === "seat" ? `${name} marked as ${servedWord}` : `Marked ${name} as a no-show`, "success")
-      } else {
-        addToast(data.error || (action === "seat" ? `Failed to mark as ${servedWord}` : "Couldn't mark as a no-show"), "error")
-      }
+      const { ok, data } = await post("fulfill", { positionId: p.id })
+      if (ok) addToast(`${name} marked as ${servedWord}`, "success")
+      else addToast(data.error || `Failed to mark as ${servedWord}`, "error")
     } finally {
       setBusy(null)
       onChanged()
@@ -355,7 +356,12 @@ export function OwnerConsole({
         ...(isRestaurant && { partySize: walkInSize, note: walkInNote }),
       })
       if (ok) {
-        addToast(`Added ${walkInName.trim()} at #${data.position}`, "success")
+        // Who's ahead is what the host quotes at the stand, not the raw #
+        const ahead = waiting.length
+        addToast(
+          `Added ${walkInName.trim()} at #${data.position} -- ${ahead === 0 ? "next up" : `${ahead} ${isRestaurant ? (ahead === 1 ? "party" : "parties") : ahead === 1 ? "person" : "people"} ahead`}`,
+          "success"
+        )
         setWalkInName("")
         setWalkInNote("")
         setWalkInSize(2)
@@ -412,14 +418,14 @@ export function OwnerConsole({
         onCancel={() => setShowClearConfirm(false)}
       />
       <ConfirmModal
-        open={showNoShowConfirm}
+        open={!!noShowTarget}
         title="Mark as a no-show?"
-        message={`Remove ${upNext?.user.name || "this party"} from the line as a no-show? Everyone behind them moves up.`}
+        message={`Remove ${noShowTarget?.user.name || "this party"}${isRestaurant && noShowTarget ? ` (party of ${noShowTarget.partySize ?? 1})` : ""} from the line as a no-show? Everyone behind them moves up.`}
         confirmLabel="No-show"
         variant="danger"
-        isLoading={busy === "no-show"}
+        isLoading={!!noShowTarget && busy?.startsWith("no-show") === true}
         onConfirm={handleNoShow}
-        onCancel={() => setShowNoShowConfirm(false)}
+        onCancel={() => setNoShowTarget(null)}
       />
 
       {closeChoice && (
@@ -533,6 +539,17 @@ export function OwnerConsole({
                 <span className="font-mono tabular-nums text-accent mr-2">#{upNext.position}</span>
                 {upNext.user.name || "Anonymous"}
               </p>
+              {/* What the host needs to match a table: size, how long they've waited, requests */}
+              {(isRestaurant || upNext.joinedAt) && (
+                <p className="text-xs text-ink/60">
+                  {[
+                    isRestaurant && `Party of ${upNext.partySize ?? 1}`,
+                    upNext.user.isWalkIn && "Walk-in",
+                    upNext.joinedAt && `waiting ${Math.max(0, Math.floor((clock - new Date(upNext.joinedAt).getTime()) / 60_000))} min`,
+                    isRestaurant && upNext.note,
+                  ].filter(Boolean).join(" · ")}
+                </p>
+              )}
               {isServingUpNext && upNext.response && (
                 <p className={`text-xs ${upNext.response === "ON_MY_WAY" ? "text-green-700" : "text-amber-700"}`}>
                   {upNext.response === "ON_MY_WAY" ? "Says they're on the way" : "Says they're running late"}
@@ -592,7 +609,7 @@ export function OwnerConsole({
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => setShowNoShowConfirm(true)}
+                      onClick={() => setNoShowTarget(upNext)}
                       isLoading={busy === "no-show"}
                       disabled={!!busy || upNextLocked}
                     >
@@ -644,7 +661,7 @@ export function OwnerConsole({
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => handleAlsoCalled(p, "seat")}
+                      onClick={() => handleSeatAlsoCalled(p)}
                       isLoading={busy === `seat-${p.id}`}
                       disabled={!!busy || (!!p.lockedUntil && new Date(p.lockedUntil) > new Date())}
                       aria-label={`${markServedLabel}: ${name}`}
@@ -654,7 +671,7 @@ export function OwnerConsole({
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => handleAlsoCalled(p, "no-show")}
+                      onClick={() => setNoShowTarget(p)}
                       isLoading={busy === `no-show-${p.id}`}
                       disabled={!!busy}
                       aria-label={`No-show: ${name}`}
@@ -707,7 +724,7 @@ export function OwnerConsole({
                     onChange={(e) => setWalkInSize(Number(e.target.value))}
                     className="mt-1 border border-rule bg-white px-2 py-1.5 text-sm text-ink"
                   >
-                    {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => (
+                    {Array.from({ length: MAX_PARTY_SIZE }, (_, i) => i + 1).map((n) => (
                       <option key={n} value={n}>{n}</option>
                     ))}
                   </select>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useCallback } from "react"
+import { useState, useRef, useCallback, useEffect, useId } from "react"
 import { Button } from "./ui/Button"
 
 interface ShareLineProps {
@@ -17,6 +17,30 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
   const [qrSvg, setQrSvg] = useState<string | null>(null)
   const [qrLoading, setQrLoading] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelId = useId()
+
+  function closePanel() {
+    setOpen(false)
+    setShowQr(false)
+    setShowEmbed(false)
+  }
+
+  // Escape closes the panel and hands focus back to the Share button, so
+  // keyboard and screen-reader users aren't stranded inside a closed popover.
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false)
+        setShowQr(false)
+        setShowEmbed(false)
+        triggerRef.current?.focus()
+      }
+    }
+    document.addEventListener("keydown", onKeyDown)
+    return () => document.removeEventListener("keydown", onKeyDown)
+  }, [open])
 
   const origin = typeof window !== "undefined" ? window.location.origin : ""
   const url = `${origin}/lines/${lineId}`
@@ -138,12 +162,15 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
   return (
     <div className="relative">
       <Button
+        ref={triggerRef}
         size="sm"
         variant="secondary"
         onClick={() => { setOpen(!open); setShowEmbed(false) }}
         className="gap-2"
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
       >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
         </svg>
         Share
@@ -152,10 +179,11 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
       {open && (
         <>
           {/* Backdrop */}
-          <div className="fixed inset-0 z-40" onClick={() => { setOpen(false); setShowQr(false); setShowEmbed(false) }} />
+          <div className="fixed inset-0 z-40" onClick={closePanel} />
 
           {/* Dropdown */}
-          <div className="absolute right-0 mt-2 w-80 bg-white border border-ink z-50 p-4">
+          {/* Capped to the viewport so it doesn't run off a narrow phone screen */}
+          <div id={panelId} role="region" aria-label="Share this line" className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] bg-white border border-ink z-50 p-4">
             <h4 className="font-mono text-xs uppercase tracking-widest text-ink/60 mb-3">Share this line</h4>
 
             {/* Copy Link */}
@@ -163,12 +191,18 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
               <input
                 readOnly
                 value={url}
+                aria-label="Link to this line"
+                onFocus={(e) => e.target.select()}
                 className="flex-1 font-mono text-xs px-3 py-2 bg-paper border border-rule text-ink/70 truncate"
               />
-              <Button size="sm" onClick={handleCopy}>
+              <Button size="sm" onClick={handleCopy} aria-label={copied ? "Link copied" : "Copy link"}>
                 {copied ? "Copied!" : "Copy"}
               </Button>
             </div>
+            {/* Announces copy confirmations to screen readers */}
+            <p className="sr-only" aria-live="polite">
+              {copied ? "Link copied to clipboard" : embedCopied ? "Embed code copied to clipboard" : ""}
+            </p>
 
             {/* Share buttons */}
             <div className="flex items-center gap-2 mb-3">
@@ -177,7 +211,7 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
                   onClick={handleNativeShare}
                   className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-ink/5 text-ink text-sm font-medium hover:bg-ink/10 transition-colors"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                   </svg>
                   Share
@@ -187,10 +221,11 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
                 href={twitterUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-center w-10 h-10 bg-ink/5 hover:bg-ink/10 transition-colors"
+                className="flex items-center justify-center w-11 h-11 bg-ink/5 hover:bg-ink/10 transition-colors"
                 title="Share on X/Twitter"
+                aria-label="Share on X/Twitter"
               >
-                <svg className="w-4 h-4 text-ink" viewBox="0 0 24 24" fill="currentColor">
+                <svg className="w-4 h-4 text-ink" aria-hidden="true" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
                 </svg>
               </a>
@@ -198,19 +233,21 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
                 href={whatsappUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-center w-10 h-10 bg-ink/5 hover:bg-ink/10 transition-colors"
+                className="flex items-center justify-center w-11 h-11 bg-ink/5 hover:bg-ink/10 transition-colors"
                 title="Share on WhatsApp"
+                aria-label="Share on WhatsApp"
               >
-                <svg className="w-4 h-4 text-ink" viewBox="0 0 24 24" fill="currentColor">
+                <svg className="w-4 h-4 text-ink" aria-hidden="true" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
                 </svg>
               </a>
               <a
                 href={emailUrl}
-                className="flex items-center justify-center w-10 h-10 bg-ink/5 hover:bg-ink/10 transition-colors"
+                className="flex items-center justify-center w-11 h-11 bg-ink/5 hover:bg-ink/10 transition-colors"
                 title="Share via Email"
+                aria-label="Share via Email"
               >
-                <svg className="w-4 h-4 text-ink" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 text-ink" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
               </a>
@@ -225,7 +262,7 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
                 onClick={handleShowQr}
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-ink hover:bg-paper transition-colors"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4h6v6H4V4zm10 0h6v6h-6V4zm-10 10h6v6H4v-6zm13 3h1v1h-1v-1zm-3-3h1v1h-1v-1zm3 0h3v3h-3v-3zm0 3h1v1h-1v-1z" />
                 </svg>
                 QR Code
@@ -236,6 +273,7 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
                   <span className="text-sm font-medium text-ink">QR Code</span>
                   <button
                     onClick={() => setShowQr(false)}
+                    aria-label="Hide QR code"
                     className="font-mono text-xs uppercase tracking-widest text-ink/60 hover:text-ink"
                   >
                     Hide
@@ -243,14 +281,16 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
                 </div>
                 <div className="flex justify-center">
                   {qrLoading ? (
-                    <div className="w-[200px] h-[200px] bg-paper border border-rule flex items-center justify-center">
-                      <svg className="animate-spin h-6 w-6 text-ink/60" fill="none" viewBox="0 0 24 24">
+                    <div className="w-[200px] h-[200px] bg-paper border border-rule flex items-center justify-center" role="status" aria-label="Loading QR code">
+                      <svg aria-hidden="true" className="animate-spin h-6 w-6 text-ink/60" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                       </svg>
                     </div>
                   ) : qrSvg ? (
                     <div
+                      role="img"
+                      aria-label={`QR code linking to ${lineName}`}
                       className="w-[200px] h-[200px] border border-rule [&>svg]:block [&>svg]:w-full [&>svg]:h-full"
                       dangerouslySetInnerHTML={{ __html: qrSvg }}
                     />
@@ -264,18 +304,20 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
                   <div className="flex gap-2">
                     <button
                       onClick={handleDownloadSvg}
+                      aria-label="Download QR code as SVG"
                       className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-ink/5 text-ink text-xs font-medium hover:bg-ink/10 transition-colors"
                     >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-3.5 h-3.5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                       </svg>
                       SVG
                     </button>
                     <button
                       onClick={handleDownloadPng}
+                      aria-label="Download QR code as PNG"
                       className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-ink/5 text-ink text-xs font-medium hover:bg-ink/10 transition-colors"
                     >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-3.5 h-3.5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                       </svg>
                       PNG
@@ -294,7 +336,7 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
                 onClick={() => setShowEmbed(true)}
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-ink hover:bg-paper transition-colors"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                 </svg>
                 Embed Widget
@@ -305,6 +347,7 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
                   <span className="text-sm font-medium text-ink">Embed Widget</span>
                   <button
                     onClick={() => setShowEmbed(false)}
+                    aria-label="Hide embed code"
                     className="font-mono text-xs uppercase tracking-widest text-ink/60 hover:text-ink"
                   >
                     Hide
@@ -313,11 +356,12 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
 
                 {/* Iframe embed code */}
                 <div>
-                  <label className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-1">
+                  <label htmlFor={`${panelId}-iframe`} className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-1">
                     Iframe Embed
                   </label>
                   <textarea
                     readOnly
+                    id={`${panelId}-iframe`}
                     value={embedCode}
                     rows={3}
                     className="w-full text-xs px-3 py-2 bg-ink text-paper border-0 font-mono resize-none"
@@ -330,11 +374,12 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
 
                 {/* Direct link */}
                 <div>
-                  <label className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-1">
+                  <label htmlFor={`${panelId}-direct`} className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-1">
                     Direct Link
                   </label>
                   <textarea
                     readOnly
+                    id={`${panelId}-direct`}
                     value={directLink}
                     rows={1}
                     className="w-full text-xs px-3 py-2 bg-ink text-paper border-0 font-mono resize-none"

@@ -20,7 +20,10 @@ export async function POST(
     return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429, headers: { "Retry-After": "60" } })
   }
 
-  const body = await req.json()
+  const body = await req.json().catch(() => null)
+  if (!body || typeof body !== "object") {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 })
+  }
   const { transactionId, action } = body as {
     transactionId?: string
     action: "capture" | "cancel" | "capture-all" | "cancel-all-unfulfilled"

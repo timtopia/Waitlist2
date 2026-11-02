@@ -527,11 +527,17 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         return false
       }
       if (res.ok) {
+        // Confirm the size they joined as, so a party of 8 that left the
+        // picker on the default notices before the host plans a table for 2
+        addToast(line?.kind === "RESTAURANT" ? `You're in line as a party of ${size}` : "You're in line!", "success")
+        setJoinNote("")
         refreshAll()
         return true
       }
       const data = await res.json().catch(() => ({}))
       addToast(data.error || "Failed to join line", "error")
+      // Joined from another tab or device: show where they stand
+      if (res.status === 400 && data.error === "Already in this line") refreshAll()
       return false
     } finally {
       setJoining(false)
@@ -560,9 +566,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       setPartySizeChosen(true)
     }
     if (canJoin) {
-      handleJoin(size).then((joined) => {
-        if (joined) addToast("You're in line!", "success")
-      })
+      // handleJoin confirms the join itself
+      handleJoin(size)
     } else if (!isInLine && !isCreator) {
       // Say why, rather than landing them back on the page with nothing done
       addToast(

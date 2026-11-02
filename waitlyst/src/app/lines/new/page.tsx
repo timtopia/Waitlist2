@@ -233,6 +233,19 @@ function CreateLineForm() {
       return
     }
 
+    // A close time already passed (or before the opening) creates a line
+    // nobody can ever join -- easy to do with a datetime picker on drop day.
+    if (enableSchedule && closesAt) {
+      if (new Date(closesAt) <= new Date()) {
+        setError("The closing time has already passed. Pick a later time, or leave it empty for no end time.")
+        return
+      }
+      if (opensAt && new Date(closesAt) <= new Date(opensAt)) {
+        setError("The line must close after it opens.")
+        return
+      }
+    }
+
     setLoading(true)
     try {
       const res = await fetch("/api/lines", {

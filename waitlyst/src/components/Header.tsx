@@ -4,12 +4,39 @@ import Link from "next/link"
 import Image from "next/image"
 import { useSession, signIn, signOut } from "next-auth/react"
 import { Button } from "./ui/Button"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { usePathname } from "next/navigation"
 
 export function Header() {
   const { data: session, status } = useSession()
+  const pathname = usePathname()
   const [menuOpen, setMenuOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const accountMenuRef = useRef<HTMLDivElement>(null)
+
+  // The account menu used to stay open until its button was clicked again
+  useEffect(() => {
+    if (!menuOpen) return
+    const onPointerDown = (event: MouseEvent) => {
+      if (!accountMenuRef.current?.contains(event.target as Node)) setMenuOpen(false)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false)
+    }
+    document.addEventListener("mousedown", onPointerDown)
+    document.addEventListener("keydown", onKeyDown)
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown)
+      document.removeEventListener("keydown", onKeyDown)
+    }
+  }, [menuOpen])
+
+  // Show visitors where they are
+  const isCurrent = (href: string) => pathname === href || !!pathname?.startsWith(`${href}/`)
+  const desktopLink = (href: string) =>
+    `font-mono text-xs uppercase tracking-widest pb-0.5 border-b-2 ${
+      isCurrent(href) ? "border-accent text-ink" : "border-transparent text-ink/60 hover:text-ink"
+    }`
 
   return (
     <header className="bg-paper border-b border-ink">
@@ -24,7 +51,8 @@ export function Header() {
           <nav className="hidden md:flex items-center gap-6">
             <Link
               href="/browse"
-              className="font-mono text-xs uppercase tracking-widest text-ink/60 hover:text-ink"
+              className={desktopLink("/browse")}
+              aria-current={isCurrent("/browse") ? "page" : undefined}
             >
               Browse
             </Link>
@@ -32,7 +60,8 @@ export function Header() {
               <>
                 <Link
                   href="/dashboard"
-                  className="font-mono text-xs uppercase tracking-widest text-ink/60 hover:text-ink"
+                  className={desktopLink("/dashboard")}
+                  aria-current={isCurrent("/dashboard") ? "page" : undefined}
                 >
                   Dashboard
                 </Link>
@@ -47,7 +76,7 @@ export function Header() {
             ) : session ? (
               <>
                 {/* Desktop profile dropdown */}
-                <div className="relative hidden md:block">
+                <div className="relative hidden md:block" ref={accountMenuRef}>
                   <button
                     onClick={() => setMenuOpen(!menuOpen)}
                     className="flex items-center space-x-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ink"
@@ -124,7 +153,8 @@ export function Header() {
           <nav className="px-4 py-2 space-y-1">
             <Link
               href="/browse"
-              className="block px-3 py-3 font-mono text-sm uppercase tracking-widest text-ink/70 hover:text-ink"
+              aria-current={isCurrent("/browse") ? "page" : undefined}
+              className="block px-3 py-3 font-mono text-sm uppercase tracking-widest text-ink/70 hover:text-ink aria-[current=page]:text-ink aria-[current=page]:border-l-2 aria-[current=page]:border-accent"
               onClick={() => setMobileMenuOpen(false)}
             >
               Browse
@@ -132,7 +162,8 @@ export function Header() {
             {session && (
               <Link
                 href="/dashboard"
-                className="block px-3 py-3 font-mono text-sm uppercase tracking-widest text-ink/70 hover:text-ink"
+                aria-current={isCurrent("/dashboard") ? "page" : undefined}
+                className="block px-3 py-3 font-mono text-sm uppercase tracking-widest text-ink/70 hover:text-ink aria-[current=page]:text-ink aria-[current=page]:border-l-2 aria-[current=page]:border-accent"
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Dashboard
@@ -141,7 +172,8 @@ export function Header() {
             {session && (
               <Link
                 href="/profile"
-                className="block px-3 py-3 font-mono text-sm uppercase tracking-widest text-ink/70 hover:text-ink"
+                aria-current={isCurrent("/profile") ? "page" : undefined}
+                className="block px-3 py-3 font-mono text-sm uppercase tracking-widest text-ink/70 hover:text-ink aria-[current=page]:text-ink aria-[current=page]:border-l-2 aria-[current=page]:border-accent"
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Profile

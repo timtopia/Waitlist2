@@ -120,6 +120,11 @@ export default function BrowsePage() {
             The board
           </p>
           <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight">Open lines</h1>
+          <p className="mt-3 text-sm text-ink/60 max-w-xl">
+            Public lines anyone can join. Looking for a specific restaurant or
+            shop? Open the link or scan the QR code they shared; private lines
+            aren&apos;t listed here.
+          </p>
         </div>
         <Link href="/lines/new">
           <Button>Start a line</Button>
@@ -143,6 +148,7 @@ export default function BrowsePage() {
             <button
               key={f}
               onClick={() => setFilter(f)}
+              aria-pressed={filter === f}
               className={`font-mono text-xs uppercase tracking-widest pb-1 border-b-2 transition-colors ${
                 filter === f
                   ? "border-accent text-ink"
@@ -162,6 +168,7 @@ export default function BrowsePage() {
           <button
             key={s}
             onClick={() => setSortBy(s)}
+            aria-pressed={sortBy === s}
             className={`font-mono text-xs uppercase tracking-widest pb-1 border-b-2 transition-colors ${
               sortBy === s
                 ? "border-accent text-ink"
@@ -189,8 +196,11 @@ export default function BrowsePage() {
         <div className="text-center py-20 border border-rule bg-white">
           {lines.length === 0 ? (
             <>
-              <p className="text-ink/60 mb-2">No lines on the board yet.</p>
-              <p className="text-sm text-ink/60 mb-6">Be the first to start one.</p>
+              <p className="text-ink/60 mb-2">No public lines are open right now.</p>
+              <p className="text-sm text-ink/60 mb-6">
+                Joining a particular place? Use the link or QR code they gave you.
+                Running one? Start your own.
+              </p>
               <Link href="/lines/new">
                 <Button>Start a line</Button>
               </Link>

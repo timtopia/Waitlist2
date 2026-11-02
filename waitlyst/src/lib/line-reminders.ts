@@ -43,7 +43,14 @@ export async function sendDueLineReminders(lineId?: string): Promise<number> {
       reminder.line.name,
       `${getBaseUrl()}/lines/${reminder.line.id}`
     )
-    if (await sendEmail(reminder.user.email, subject, html)) sent++
+    // The reminder is already used up, so a one-off provider hiccup would
+    // mean they never hear the line opened: try once more before giving up.
+    // (Not released for later runs -- page views re-run this every few
+    // seconds, which would hammer an address that always bounces.)
+    if (
+      (await sendEmail(reminder.user.email, subject, html)) ||
+      (await sendEmail(reminder.user.email, subject, html))
+    ) sent++
   }
   return sent
 }

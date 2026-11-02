@@ -104,6 +104,19 @@ export function EditLineClient({
       return
     }
 
+    // Only check a close time that was changed here: an already-closed line
+    // can still be edited without being forced to reschedule.
+    if (enableSchedule && closesAt && closesAt !== toLocalDatetime(line.closesAt)) {
+      if (new Date(closesAt) <= new Date()) {
+        setError("The closing time has already passed. Pick a later time, or leave it empty for no end time.")
+        return
+      }
+    }
+    if (enableSchedule && opensAt && closesAt && new Date(closesAt) <= new Date(opensAt)) {
+      setError("The line must close after it opens.")
+      return
+    }
+
     const values: Record<string, unknown> = {
           name: name.trim(),
           description: description.trim() || null,

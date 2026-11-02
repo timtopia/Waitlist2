@@ -85,7 +85,10 @@ export async function GET() {
             : `A sale of yours${inLine} was refunded ($${refunded.toFixed(2)})`,
           amount: refunded,
           ...link,
-          createdAt: tx.createdAt.toISOString(),
+          // When it was closed out, where recorded, not when the money was
+          // spent: dated at the purchase, a fresh refund sits buried below
+          // newer activity
+          createdAt: (tx.settledAt ?? tx.createdAt).toISOString(),
         })
       } else if (tx.status === "COMPLETED") {
         // tx.amount is the seller's take -- correct for the seller's own

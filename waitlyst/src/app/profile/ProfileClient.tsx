@@ -292,6 +292,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                     onClick={handleStartEdit}
                     className="p-1 text-ink/60 hover:text-ink hover:bg-ink/5"
                     title="Edit name"
+                    aria-label="Edit name"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -316,14 +317,14 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
       {/* Stats & Balances */}
       <Card className="mb-6">
         <CardContent className="py-5">
-          <div className="flex items-center justify-between font-mono text-xs uppercase tracking-wider text-ink/60 mb-4">
-            <span>{stats.linesCreated} lines created</span>
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 font-mono text-xs uppercase tracking-wider text-ink/60 mb-4">
+            <span>{stats.linesCreated} {stats.linesCreated === 1 ? "line" : "lines"} created</span>
             <span className="text-ink/20">·</span>
-            <span>{stats.activePositions} active positions</span>
+            <span>{stats.activePositions} active {stats.activePositions === 1 ? "position" : "positions"}</span>
             <span className="text-ink/20">·</span>
-            <span>{stats.purchaseCount} spots bought</span>
+            <span>{stats.purchaseCount} {stats.purchaseCount === 1 ? "spot" : "spots"} bought</span>
             <span className="text-ink/20">·</span>
-            <span>{stats.saleCount} spots sold</span>
+            <span>{stats.saleCount} {stats.saleCount === 1 ? "spot" : "spots"} sold</span>
           </div>
 
           {/* Total Available — hero number */}
@@ -524,6 +525,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
               }`}
               role="switch"
               aria-checked={emailNotifs}
+              aria-label="Email notifications"
             >
               <span
                 className={`inline-block h-4 w-4 transform bg-white transition-transform ${

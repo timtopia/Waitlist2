@@ -173,7 +173,10 @@ export function AnalyticsClient({
 
       {view && (
         <div className="space-y-6">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className={`grid grid-cols-2 gap-3 ${allowResale || view.swapCount > 0 ? "sm:grid-cols-5" : "sm:grid-cols-4"}`}>
+            {/* Total demand is the headline number for a drop, so it stays
+                visible even when the swap stat is shown too */}
+            <Stat label={isRestaurant ? "Parties joined" : "Joined"} value={view.hours.reduce((s, h) => s + h.value, 0).toLocaleString()} />
             <Stat
               label={isRestaurant ? "Parties seated" : "People served"}
               value={view.servedCount.toLocaleString()}
@@ -188,10 +191,8 @@ export function AnalyticsClient({
               value={view.noShowRate === null ? "--" : `${Math.round(view.noShowRate * 100)}%`}
               note={view.noShows > 0 ? `${view.noShows} no-show${view.noShows === 1 ? "" : "s"}` : undefined}
             />
-            {allowResale || view.swapCount > 0 ? (
+            {(allowResale || view.swapCount > 0) && (
               <Stat label="Swap fees earned" value={formatCurrency(view.ownerFees)} note={`${view.swapCount} swap${view.swapCount === 1 ? "" : "s"}`} />
-            ) : (
-              <Stat label="Joined" value={view.hours.reduce((s, h) => s + h.value, 0).toLocaleString()} />
             )}
           </div>
 

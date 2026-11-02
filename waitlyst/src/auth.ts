@@ -16,6 +16,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
     }),
   ],
+  // Our own page instead of the unstyled built-in one, so redirects from
+  // /dashboard, /profile, etc. land somewhere that explains what's going on
+  pages: {
+    signIn: "/signin",
+  },
   callbacks: {
     session: async ({ session, user }) => {
       if (session.user) {

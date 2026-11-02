@@ -76,3 +76,24 @@ body {
     font-size: 16px;
   }
 }
+
+/* Modal panels never outgrow a short phone screen (or a landscape one, or
+   200% zoom): cap them to the viewport and let their content scroll so the
+   action buttons stay reachable. Full-screen overlays (.fixed) are left alone. */
+[role="dialog"][aria-modal="true"]:not(.fixed),
+[role="alertdialog"][aria-modal="true"]:not(.fixed) {
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+}
+
+/* A visible keyboard focus ring for links and controls that don't style
+   their own. Layered as base so component utilities still win. */
+@layer base {
+  a:focus-visible,
+  button:focus-visible,
+  summary:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid var(--foreground);
+    outline-offset: 2px;
+  }
+}
