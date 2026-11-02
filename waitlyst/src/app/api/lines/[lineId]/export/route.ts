@@ -22,7 +22,7 @@ function safeFileName(name: string): string {
   return name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
+    .replace(/^-|-$/g, "") || "line" // a name with no Latin letters used to give "-export.csv"
 }
 
 function swapStatus(txn: { status: string; holdExpiredAt: Date | null; capturedAt: Date | null; settledAt: Date | null }): string {

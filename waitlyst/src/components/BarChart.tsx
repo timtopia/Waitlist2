@@ -1,6 +1,6 @@
 "use client"
 
-import { useId, useState } from "react"
+import { useId, useRef, useState } from "react"
 
 export interface Bar {
   label: string
@@ -44,7 +44,22 @@ function niceMax(max: number): number {
 export function BarChart({ title, subtitle, bars, labelHeader, valueHeader, labelEvery = 1, formatTick = String }: BarChartProps) {
   const [active, setActive] = useState<number | null>(null)
   const [asTable, setAsTable] = useState(false)
+  // One Tab stop for the whole chart; arrow keys move between bars
+  const [focusIdx, setFocusIdx] = useState(0)
+  const svgRef = useRef<SVGSVGElement>(null)
   const titleId = useId()
+
+  function onBarKey(e: React.KeyboardEvent, i: number) {
+    let next = i
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") next = Math.min(bars.length - 1, i + 1)
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = Math.max(0, i - 1)
+    else if (e.key === "Home") next = 0
+    else if (e.key === "End") next = bars.length - 1
+    else return
+    e.preventDefault()
+    setFocusIdx(next)
+    svgRef.current?.querySelectorAll<SVGGElement>("[data-bar]")[next]?.focus()
+  }
 
   const width = 640
   const plotW = width - PAD.left - PAD.right
@@ -64,7 +79,7 @@ export function BarChart({ title, subtitle, bars, labelHeader, valueHeader, labe
         </figcaption>
         <button
           onClick={() => setAsTable(!asTable)}
-          className="font-mono text-[10px] uppercase tracking-widest text-ink/60 hover:text-ink flex-shrink-0"
+          className="inline-flex items-center min-h-11 sm:min-h-0 px-2 -mr-2 -my-3 sm:my-0 font-mono text-[10px] uppercase tracking-widest text-ink/60 hover:text-ink flex-shrink-0"
         >
           {asTable ? "Show chart" : "Show table"}
         </button>
@@ -91,7 +106,8 @@ export function BarChart({ title, subtitle, bars, labelHeader, valueHeader, labe
         </div>
       ) : (
         <div className="relative">
-          <svg viewBox={`0 0 ${width} ${HEIGHT}`} className="w-full h-auto" role="img" aria-labelledby={titleId}>
+          {/* A group, not an img: an img's children are hidden from screen readers */}
+          <svg ref={svgRef} viewBox={`0 0 ${width} ${HEIGHT}`} className="w-full h-auto" role="group" aria-labelledby={titleId}>
             {ticks.map((t) => (
               <g key={t}>
                 <line x1={PAD.left} x2={width - PAD.right} y1={y(t)} y2={y(t)} stroke="#e7e4dc" strokeWidth={1} />
@@ -108,9 +124,11 @@ export function BarChart({ title, subtitle, bars, labelHeader, valueHeader, labe
               return (
                 <g
                   key={b.label}
-                  tabIndex={0}
-                  role="button"
+                  data-bar
+                  tabIndex={i === Math.min(focusIdx, bars.length - 1) ? 0 : -1}
+                  role="img"
                   aria-label={`${b.label}: ${b.display}`}
+                  onKeyDown={(e) => onBarKey(e, i)}
                   onMouseEnter={() => setActive(i)}
                   onMouseLeave={() => setActive(null)}
                   onFocus={() => setActive(i)}

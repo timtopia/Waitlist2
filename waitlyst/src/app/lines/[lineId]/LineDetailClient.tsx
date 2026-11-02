@@ -22,7 +22,6 @@ import { OwnerConsole } from "@/components/OwnerConsole"
 import { timeAgo } from "@/lib/format"
 import { MAX_PARTY_SIZE, capacityUnit, guestCount } from "@/lib/capacity"
 import { getMemberStatus, diffMemberStatus, describeMemberEvent, memberTabTitle } from "@/lib/member-status"
-import { callDeadline } from "@/lib/call-deadline"
 
 interface ActivityItem {
   id: string
@@ -33,6 +32,8 @@ interface ActivityItem {
 
 /** A request that never reached the server, so nothing changed */
 const NO_CONNECTION = "No connection. That wasn't sent -- try again when you have signal."
+/** Where a signed-out guest's note for the host waits out the sign-in redirect */
+const joinNoteKey = "waitlyst-join-note"
 
 interface Line {
   id: string
@@ -101,9 +102,6 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [loading, setLoading] = useState(true)
   const [joining, setJoining] = useState(false)
   const [partySize, setPartySize] = useState(2)
-  // Whether the guest chose the size themselves (vs. the default of 2), so a
-  // size that stops fitting is raised with them instead of quietly shrunk
-  const [partySizeChosen, setPartySizeChosen] = useState(false)
   const [joinNote, setJoinNote] = useState("")
   const [remindMe, setRemindMe] = useState<boolean | null>(null)
   const [remindBusy, setRemindBusy] = useState(false)
@@ -292,6 +290,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
           setActivities(data)
         }
       }
+    } catch {
+      // Non-critical; the next poll tries again
     } finally {
       setActivitiesLoading(false)
     }
@@ -310,26 +310,14 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
 
   /**
    * The host at the stand hears about guests' moves without reading the list:
-   * online joins, "on my way" taps, and called parties the show-up timer
-   * skipped. Their own actions already refetched the line, so they're not in
-   * this diff.
+   * online joins and "on my way" taps. Called parties the show-up timer
+   * skipped are announced by OwnerConsole, which knows which removals were
+   * the host's own. Their own actions already refetched the line, so they're
+   * not in this diff.
    */
   const announceToHost = useCallback((prev: Line, next: Line) => {
     const name = (p: Line["positions"][number]) => p.user.name || "Guest"
     const before = new Map(prev.positions.map((p) => [p.id, p]))
-    const after = new Map(next.positions.map((p) => [p.id, p]))
-    const nowMs = Date.now()
-    for (const p of prev.positions) {
-      if (p.fulfilled || !p.calledAt || after.has(p.id)) continue
-      // Only the show-up timer skips people: anything else that removed a
-      // called party (the guest leaving, a removal elsewhere) isn't a no-show
-      const deadline = next.isActive
-        ? callDeadline(p.calledAt, next.responseWindowMinutes, p.respondedAt, p.graceMinutes)
-        : null
-      if (deadline && deadline.getTime() <= nowMs) {
-        addToast(`${name(p)} was skipped -- didn't show in time`, "warning")
-      }
-    }
     for (const p of next.positions) {
       const old = before.get(p.id)
       if (!old) {
@@ -393,7 +381,9 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       if (!alert) continue
       sendNotification(alert.title, {
         body: alert.body,
-        tag: `waitlyst-${lineId}`,
+        // Its own tag, so a later announcement or "paused" alert can't
+        // replace "It's your turn!" on the lock screen
+        tag: change.kind === "called" ? `waitlyst-${lineId}-turn` : `waitlyst-${lineId}`,
         // Their turn shouldn't vanish on its own before they've seen it
         ...(change.kind === "called" && { requireInteraction: true }),
       })
@@ -421,9 +411,12 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   // Paused (isActive false) still counts: called parties keep replying and
   // the host keeps calling and seating.
   const hostingLive = !!line && line.createdBy.id === session?.user?.id
+  // Restaurant hosts call parties out of order, so anyone still waiting may be
+  // called next and the show-up window is short
+  const restaurantWaiting = line?.kind === "RESTAURANT" && !!memberStatus && memberStatus.phase !== "served"
   const { stale } = useLineUpdates(lineId, handleLineUpdate, {
     // Called guests further back need the quick poll too, not just the front two
-    intervalMs: awaitingTurn || hostingLive ? 10000 : 30000,
+    intervalMs: awaitingTurn || hostingLive || restaurantWaiting ? 10000 : 30000,
     pollWhenHidden: !!memberStatus && notificationsEnabled,
   })
 
@@ -495,24 +488,32 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   /** Tell a party it no longer fits rather than joining them as a smaller one */
   function partyNoLongerFits(requested: number): void {
     setPartySize(maxPartySize)
-    setPartySizeChosen(false)
     addToast(
       `A party of ${requested} no longer fits -- there's room for ${maxPartySize} more guest${maxPartySize === 1 ? "" : "s"}. Choose your party size and join again.`,
       "error"
     )
   }
 
-  async function handleJoin(sizeOverride?: number): Promise<boolean> {
-    if (sizeOverride === undefined && isRestaurant && partySizeChosen && partySize > maxPartySize) {
+  async function handleJoin(sizeOverride?: number, noteOverride?: string): Promise<boolean> {
+    // Even an untouched default (a couple's 2) mustn't quietly become 1
+    if (sizeOverride === undefined && isRestaurant && partySize > maxPartySize) {
       partyNoLongerFits(partySize)
       return false
     }
     const size = sizeOverride ?? joinPartySize
+    const note = (noteOverride ?? joinNote).trim()
     if (!session) {
       // Come back with ?join=1 so the join completes on return instead of
       // making them find and press "Join Line" a second time after sign-in.
       // The party size they picked rides along, or they'd join as the default.
       const party = line?.kind === "RESTAURANT" ? `&party=${size}` : ""
+      // The note (high chair, wheelchair access...) survives the round trip too
+      try {
+        if (note) sessionStorage.setItem(joinNoteKey, note)
+        else sessionStorage.removeItem(joinNoteKey)
+      } catch {
+        // Storage blocked: they can still add it after joining
+      }
       signIn("google", { callbackUrl: `/lines/${lineId}?join=1${party}` })
       return false
     }
@@ -525,7 +526,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
           method: "POST",
           ...(line?.kind === "RESTAURANT" && {
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ partySize: size, ...(joinNote.trim() && { note: joinNote.trim() }) }),
+            body: JSON.stringify({ partySize: size, ...(note && { note }) }),
           }),
         })
       } catch {
@@ -542,8 +543,9 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       }
       const data = await res.json().catch(() => ({}))
       addToast(data.error || "Failed to join line", "error")
-      // Joined from another tab or device: show where they stand
-      if (res.status === 400 && data.error === "Already in this line") refreshAll()
+      // Joined from another tab, or the line filled/paused since: show the
+      // real state so the size picker and buttons match it
+      if (res.status === 400 || res.status === 409) refreshAll()
       return false
     } finally {
       setJoining(false)
@@ -569,11 +571,17 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     const size = requested
     if (size) {
       setPartySize(size)
-      setPartySizeChosen(true)
+    }
+    let savedNote = ""
+    try {
+      savedNote = sessionStorage.getItem(joinNoteKey) ?? ""
+      sessionStorage.removeItem(joinNoteKey)
+    } catch {
+      // Storage blocked
     }
     if (canJoin) {
       // handleJoin confirms the join itself
-      handleJoin(size)
+      handleJoin(size, savedNote)
     } else if (!isInLine && !isCreator) {
       // Say why, rather than landing them back on the page with nothing done
       addToast(
@@ -607,6 +615,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       } else {
         addToast(data.error || "Couldn't update the reminder", "error")
       }
+    } catch {
+      addToast(NO_CONNECTION, "error")
     } finally {
       setRemindBusy(false)
     }
@@ -652,9 +662,13 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         addToast("Line deleted successfully", "success")
         router.push("/dashboard")
       } else {
-        const data = await res.json()
+        const data = await res.json().catch(() => ({}))
         addToast(data.error || "Failed to delete line", "error")
+        // A failed refund keeps the line but pauses it: show that
+        if (res.status === 409) fetchLine()
       }
+    } catch {
+      addToast(NO_CONNECTION, "error")
     } finally {
       setDeleting(false)
       setShowDeleteConfirm(false)
@@ -670,14 +684,17 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         body: JSON.stringify({ announcement: announcementDraft.trim() || null }),
       })
       if (res.ok) {
-        const data = await res.json()
-        setLine(data)
+        // The PATCH reply isn't the full line view (no walk-in or capacity
+        // fields), so reload rather than briefly showing a broken list
+        await fetchLine()
         setShowAnnouncementEditor(false)
         addToast(announcementDraft.trim() ? "Announcement posted" : "Announcement cleared", "success")
       } else {
-        const data = await res.json()
+        const data = await res.json().catch(() => ({}))
         addToast(data.error || "Failed to update announcement", "error")
       }
+    } catch {
+      addToast(NO_CONNECTION, "error")
     } finally {
       setSavingAnnouncement(false)
     }
@@ -692,15 +709,16 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         body: JSON.stringify({ announcement: null }),
       })
       if (res.ok) {
-        const data = await res.json()
-        setLine(data)
+        await fetchLine()
         setShowAnnouncementEditor(false)
         setAnnouncementDraft("")
         addToast("Announcement cleared", "success")
       } else {
-        const data = await res.json()
+        const data = await res.json().catch(() => ({}))
         addToast(data.error || "Failed to clear announcement", "error")
       }
+    } catch {
+      addToast(NO_CONNECTION, "error")
     } finally {
       setSavingAnnouncement(false)
     }
@@ -779,9 +797,9 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             )}
             <div className="flex-1 p-5 flex flex-col justify-center">
               {line.productName && (
-                <h2 className="text-xl font-semibold tracking-tight text-ink mb-1">
+                <p className="text-xl font-semibold tracking-tight text-ink mb-1">
                   {line.productName}
-                </h2>
+                </p>
               )}
               {line.productPrice != null && (
                 <p className="text-base text-ink/60 mb-2">
@@ -824,7 +842,6 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                     value={joinPartySize}
                     onChange={(e) => {
                       setPartySize(Number(e.target.value))
-                      setPartySizeChosen(true)
                     }}
                     className="border border-rule bg-white px-2 py-2 text-ink"
                     aria-label="Party size"
@@ -840,20 +857,30 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                   Room for {maxPartySize} more guest{maxPartySize === 1 ? "" : "s"}. Bigger party? Ask the host.
                 </span>
               )}
-              {canJoin && session && line.kind === "RESTAURANT" && (
+              {canJoin && line.kind === "RESTAURANT" && (
                 <input
                   value={joinNote}
                   onChange={(e) => setJoinNote(e.target.value)}
                   maxLength={140}
                   placeholder="Note for the host (optional)"
                   aria-label="Note for the host"
-                  className="border border-rule bg-white px-2 py-2 text-sm text-ink placeholder:text-ink/30 w-48"
+                  className="border border-rule bg-white px-2 py-2 text-sm text-ink placeholder:text-ink/60 w-48"
                 />
               )}
               {canJoin && (
-                <Button onClick={() => handleJoin()} isLoading={joining}>
-                  {session ? "Join Line" : "Sign in to Join"}
+                // Don't send a signed-in viewer through Google again while
+                // their session is still loading
+                <Button onClick={() => handleJoin()} isLoading={joining} disabled={status === "loading"}>
+                  {session || status === "loading" ? "Join Line" : "Sign in to Join"}
                 </Button>
+              )}
+              {canJoin && !session && status !== "loading" && (
+                // Most first-timers sign in from here, not the /signin page
+                <p className="w-full text-xs text-ink/60">
+                  You&apos;ll sign in with Google, no password needed. By continuing you agree to our{" "}
+                  <Link href="/terms" className="underline underline-offset-4 hover:text-ink">Terms</Link> and{" "}
+                  <Link href="/privacy" className="underline underline-offset-4 hover:text-ink">Privacy Policy</Link>.
+                </p>
               )}
               {!session && status !== "loading" && lineNotYetOpen && !linePaused && line.opensAt && (
                 line.emailEnabled ? (
@@ -985,6 +1012,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
           allowResale={line.allowResale}
           purchaseLimit={line.purchaseLimit}
           responseWindowMinutes={line.responseWindowMinutes}
+          hasAnnouncement={!!line.announcement}
         />
       )}
 
@@ -1052,7 +1080,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
               maxLength={280}
               rows={3}
               placeholder="Share an update with everyone in line..."
-              className="w-full px-3 py-2 border border-rule text-sm focus:outline-none focus:border-ink placeholder:text-ink/30 resize-none"
+              className="w-full px-3 py-2 border border-rule text-sm focus:outline-none focus:border-ink placeholder:text-ink/60 resize-none"
             />
             <div className="flex items-center justify-between mt-2">
               <span className={`font-mono text-xs tabular-nums ${announcementDraft.length > 260 ? "text-amber-700" : "text-ink/60"}`}>

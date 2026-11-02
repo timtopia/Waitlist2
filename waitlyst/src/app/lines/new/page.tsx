@@ -8,6 +8,7 @@ import { Input, Textarea } from "@/components/ui/Input"
 import { Card, CardContent } from "@/components/ui/Card"
 import { useToast } from "@/components/ui/Toast"
 import { calcFees } from "@/lib/fees"
+import { ImageUrlPreview } from "@/components/ImageUrlPreview"
 
 const DRAFT_KEY = "waitlyst:new-line-draft"
 
@@ -54,6 +55,17 @@ function CreateLineForm() {
   const [selectedTemplate, setSelectedTemplate] = useState<string>("custom")
   const nameRef = useRef<HTMLInputElement>(null)
 
+  // Template blurbs: picking another template replaces one of these, but
+  // never a description the owner wrote themselves
+  const templateDescriptions = [
+    "Join the waitlist and we'll let you know when your table is ready.",
+    "Limited release drop",
+    "Event waitlist. If your plans change, you can swap spots with the person next to you.",
+  ]
+  function setTemplateDescription(text: string) {
+    setDescription((current) => (!current.trim() || templateDescriptions.includes(current) ? text : current))
+  }
+
   const templates = [
     {
       id: "restaurant-waitlist",
@@ -65,7 +77,7 @@ function CreateLineForm() {
         setOwnerFeePercent("0")
         setAllowResale(false)
         setHideCapacity(false)
-        setDescription("Join the waitlist and we'll let you know when your table is ready.")
+        setTemplateDescription(templateDescriptions[0])
         setShowResaleControls(false)
         setKind("RESTAURANT")
       },
@@ -80,7 +92,7 @@ function CreateLineForm() {
         setOwnerFeePercent("10")
         setAllowResale(true)
         setHideCapacity(true)
-        setDescription("Limited release drop")
+        setTemplateDescription(templateDescriptions[1])
         setShowResaleControls(true)
         setShowProductDetails(true)
         setKind("STANDARD")
@@ -96,7 +108,7 @@ function CreateLineForm() {
         setOwnerFeePercent("0")
         setAllowResale(true)
         setHideCapacity(false)
-        setDescription("Event waitlist. If your plans change, you can swap spots with the person next to you.")
+        setTemplateDescription(templateDescriptions[2])
         setShowResaleControls(true)
         setKind("STANDARD")
       },
@@ -107,7 +119,15 @@ function CreateLineForm() {
       name: "Custom",
       desc: "Start from scratch",
       apply: () => {
-        // Don't fill anything — leave form as-is
+        // Back to plain defaults: trying Product Drop first mustn't leave
+        // swaps and a 10% fee switched on behind a collapsed section
+        setMaxCapacity("")
+        setOwnerFeePercent("0")
+        setAllowResale(false)
+        setHideCapacity(false)
+        setShowResaleControls(false)
+        setKind("STANDARD")
+        setDescription((current) => (templateDescriptions.includes(current) ? "" : current))
       },
     },
   ]
@@ -583,6 +603,7 @@ function CreateLineForm() {
                       onChange={(e) => setProductImage(e.target.value)}
                       className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                     />
+                    <ImageUrlPreview url={productImage} />
                   </div>
                   <div>
                     <label htmlFor="productPrice" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">

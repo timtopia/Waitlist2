@@ -22,6 +22,8 @@ interface CreatedLine {
   isPublic: boolean
   createdAt: string
   kind?: "STANDARD" | "RESTAURANT"
+  opensAt?: string | null
+  closesAt?: string | null
   _count: { positions: number }
   frontPerson: {
     id: string
@@ -281,9 +283,11 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
         addToast(`Called ${data.calledUser} to the front!`, "success")
         router.refresh()
       } else {
-        const data = await res.json()
+        const data = await res.json().catch(() => ({}))
         addToast(data.error || "Failed to call next person", "error")
       }
+    } catch {
+      addToast("No connection -- that didn't go through. Try again.", "error")
     } finally {
       setLoadingAction(null)
     }
@@ -301,9 +305,11 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
         addToast(`${name} marked as ${servedWord}`, "success")
         router.refresh()
       } else {
-        const data = await res.json()
+        const data = await res.json().catch(() => ({}))
         addToast(data.error || `Failed to mark as ${servedWord}`, "error")
       }
+    } catch {
+      addToast("No connection -- that didn't go through. Try again.", "error")
     } finally {
       setLoadingAction(null)
     }
@@ -322,9 +328,11 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
         addToast(`${name} removed from the line`, "success")
         router.refresh()
       } else {
-        const data = await res.json()
+        const data = await res.json().catch(() => ({}))
         addToast(data.error || "Failed to remove person", "error")
       }
+    } catch {
+      addToast("No connection -- that didn't go through. Try again.", "error")
     } finally {
       setLoadingAction(null)
     }
@@ -341,9 +349,11 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
         addToast("Line duplicated. It starts paused -- resume it when it's ready.", "success")
         router.push(`/lines/${newLine.id}/edit`)
       } else {
-        const data = await res.json()
+        const data = await res.json().catch(() => ({}))
         addToast(data.error || "Failed to duplicate line", "error")
       }
+    } catch {
+      addToast("No connection -- that didn't go through. Try again.", "error")
     } finally {
       setLoadingAction(null)
     }
@@ -360,9 +370,16 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
         setLines(lines.filter(l => l.id !== lineId))
         addToast("Line deleted", "success")
       } else {
-        const data = await res.json()
+        // A refund failed: the server kept the line but paused it
+        if (res.status === 409) {
+          setLines((prev) => prev.map((l) => (l.id === lineId ? { ...l, isActive: false } : l)))
+          router.refresh()
+        }
+        const data = await res.json().catch(() => ({}))
         addToast(data.error || "Failed to delete line", "error")
       }
+    } catch {
+      addToast("No connection -- that didn't go through. Try again.", "error")
     } finally {
       setLoadingAction(null)
     }
@@ -384,9 +401,11 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
         ))
         addToast(data.isActive ? "Line resumed" : "Line paused", "success")
       } else {
-        const data = await res.json()
+        const data = await res.json().catch(() => ({}))
         addToast(data.error || "Failed to update", "error")
       }
+    } catch {
+      addToast("No connection -- that didn't go through. Try again.", "error")
     } finally {
       setLoadingAction(null)
     }
@@ -406,9 +425,11 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
         ))
         addToast(`Line is now ${!currentlyPublic ? "public" : "private"}`, "success")
       } else {
-        const data = await res.json()
+        const data = await res.json().catch(() => ({}))
         addToast(data.error || "Failed to update", "error")
       }
+    } catch {
+      addToast("No connection -- that didn't go through. Try again.", "error")
     } finally {
       setLoadingAction(null)
     }
@@ -748,7 +769,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="font-mono text-lg tabular-nums">#{pos.position}</p>
+                      <p className="font-mono text-lg tabular-nums">#{pos.phase === "served" ? pos.position : pos.ahead + 1}</p>
                       {pos.askingPrice !== null && (
                         <p className="text-sm text-green-700">
                           Open to swap: {formatCurrency(Number(pos.askingPrice))}
@@ -797,7 +818,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                     key={filter}
                     onClick={() => setStatusFilter(filter)}
                     aria-pressed={isSelected}
-                    className={`font-mono text-xs uppercase tracking-widest pb-1 border-b-2 transition-colors ${
+                    className={`font-mono text-xs uppercase tracking-widest pt-3 pb-2 sm:pt-0 sm:pb-1 border-b-2 transition-colors ${
                       isSelected
                         ? "border-accent text-ink"
                         : "border-transparent text-ink/60 hover:text-ink"
@@ -806,8 +827,8 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                     {label}
                     <span className={`ml-1.5 tabular-nums ${
                       isSelected
-                        ? "text-ink/60"
-                        : "text-ink/30"
+                        ? "text-ink/70"
+                        : "text-ink/60"
                     }`}>
                       {count}
                     </span>
@@ -853,6 +874,18 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                               Paused
                             </span>
                           )}
+                          {/* A drop past its close time, or not open yet, isn't "live" */}
+                          {line.closesAt && new Date(line.closesAt) <= new Date() ? (
+                            <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-ink/60 flex-shrink-0">
+                              <span className="w-1.5 h-1.5 bg-ink/40" aria-hidden />
+                              Closed
+                            </span>
+                          ) : line.opensAt && new Date(line.opensAt) > new Date() ? (
+                            <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-ink/60 flex-shrink-0">
+                              <span className="w-1.5 h-1.5 bg-ink/40" aria-hidden />
+                              Opens {new Date(line.opensAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                            </span>
+                          ) : null}
                         </div>
                         <p className="text-sm text-ink/60 mt-1">
                           {line._count.positions} waiting
@@ -935,7 +968,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                             { label: copiedId === line.id ? "Copied!" : "Copy Link", onClick: () => handleCopyLink(line.id) },
                             { label: "Edit", onClick: () => router.push(`/lines/${line.id}/edit`) },
                             { label: loadingAction === `duplicate-${line.id}` ? "Duplicating..." : "Duplicate", onClick: () => handleDuplicateLine(line.id), disabled: loadingAction === `duplicate-${line.id}` },
-                            { label: `Make ${line.isPublic ? "Private" : "Public"}`, onClick: () => handleTogglePublic(line.id, line.isPublic) },
+                            { label: `Make ${line.isPublic ? "Private" : "Public"}`, onClick: () => handleTogglePublic(line.id, line.isPublic), disabled: loadingAction === `toggle-${line.id}` },
                           ]
                           if (line.isActive) {
                             menuItems.push({ label: "Pause", onClick: () => handleTogglePause(line.id) })

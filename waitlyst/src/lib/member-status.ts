@@ -16,6 +16,8 @@ export interface StatusLine {
     fulfilled: boolean
     /** Set when the organizer calls this person; cleared only by leaving */
     calledAt?: string | null
+    /** Extra show-up minutes the host gave this call */
+    graceMinutes?: number
     user: { id: string; name: string | null }
   }[]
 }
@@ -27,6 +29,7 @@ export interface MemberStatus {
   ahead: number
   /** When they were last called, so a second call can alert again */
   calledAt?: string | null
+  graceMinutes?: number
 }
 
 /**
@@ -56,6 +59,7 @@ export function getMemberStatus(line: StatusLine, userId: string | undefined): M
     position: mine.position,
     ahead,
     calledAt: mine.calledAt ? String(mine.calledAt) : null,
+    ...(mine.graceMinutes ? { graceMinutes: mine.graceMinutes } : {}),
   }
 }
 
@@ -65,8 +69,10 @@ export type MemberEvent =
   | { kind: "served" }
   /** to: their new spot number; ahead: unserved people still in front */
   | { kind: "moved"; from: number; to: number; ahead: number }
-  /** Moved back a place: someone bought their spot */
-  | { kind: "sold"; to: number }
+  /** Moved back a place: someone bought their spot. ahead: unserved people in front */
+  | { kind: "sold"; to: number; ahead: number }
+  /** The host gave a called party more time to show up */
+  | { kind: "grace"; minutes: number }
   /** wasCalled: they'd been called (most often skipped as a no-show) */
   | { kind: "removed"; wasServed: boolean; wasCalled: boolean }
   | { kind: "announcement"; text: string }
@@ -105,7 +111,16 @@ export function diffMemberStatus(prev: StatusLine, next: StatusLine, userId: str
     }
     // The only way back is a swap: the person behind bought this spot
     if (after.position > before.position && after.phase !== "served") {
-      events.push({ kind: "sold", to: after.position })
+      events.push({ kind: "sold", to: after.position, ahead: after.ahead })
+    }
+    // Same call, more time: tell someone racing the clock they still have a place
+    if (
+      after.phase === "called" &&
+      before.phase === "called" &&
+      after.calledAt === before.calledAt &&
+      (after.graceMinutes ?? 0) > (before.graceMinutes ?? 0)
+    ) {
+      events.push({ kind: "grace", minutes: (after.graceMinutes ?? 0) - (before.graceMinutes ?? 0) })
     }
     if (prev.isActive && !next.isActive) events.push({ kind: "paused" })
     if (!prev.isActive && next.isActive) events.push({ kind: "resumed" })
@@ -163,7 +178,15 @@ export function describeMemberEvent(
       return { title: `You're #${place}`, body: `You moved up in ${lineName}.`, toast: false, tone: "info" }
     }
     case "sold":
-      return { title: "Your spot sold", body: `Someone bought your place in ${lineName}. You're now #${event.to}.`, toast: true, tone: "success" }
+      // Served people stay listed, so count the unserved ones ahead, as the card does
+      return { title: "Your spot sold", body: `Someone bought your place in ${lineName}. You're now #${event.ahead + 1}.`, toast: true, tone: "success" }
+    case "grace":
+      return {
+        title: "More time to show up",
+        body: `${isRestaurant ? "The host" : "The organizer"} gave you ${event.minutes} more minute${event.minutes === 1 ? "" : "s"} at ${lineName}.`,
+        toast: true,
+        tone: "success",
+      }
     case "removed":
       return event.wasServed
         ? { title: "All done", body: `You've left ${lineName} after being ${isRestaurant ? "seated" : "served"}.`, toast: true, tone: "info" }

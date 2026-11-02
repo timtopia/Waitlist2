@@ -4,7 +4,8 @@ import { prisma } from "@/lib/prisma"
 import { lockLine } from "@/lib/queue-exit"
 import { capacityUnit, parsePartySize } from "@/lib/capacity"
 import { countCapacityUsed } from "@/lib/capacity-server"
-import { parseNote, validateString } from "@/lib/validate"
+import { cleanDisplayName, parseNote } from "@/lib/validate"
+import { hostActionLimiter } from "@/lib/rate-limit"
 
 /** A reason the walk-in couldn't be added, safe to show the owner. */
 class WalkInRefusedError extends Error {}
@@ -22,10 +23,17 @@ export async function POST(
   const result = await requireLineOwner(lineId)
   if (result instanceof NextResponse) return result
 
+  // Each walk-in is a stand-in account: keep a script from minting thousands
+  if (!hostActionLimiter().check(`walk-in:${result.userId}`).success) {
+    return NextResponse.json(
+      { error: "Too many walk-ins at once. Please wait a minute." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    )
+  }
+
   const body = await req.json().catch(() => ({}))
-  const name = typeof body?.name === "string" ? body.name.trim() : ""
-  const nameErr = validateString(name, "Name", { min: 1, max: 50 })
-  if (nameErr) return NextResponse.json({ error: nameErr }, { status: 400 })
+  const name = cleanDisplayName(body?.name)
+  if (typeof name !== "string") return NextResponse.json({ error: name.error }, { status: 400 })
 
   try {
     const position = await prisma.$transaction(async (tx) => {

@@ -339,11 +339,11 @@ describe("GET /api/lines/[lineId]/offer/[offerId]/checkout", () => {
     const { GET } = await import("@/app/api/lines/[lineId]/offer/[offerId]/checkout/route")
     const res = await GET(new Request("http://localhost/x"), ctx())
     expect(res.status).toBe(410)
-    expect((await res.json()).error).toBe("That payment window closed. Your offer went back to them to accept again.")
+    expect((await res.json()).error).toBe("That payment window closed, so the offer was called off. You weren't charged -- send a new offer if you still want their spot.")
     expect(stripeMocks.abandonPendingTransaction).toHaveBeenCalledWith("txn-1", {
       offerId: "offer-1",
       expireSession: false,
-      byBuyer: true,
+      offerOutcome: "expire",
     })
   })
 })

@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { LineCard } from "@/components/LineCard"
 import { Button } from "@/components/ui/Button"
@@ -27,6 +27,9 @@ interface Line {
 type FilterStatus = "all" | "open" | "upcoming" | "closed"
 type SortOption = "newest" | "popular" | "ending-soon"
 
+const FILTERS: FilterStatus[] = ["all", "open", "upcoming", "closed"]
+const SORTS: SortOption[] = ["newest", "popular", "ending-soon"]
+
 const sortLabels: Record<SortOption, string> = {
   newest: "Newest",
   popular: "Most Popular",
@@ -39,6 +42,29 @@ export default function BrowsePage() {
   const [search, setSearch] = useState("")
   const [filter, setFilter] = useState<FilterStatus>("all")
   const [sortBy, setSortBy] = useState<SortOption>("newest")
+
+  // Search, filter and sort live in the URL, so Back from a line returns to
+  // the same view instead of resetting it
+  const urlRead = useRef(false)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const q = params.get("q")
+    const status = params.get("status") as FilterStatus | null
+    const sort = params.get("sort") as SortOption | null
+    if (q) setSearch(q)
+    if (status && FILTERS.includes(status)) setFilter(status)
+    if (sort && SORTS.includes(sort)) setSortBy(sort)
+    urlRead.current = true
+  }, [])
+  useEffect(() => {
+    if (!urlRead.current) return
+    const params = new URLSearchParams()
+    if (search) params.set("q", search)
+    if (filter !== "all") params.set("status", filter)
+    if (sortBy !== "newest") params.set("sort", sortBy)
+    const query = params.toString()
+    window.history.replaceState(window.history.state, "", query ? `?${query}` : window.location.pathname)
+  }, [search, filter, sortBy])
 
   // A failed load used to look like an empty board
   const [loadError, setLoadError] = useState(false)
@@ -86,8 +112,15 @@ export default function BrowsePage() {
       return true
     })
 
-    // Sort
+    // Sort. Lines you can still join come first whatever the sort, so a
+    // first-timer doesn't tap a closed one at the top and hit a dead end.
+    const joinable = (line: Line) => {
+      const status = getLineStatus(line)
+      return status === "open" || status === "upcoming" ? 0 : 1
+    }
     return result.sort((a, b) => {
+      const rank = joinable(a) - joinable(b)
+      if (rank !== 0) return rank
       switch (sortBy) {
         case "newest":
           return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -140,7 +173,7 @@ export default function BrowsePage() {
             aria-label="Search lines"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full px-0 py-2 bg-transparent border-0 border-b border-rule text-base focus:outline-none focus:border-ink placeholder:text-ink/30"
+            className="w-full px-0 py-2 bg-transparent border-0 border-b border-rule text-base focus:outline-none focus:border-ink placeholder:text-ink/60"
           />
         </div>
         <div className="flex gap-5">
@@ -222,6 +255,7 @@ export default function BrowsePage() {
           <p className="font-mono text-xs uppercase tracking-widest text-ink/60 mb-3">
             {filtered.length} {filtered.length === 1 ? "line" : "lines"}
           </p>
+          <h2 className="sr-only">Lines</h2>
           <div className="border border-rule divide-y divide-rule">
             {filtered.map((line) => (
               <LineCard key={line.id} line={line} />

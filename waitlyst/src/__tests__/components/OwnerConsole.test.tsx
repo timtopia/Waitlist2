@@ -297,4 +297,46 @@ describe("OwnerConsole", () => {
     )
     expect(screen.getByText("Party of 5 · waiting 12 min · high chair")).toBeInTheDocument()
   })
+
+  it("asks before seating a party that was never called", async () => {
+    respond({ "/fulfill": { fulfilled: true }, "/stats": {} })
+    render(<OwnerConsole {...baseProps} isRestaurant positions={[{ ...pos("p1", 1, "Bob"), partySize: 4 }]} />)
+
+    fireEvent.click(screen.getByRole("button", { name: "Mark Seated" }))
+    expect(fetchMock.mock.calls.map((c) => c[0])).not.toContain("/api/lines/line-1/fulfill")
+    const dialog = screen.getByRole("dialog")
+    expect(dialog).toHaveTextContent("haven't been called yet")
+    fireEvent.click(within(dialog).getByRole("button", { name: "Mark Seated" }))
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.map((c) => c[0])).toContain("/api/lines/line-1/fulfill")
+    )
+  })
+
+  it("warns when seating couldn't collect a held payment", async () => {
+    respond({ "/fulfill": { fulfilled: true, payoutsFailed: 1 }, "/stats": {} })
+    render(
+      <OwnerConsole
+        {...baseProps}
+        nowServingUserId="u-p1"
+        positions={[{ ...pos("p1", 1, "Bob"), calledAt: new Date().toISOString() }]}
+      />
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Mark Served" }))
+    await waitFor(() =>
+      expect(addToastMock).toHaveBeenCalledWith(expect.stringContaining("couldn't be collected"), "error")
+    )
+  })
+
+  it("reports a dropped connection instead of doing nothing", async () => {
+    fetchMock.mockImplementation((url: string) =>
+      url.endsWith("/call-next")
+        ? Promise.reject(new TypeError("Failed to fetch"))
+        : Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+    )
+    render(<OwnerConsole {...baseProps} positions={[pos("p1", 1, "Bob")]} />)
+    fireEvent.click(screen.getByRole("button", { name: /Call Bob/ }))
+    await waitFor(() =>
+      expect(addToastMock).toHaveBeenCalledWith(expect.stringContaining("No connection"), "error")
+    )
+  })
 })

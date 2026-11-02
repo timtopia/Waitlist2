@@ -189,7 +189,7 @@ export function swapAcceptedEmail(
     <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">Offer accepted, ${safeName}!</h2>
     <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">Your swap offer in <strong>${safeLine}</strong> has been accepted.</p>
     <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">${mustPay
-      ? `Open the line and pay${formattedAmount ? ` <strong>${formattedAmount}</strong>` : ""} within <strong>${opts.payWithinMinutes} minutes</strong> to take their place. If you don't, the swap is called off, you keep your current spot, and you aren't charged.`
+      ? `Open the line and pay${formattedAmount ? ` <strong>${formattedAmount}</strong>` : ""} within <strong>${opts.payWithinMinutes} minutes</strong> to take their place. If you don't, the offer is closed, you keep your current spot, and you aren't charged.`
       : "You've traded places with them -- open the line to see your new position."}</p>
   `
   return { subject, html: wrapTemplate(subject, body, mustPay ? "Pay and Swap" : "Go to Line", lineUrl) }

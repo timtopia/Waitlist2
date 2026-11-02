@@ -19,6 +19,14 @@ export async function POST(
       { status: 400 }
     )
   }
+  // Each removal may refund or collect through Stripe one after another; an
+  // unbounded list would time out halfway and leave the line half-settled
+  if (positionIds.length > 500 || !positionIds.every((id) => typeof id === "string")) {
+    return NextResponse.json(
+      { error: "positionIds must be at most 500 position IDs" },
+      { status: 400 }
+    )
+  }
 
   if (!["payout", "refund"].includes(action)) {
     return NextResponse.json(

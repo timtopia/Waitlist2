@@ -1,7 +1,8 @@
 "use client"
 
-import { useEffect } from "react"
+import { startTransition, useEffect } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { buttonClasses } from "@/components/ui/buttonStyles"
@@ -13,9 +14,19 @@ export default function Error({
   error: Error & { digest?: string }
   reset: () => void
 }) {
+  const router = useRouter()
   useEffect(() => {
     console.error("Application error:", error)
   }, [error])
+
+  // reset() alone re-renders the same failed server result; refresh fetches
+  // it again, so a passing database blip can actually recover
+  function retry() {
+    startTransition(() => {
+      router.refresh()
+      reset()
+    })
+  }
 
   return (
     <div className="min-h-[80vh] flex items-center justify-center px-4">
@@ -34,7 +45,7 @@ export default function Error({
             <Link href="/" className={buttonClasses({ variant: "secondary" })}>
               Go Home
             </Link>
-            <Button variant="primary" onClick={() => reset()}>
+            <Button variant="primary" onClick={retry}>
               Try Again
             </Button>
           </div>

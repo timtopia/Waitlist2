@@ -209,7 +209,7 @@ export async function DELETE(
       await setLineActive(lineId, false)
       return NextResponse.json(
         {
-          error: `${refundFailedCount} buyer refund${refundFailedCount === 1 ? "" : "s"} couldn't be processed, so the line wasn't deleted. It's been paused; retry the refund from the settlement page, then delete it.`,
+          error: `${refundFailedCount} buyer refund${refundFailedCount === 1 ? "" : "s"} couldn't be processed, so the line wasn't deleted. It's been paused. Remove ${refundFailedCount === 1 ? "that buyer" : "those buyers"} from the line with a refund (or collect the payment on the settlement page), then delete it.`,
           refundedCount,
           refundFailedCount,
         },

@@ -58,14 +58,15 @@ export function ConfirmModal({
           </div>
         </div>
         <div className="px-6 pb-6 flex justify-end gap-3">
-          <Button variant="ghost" onClick={onCancel} disabled={isLoading}>
+          {/* Destructive dialogs start on Cancel, so a reflexive Enter is safe */}
+          <Button variant="ghost" onClick={onCancel} disabled={isLoading} data-autofocus={variant === "danger" || undefined}>
             {cancelLabel}
           </Button>
           <Button
             variant={variant === "danger" ? "danger" : "primary"}
             onClick={onConfirm}
             isLoading={isLoading}
-            data-autofocus
+            data-autofocus={variant !== "danger" || undefined}
           >
             {confirmLabel}
           </Button>

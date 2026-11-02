@@ -24,6 +24,20 @@ interface RateLimitResult {
  *
  * Expired entries are cleaned up every 60 seconds to avoid memory leaks.
  */
+/**
+ * Shared by every route that makes a new line (create and duplicate), so
+ * duplicating can't be used to get around the create limit.
+ */
+export function lineCreateLimiter() {
+  return sharedLineCreateLimiter
+}
+
+/** Per-owner limit on host actions that email guests or create rows */
+export const hostActionLimiter = (() => {
+  let limiter: ReturnType<typeof rateLimit> | null = null
+  return () => (limiter ??= rateLimit({ interval: 60_000, limit: 30 }))
+})()
+
 export function rateLimit(config: RateLimitConfig): {
   check: (key: string) => RateLimitResult
 } {
@@ -84,3 +98,6 @@ export function rateLimit(config: RateLimitConfig): {
 
   return { check }
 }
+
+// Created once per server instance, after rateLimit is defined
+const sharedLineCreateLimiter = rateLimit({ interval: 60_000, limit: 5 })

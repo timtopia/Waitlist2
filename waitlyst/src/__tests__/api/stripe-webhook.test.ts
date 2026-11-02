@@ -152,7 +152,13 @@ describe("POST /api/webhooks/stripe", () => {
     expect(response.status).toBe(200)
     // Abandons only-if-PENDING, unlocks, and hands the accepted offer back.
     // A timeout counts toward the buyer's abandon limit
-    expect(mockAbandon).toHaveBeenCalledWith("txn-2", { offerId: "offer-9", expireSession: false, byBuyer: true })
+    // A lapsed accepted offer closes without a strike against the buyer
+    expect(mockAbandon).toHaveBeenCalledWith("txn-2", {
+      offerId: "offer-9",
+      expireSession: false,
+      byBuyer: false,
+      offerOutcome: "expire",
+    })
   })
 
   it("should handle checkout.session.expired with no transactionId gracefully", async () => {

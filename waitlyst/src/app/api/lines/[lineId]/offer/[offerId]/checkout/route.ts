@@ -93,11 +93,12 @@ export async function GET(
       await abandonPendingTransaction(transaction.id, {
         offerId,
         expireSession: false,
-        // Nobody paid before the window closed
-        byBuyer: true,
+        // The seller started this checkout by accepting; the buyer may have
+        // been away, so no strike, and the offer is closed, not reopened
+        offerOutcome: "expire",
       })
       return NextResponse.json(
-        { error: "That payment window closed. Your offer went back to them to accept again." },
+        { error: "That payment window closed, so the offer was called off. You weren't charged -- send a new offer if you still want their spot." },
         { status: 410 }
       )
     }

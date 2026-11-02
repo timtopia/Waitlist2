@@ -32,8 +32,9 @@ export function useNotifications() {
   const sendNotification = useCallback((title: string, options?: NotificationOptions) => {
     if (typeof window === "undefined" || !("Notification" in window)) return
     if (Notification.permission !== "granted") return
-    // Don't notify if page is focused
-    if (document.visibilityState === "visible") return
+    // Don't notify if they're looking at the page. A visible tab in a window
+    // behind another app still needs the notification.
+    if (document.visibilityState === "visible" && document.hasFocus()) return
 
     let notification: Notification
     try {

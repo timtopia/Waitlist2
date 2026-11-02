@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import Image from "next/image"
-import { useSession, signIn, signOut } from "next-auth/react"
+import { useSession, signOut } from "next-auth/react"
 import { Button } from "./ui/Button"
 import { useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
@@ -13,6 +13,9 @@ export function Header() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const accountMenuRef = useRef<HTMLDivElement>(null)
+  const accountButtonRef = useRef<HTMLButtonElement>(null)
+  // The sign-in page explains Google sign-in and the terms, then comes back here
+  const signInHref = `/signin?callbackUrl=${encodeURIComponent(pathname || "/")}`
 
   // The account menu used to stay open until its button was clicked again
   useEffect(() => {
@@ -21,7 +24,11 @@ export function Header() {
       if (!accountMenuRef.current?.contains(event.target as Node)) setMenuOpen(false)
     }
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMenuOpen(false)
+      if (event.key === "Escape") {
+        setMenuOpen(false)
+        // Keyboard users land back where they opened it
+        accountButtonRef.current?.focus()
+      }
     }
     document.addEventListener("mousedown", onPointerDown)
     document.addEventListener("keydown", onKeyDown)
@@ -103,11 +110,13 @@ export function Header() {
               <>
                 {/* Desktop profile dropdown */}
                 <div className="relative hidden md:block" ref={accountMenuRef}>
+                  {/* A disclosure of plain links, not an ARIA menu */}
                   <button
+                    ref={accountButtonRef}
                     onClick={() => setMenuOpen(!menuOpen)}
                     className="flex items-center space-x-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ink"
                     aria-label="Account menu"
-                    aria-haspopup="menu"
+                    aria-controls="account-menu"
                     aria-expanded={menuOpen}
                   >
                     {session.user?.image ? (
@@ -124,7 +133,7 @@ export function Header() {
                     )}
                   </button>
                   {menuOpen && (
-                    <div className="absolute right-0 mt-2 w-48 bg-white py-1 z-50 border border-ink">
+                    <div id="account-menu" className="absolute right-0 mt-2 w-48 bg-white py-1 z-50 border border-ink">
                       <div className="px-4 py-2 border-b border-rule">
                         <p className="text-sm font-medium text-ink">{session.user?.name}</p>
                         <p className="text-sm text-ink/60 truncate">{session.user?.email}</p>
@@ -147,9 +156,9 @@ export function Header() {
                 </div>
               </>
             ) : (
-              <Button onClick={() => signIn("google")} size="sm" className="hidden md:inline-flex">
-                Sign in with Google
-              </Button>
+              <Link href={signInHref} className="hidden md:inline-flex">
+                <Button size="sm" tabIndex={-1}>Sign in with Google</Button>
+              </Link>
             )}
 
             {/* Mobile hamburger button */}
@@ -240,9 +249,9 @@ export function Header() {
                 </button>
               </div>
             ) : (
-              <Button onClick={() => { setMobileMenuOpen(false); signIn("google") }} className="w-full">
-                Sign in with Google
-              </Button>
+              <Link href={signInHref} onClick={() => setMobileMenuOpen(false)} className="block">
+                <Button className="w-full" tabIndex={-1}>Sign in with Google</Button>
+              </Link>
             )}
           </div>
         </div>

@@ -43,6 +43,8 @@ interface OwnerConsoleProps {
   purchaseLimit?: number | null
   /** Minutes a called party has to show up; null when there's no limit */
   responseWindowMinutes?: number | null
+  /** An announcement is posted; closing the line clears it */
+  hasAnnouncement?: boolean
 }
 
 interface Earnings {
@@ -80,11 +82,14 @@ export function OwnerConsole({
   onChanged,
   isRestaurant = false,
   responseWindowMinutes = null,
+  hasAnnouncement = false,
 }: OwnerConsoleProps) {
   const { addToast } = useToast()
   const [busy, setBusy] = useState<string | null>(null)
   const [earnings, setEarnings] = useState<Earnings | null>(null)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
+  // Seating a party that was never called can't be undone: confirm it
+  const [seatUncalledConfirm, setSeatUncalledConfirm] = useState(false)
   // Whoever the host tapped No-show on: the party up next or one also called
   const [noShowTarget, setNoShowTarget] = useState<ConsolePosition | null>(null)
   const [closeChoice, setCloseChoice] = useState(false)
@@ -160,8 +165,9 @@ export function OwnerConsole({
       ? lastCalled.current.filter((p) => {
           if (present.has(p.id) || removedByHost.current.has(p.id)) return false
           const deadline = callDeadline(p.calledAt, responseWindowMinutes, p.respondedAt, p.graceMinutes)
-          // A little slack for the tablet's clock running behind the server's
-          return !!deadline && deadline.getTime() <= now + 60_000
+          // No slack: a party the host removed from the list moments before
+          // their time ran out must not be reported as timed out
+          return !!deadline && deadline.getTime() <= now
         })
       : []
     if (skipped.length > 0) {
@@ -197,14 +203,31 @@ export function OwnerConsole({
     fetchEarnings()
   }, [fetchEarnings, positions.length, served.length, order])
 
-  async function post(path: string, body?: unknown) {
-    const res = await fetch(`/api/lines/${lineId}/${path}`, {
-      method: "POST",
-      headers: body ? { "Content-Type": "application/json" } : undefined,
-      body: body ? JSON.stringify(body) : undefined,
-    })
+  async function post(path: string, body?: unknown, method = "POST") {
+    let res: Response
+    try {
+      res = await fetch(`/api/lines/${lineId}/${path}`, {
+        method,
+        headers: body ? { "Content-Type": "application/json" } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      })
+    } catch {
+      // A Wi-Fi blip must read as a failure, not as nothing happening
+      return { ok: false, data: { error: "No connection -- check your signal and try again" } }
+    }
     const data = await res.json().catch(() => ({}))
     return { ok: res.ok, data }
+  }
+
+  /** Seating collects held swap payments; say so when one couldn't be collected */
+  function warnPayoutsFailed(data: { payoutsFailed?: number }) {
+    const failed = data.payoutsFailed ?? 0
+    if (failed > 0) {
+      addToast(
+        `${failed} payment${failed === 1 ? "" : "s"} couldn't be collected -- review on the settlement page.`,
+        "error"
+      )
+    }
   }
 
   async function handleCall() {
@@ -240,6 +263,7 @@ export function OwnerConsole({
         return
       }
       const name = upNext.user.name || "Guest"
+      warnPayoutsFailed(fulfilled.data)
       if (callNext && afterNext?.calledAt) {
         // Already called out of order: calling again would wipe their
         // "on my way" and send them a second "you've been called"
@@ -306,8 +330,12 @@ export function OwnerConsole({
     setBusy(`seat-${p.id}`)
     try {
       const { ok, data } = await post("fulfill", { positionId: p.id })
-      if (ok) addToast(`${name} marked as ${servedWord}`, "success")
-      else addToast(data.error || `Failed to mark as ${servedWord}`, "error")
+      if (ok) {
+        addToast(`${name} marked as ${servedWord}`, "success")
+        warnPayoutsFailed(data)
+      } else {
+        addToast(data.error || `Failed to mark as ${servedWord}`, "error")
+      }
     } finally {
       setBusy(null)
       onChanged()
@@ -373,6 +401,8 @@ export function OwnerConsole({
         addToast(paused.data.error || "Failed to close the line", "error")
         return
       }
+      // Tonight's "45 min wait, patio closed" shouldn't greet tomorrow's guests
+      if (hasAnnouncement) await post("announcement", { announcement: null }, "PATCH")
       if (positions.length > 0) {
         for (const p of positions) removedByHost.current.add(p.id)
         const { ok, data } = await post("batch-remove", { positionIds: positions.map((p) => p.id), action })
@@ -446,10 +476,14 @@ export function OwnerConsole({
     setBusy(null)
   }
 
-  function handleCopyLink() {
-    navigator.clipboard.writeText(`${window.location.origin}/lines/${lineId}`)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+  async function handleCopyLink() {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/lines/${lineId}`)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      addToast("Couldn't copy -- select the link and copy it yourself", "error")
+    }
   }
 
   const hasEarnings = !!earnings && (earnings.earned > 0 || earnings.pending > 0)
@@ -469,6 +503,18 @@ export function OwnerConsole({
         onCancel={() => setShowClearConfirm(false)}
       />
       <ConfirmModal
+        open={seatUncalledConfirm && !!upNext}
+        title={isRestaurant ? "Seat without calling?" : "Mark as served?"}
+        message={`${isRestaurant ? "Seat" : "Mark"} ${upNext?.user.name || "this party"}${isRestaurant && upNext ? ` (party of ${upNext.partySize ?? 1})` : ""}${isRestaurant ? "" : " as served"}? They haven't been called yet.${heldPayments ? " Any swap payment of theirs on hold is collected now." : ""} This can't be undone.`}
+        confirmLabel={markServedLabel}
+        isLoading={busy === "serve"}
+        onConfirm={() => {
+          setSeatUncalledConfirm(false)
+          handleServe(false)
+        }}
+        onCancel={() => setSeatUncalledConfirm(false)}
+      />
+      <ConfirmModal
         open={!!noShowTarget}
         title="Mark as a no-show?"
         message={`Remove ${noShowTarget?.user.name || "this party"}${isRestaurant && noShowTarget ? ` (party of ${noShowTarget.partySize ?? 1})` : ""} from the line as a no-show? Everyone behind them moves up.`}
@@ -480,8 +526,14 @@ export function OwnerConsole({
       />
 
       {closeChoice && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true" aria-label="Close the line">
-          <div ref={closeDialogRef} className="bg-white border border-ink max-w-md w-full p-6">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div
+            ref={closeDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Close the line"
+            className="bg-white border border-ink max-w-md w-full p-6 max-h-[calc(100dvh-2rem)] overflow-y-auto"
+          >
             <h3 className="text-lg font-semibold tracking-tight text-ink mb-2">
               {isRestaurant ? "Close for the night?" : "Close the line?"}
             </h3>
@@ -497,6 +549,7 @@ export function OwnerConsole({
                 </>
               )}
               . Everyone still waiting is told they&apos;re no longer in line.
+              {hasAnnouncement && " Your announcement is cleared too."}
               {" "}Export CSV from the ⋯ menu first if you want a copy of the list.
               {heldPayments && " Choose what happens to swap payments still on hold:"}
             </p>
@@ -509,7 +562,7 @@ export function OwnerConsole({
                   Close and refund held payments
                 </Button>
               )}
-              <Button variant="ghost" onClick={() => setCloseChoice(false)} className="w-full">
+              <Button variant="ghost" onClick={() => setCloseChoice(false)} className="w-full" data-autofocus>
                 Cancel
               </Button>
             </div>
@@ -686,7 +739,7 @@ export function OwnerConsole({
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => handleServe(false)}
+                    onClick={() => setSeatUncalledConfirm(true)}
                     isLoading={busy === "serve"}
                     disabled={!!busy || upNextLocked}
                   >
@@ -719,7 +772,21 @@ export function OwnerConsole({
                       {" · "}{calledAgo(p)}
                       {left && <>{" · "}{left} left</>}
                       {timerOnHold(p) && " · timer on hold"}
+                      {isRestaurant && p.note && <>{" · "}{p.note}</>}
                     </span>
+                    {left && (
+                      <>
+                        {" "}
+                        <button
+                          onClick={() => handleGiveMoreTime(p)}
+                          disabled={!!busy}
+                          aria-label={`Give ${name} 5 more minutes`}
+                          className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4 disabled:opacity-50"
+                        >
+                          +5 min
+                        </button>
+                      </>
+                    )}
                   </p>
                   <div className="flex items-center gap-2">
                     <Button
@@ -800,7 +867,7 @@ export function OwnerConsole({
                     onChange={(e) => setWalkInNote(e.target.value)}
                     maxLength={140}
                     placeholder="high chair, patio..."
-                    className="mt-1 border border-rule bg-white px-2 py-1.5 text-sm text-ink placeholder:text-ink/30 focus:outline-none focus:border-ink"
+                    className="mt-1 border border-rule bg-white px-2 py-1.5 text-sm text-ink placeholder:text-ink/60 focus:outline-none focus:border-ink"
                   />
                 </label>
               </>
