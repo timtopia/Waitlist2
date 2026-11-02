@@ -25,11 +25,11 @@ export const metadata: Metadata = {
     template: "%s | Waitlyst",
   },
   description:
-    "Virtual lines for restaurants, shops, product drops, and events. Join from your phone, wait anywhere, and trade spots with the person beside you.",
+    "Virtual lines for restaurants, shops, product drops, and events. Join from your phone, wait anywhere, and buy the spot just ahead of you when it's listed.",
   openGraph: {
     title: "Waitlyst - Virtual Lines",
     description:
-      "Virtual lines for restaurants, shops, product drops, and events. Join from your phone, wait anywhere, and trade spots with the person beside you.",
+      "Virtual lines for restaurants, shops, product drops, and events. Join from your phone, wait anywhere, and buy the spot just ahead of you when it's listed.",
     siteName: "Waitlyst",
     type: "website",
   },

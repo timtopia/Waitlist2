@@ -104,7 +104,7 @@ export async function GET(
     }
     if (!session.url) {
       return NextResponse.json(
-        { error: "The payment window closed. The offer goes back to them shortly." },
+        { error: "The payment window closed, so the offer was called off. You weren't charged." },
         { status: 410 }
       )
     }

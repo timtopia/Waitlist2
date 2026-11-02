@@ -98,6 +98,8 @@ export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount,
                     day: "numeric",
                     hour: "numeric",
                     minute: "2-digit",
+                    // Guests may be in another zone than the venue
+                    timeZoneName: "short",
                   })}
                 </p>
               </div>
@@ -124,6 +126,7 @@ export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount,
                   day: "numeric",
                   hour: "numeric",
                   minute: "2-digit",
+                  timeZoneName: "short",
                 })}
                 {/* A countdown read as "you'll be dropped at zero" */}
                 {inLine && ". You keep your place after it closes."}

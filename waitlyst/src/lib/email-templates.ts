@@ -126,23 +126,29 @@ export function removedFromLineEmail(
   lineName: string,
   refunded: boolean,
   lineUrl: string,
-  missedCall = false,
+  /** Why: removed by the host, called but didn't show, or the line closed */
+  reason: "removed" | "missed" | "closed" = "removed",
   charged = false,
   isRestaurant = false
 ): { subject: string; html: string } {
   const safeName = escapeHtml(userName)
   const safeLine = escapeHtml(lineName)
+  const organizer = isRestaurant ? "host" : "organizer"
+  // A line closing for the night isn't a mistake to contact anyone about
+  const mistake = reason === "closed" ? "" : ` If you think this was a mistake, contact the ${organizer}.`
   const subject = `You're no longer in ${lineName}`
   const body = `
     <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">You're no longer in line, ${safeName}</h2>
-    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">${missedCall
+    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">${reason === "missed"
       ? `You were called in <strong>${safeLine}</strong> but didn't show up in time, so your place was given to the next ${isRestaurant ? "party" : "person"}.`
-      : `The ${isRestaurant ? "host" : "organizer"} of <strong>${safeLine}</strong> removed you from the line.`}</p>
+      : reason === "closed"
+        ? `<strong>${safeLine}</strong> has closed its line for now, so you're no longer in it. Sorry for the wait.`
+        : `The ${organizer} of <strong>${safeLine}</strong> removed you from the line.`}</p>
     <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">${refunded
       ? "A payment of yours that was on hold for this line has been released or refunded."
       : charged
-        ? "You've been charged for the spot you bought -- the person you bought it from gave up their place, so it isn't refunded. If you think this was a mistake, contact the organizer."
-        : "If you think this was a mistake, contact the organizer."}</p>
+        ? `You've been charged for the spot you bought -- the person you bought it from gave up their place, so it isn't refunded.${mistake}`
+        : mistake.trim()}</p>
   `
   return { subject, html: wrapTemplate(subject, body, "View Line", lineUrl) }
 }

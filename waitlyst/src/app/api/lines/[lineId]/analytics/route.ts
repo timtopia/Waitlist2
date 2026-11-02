@@ -31,7 +31,7 @@ export async function GET(
     }),
     prisma.transaction.findMany({
       where: { lineId, status: "COMPLETED", createdAt: { gte: since } },
-      select: { createdAt: true, amount: true, ownerFee: true, platformFee: true },
+      select: { createdAt: true, amount: true, ownerFee: true, platformFee: true, settledAt: true },
     }),
   ])
 
@@ -56,6 +56,8 @@ export async function GET(
       at: t.createdAt,
       ownerFee: t.ownerFee,
       buyerPaid: buyerTotal(t),
+      // Restaurant holds aren't earned until collected (matches the console)
+      settled: !!t.settledAt,
     })),
   })
 }

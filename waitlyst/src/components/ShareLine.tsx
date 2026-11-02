@@ -6,9 +6,11 @@ import { Button } from "./ui/Button"
 interface ShareLineProps {
   lineId: string
   lineName: string
+  /** Embed code is for the owner's website; guests sharing a link don't need it */
+  canEmbed?: boolean
 }
 
-export function ShareLine({ lineId, lineName }: ShareLineProps) {
+export function ShareLine({ lineId, lineName, canEmbed = false }: ShareLineProps) {
   const [copied, setCopied] = useState(false)
   const [open, setOpen] = useState(false)
   const [showQr, setShowQr] = useState(false)
@@ -216,7 +218,7 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
 
           {/* Dropdown */}
           {/* Capped to the viewport so it doesn't run off a narrow phone screen */}
-          <div id={panelId} role="region" aria-label="Share this line" className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] bg-white border border-ink z-50 p-4">
+          <div id={panelId} role="region" aria-label="Share this line" className="absolute left-0 sm:left-auto sm:right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] bg-white border border-ink z-50 p-4">
             <h4 className="font-mono text-xs uppercase tracking-widest text-ink/60 mb-3">Share this line</h4>
 
             {/* Copy Link */}
@@ -368,6 +370,7 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
               </div>
             )}
 
+            {canEmbed && (<>
             {/* Divider */}
             <div className="border-t border-rule my-3" />
 
@@ -432,6 +435,7 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
                 </div>
               </div>
             )}
+            </>)}
           </div>
         </>
       )}

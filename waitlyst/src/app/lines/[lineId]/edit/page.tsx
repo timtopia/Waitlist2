@@ -23,7 +23,8 @@ export default async function EditLinePage({ params }: Props) {
   const line = await prisma.line.findUnique({
     where: { id: lineId },
     include: {
-      _count: { select: { positions: true } },
+      // Served people stay listed until cleared; "in line" means still waiting
+      _count: { select: { positions: { where: { fulfilled: false } } } },
     },
   })
 

@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 // fake Stripe client.
 
 const mockPrisma = {
-  transaction: { update: vi.fn() },
+  transaction: { update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
 }
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }))
 vi.mock("@/lib/email", () => ({ sendEmail: vi.fn() }))

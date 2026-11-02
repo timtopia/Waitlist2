@@ -116,6 +116,8 @@ export function EmbedWidgetClient({
   })
   // The owner deleted the line: stop offering a Join button that 404s
   const [gone, setGone] = useState(false)
+  // Set when a refresh fails, so a stale count isn't passed off as live
+  const [staleSince, setStaleSince] = useState<Date | null>(null)
   const { positionCount, capacityUsed, maxCapacity, isFull, isActive, nowServing, opensAt, closesAt } = live
 
   useEffect(() => {
@@ -126,16 +128,24 @@ export function EmbedWidgetClient({
   // The page is rendered once on the server; keep the count, "full",
   // "paused" and "now serving" current while it sits on someone's site.
   useEffect(() => {
+    // Every visitor to the host's site polls; back off when told to
+    let pausedUntil = 0
     async function refresh() {
-      if (document.visibilityState !== "visible") return
+      if (document.visibilityState !== "visible" || Date.now() < pausedUntil) return
       try {
-        const res = await fetch(`/api/lines/${lineId}`)
+        const res = await fetch(`/api/lines/${lineId}`, { signal: AbortSignal.timeout(10_000) })
         if (res.status === 404) {
           setGone(true)
           return
         }
-        if (!res.ok) return
+        if (!res.ok) {
+          const retryAfter = Number(res.headers.get("Retry-After"))
+          if (res.status === 429 || res.status >= 500) pausedUntil = Date.now() + (retryAfter > 0 ? retryAfter * 1000 : 60_000)
+          setStaleSince((s) => s ?? new Date())
+          return
+        }
         const line = await res.json()
+        setStaleSince(null)
         setLive({
           positionCount: (line.positions ?? []).reduce(
             (sum: number, p: { partySize?: number; fulfilled?: boolean }) => sum + (p.fulfilled ? 0 : p.partySize ?? 1),
@@ -150,11 +160,18 @@ export function EmbedWidgetClient({
           closesAt: line.closesAt,
         })
       } catch {
-        // Keep showing the last known state
+        // Keep showing the last known state, but say it may be out of date
+        setStaleSince((s) => s ?? new Date())
       }
     }
     const interval = setInterval(refresh, REFRESH_MS)
-    return () => clearInterval(interval)
+    // Coming back to a backgrounded tab shouldn't wait a full interval
+    const onVisible = () => { if (document.visibilityState === "visible") void refresh() }
+    document.addEventListener("visibilitychange", onVisible)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener("visibilitychange", onVisible)
+    }
   }, [lineId])
 
   const status = getLineStatus(opensAt, closesAt, isFull, isActive)
@@ -165,9 +182,10 @@ export function EmbedWidgetClient({
 
   if (gone) {
     return (
-      <div className="flex items-center justify-center h-screen bg-white p-4">
-        <p className="text-sm text-ink/60">This line has closed.</p>
-      </div>
+      <main className="flex items-center justify-center h-screen bg-white p-4">
+        {/* Deleted, not just closed by schedule: there's nothing to come back to */}
+        <p className="text-sm text-ink/60" role="status">This line is no longer available.</p>
+      </main>
     )
   }
 
@@ -204,13 +222,22 @@ export function EmbedWidgetClient({
         {/* Now Serving */}
         {/* Guests watch this from the restaurant's site; announce when the
             refresh moves it on */}
-        {nowServing && (
-          <div className="bg-white border border-green-700 p-3 mb-3" aria-live="polite" aria-atomic="true">
-            <p className="text-sm font-semibold text-green-700">
-              Now Serving: {nowServing}
-            </p>
-          </div>
-        )}
+        {/* The live region stays mounted: one inserted together with its
+            text isn't announced by most screen readers */}
+        <div aria-live="polite" aria-atomic="true">
+          {nowServing && (
+            <div className="bg-white border border-green-700 p-3 mb-3">
+              <p className="text-sm font-semibold text-green-700">
+                Now Serving: {nowServing}
+              </p>
+            </div>
+          )}
+        </div>
+        <p className={staleSince ? "text-xs text-amber-700 mb-2" : "sr-only"} role="status">
+          {staleSince
+            ? `Couldn't update. Showing info from ${staleSince.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}.`
+            : ""}
+        </p>
 
         {/* Announces status changes picked up by the refresh (not the
             ticking countdowns) to screen readers */}

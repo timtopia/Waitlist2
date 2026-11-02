@@ -112,11 +112,31 @@ describe("POST /api/lines/[lineId]/call-next", () => {
     expect(sendEmail.mock.calls[0][0]).toBe("bob@test")
     expect(sendEmail.mock.calls[0][1]).toBe("You're next in Drop")
 
-    // Ann is called again: Bob already knows
+    // Ann is called again (deliberately): Bob already knows
     sendEmail.mockClear()
     mockPrisma.linePosition.findFirst.mockResolvedValueOnce({ ...front, calledAt: new Date() })
-    await call()
+    const recall = await POST(
+      new Request("http://localhost/api/lines/line-1/call-next", { method: "POST", body: JSON.stringify({ recall: true }) }),
+      params
+    )
+    expect(recall.status).toBe(200)
     expect(sendEmail).not.toHaveBeenCalled()
+  })
+
+  it("won't re-call someone already called unless it's a deliberate Call again (stale second device)", async () => {
+    asOwner()
+    mockPrisma.linePosition.findFirst.mockResolvedValue({
+      id: "pos-1", userId: "ann", position: 1, lockedBy: null, lockedUntil: null, calledAt: new Date(),
+      user: { name: "Ann", email: null, emailNotifications: false },
+    })
+
+    const { POST } = await import("@/app/api/lines/[lineId]/call-next/route")
+    const res = await POST(new Request("http://localhost/api/lines/line-1/call-next", { method: "POST" }), params)
+
+    expect(res.status).toBe(409)
+    expect((await res.json()).code).toBe("ALREADY_CALLED")
+    // Their "On my way" and clock are left alone
+    expect(mockPrisma.linePosition.update).not.toHaveBeenCalled()
   })
 
   it("calls off a swap still on the payment page so the called person isn't pushed back", async () => {

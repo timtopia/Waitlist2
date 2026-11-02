@@ -10,6 +10,7 @@ import { tradeBlocker, MAX_ABANDONED_CHECKOUTS, ABANDON_WINDOW_MS } from "@/lib/
 import { getBaseUrl } from "@/lib/stripe"
 import { paymentsUnavailable } from "@/lib/payments-mode"
 import { formatCurrency } from "@/lib/format"
+import { buyerTotal } from "@/lib/fees"
 
 const offerLimiter = rateLimit({ interval: 60_000, limit: 10 })
 
@@ -126,6 +127,15 @@ export async function POST(
     if (blocked) {
       return NextResponse.json({ error: blocked }, { status: 400 })
     }
+    // A purchase already holding either spot: the person ahead would be
+    // emailed about an offer that Accept could only refuse
+    const lockNow = new Date()
+    if ((fromPosition.lockedUntil && fromPosition.lockedUntil > lockNow) || (toPosition.lockedUntil && toPosition.lockedUntil > lockNow)) {
+      return NextResponse.json(
+        { error: "A swap involving one of these spots is in progress. Try again once it's done." },
+        { status: 409 }
+      )
+    }
 
     // Each offer the person ahead accepts locks their spot until the buyer
     // pays, so someone who keeps backing out of payments here can't keep
@@ -204,13 +214,18 @@ export async function POST(
     // A previous offer between the two (declined, expired, withdrawn, or an
     // accepted one that already went through) is reused as the new offer.
     const now = new Date()
+    // Raises a cent at a time would otherwise email them on every click;
+    // a raise only emails once the last email is old enough. createdAt only
+    // moves when an email goes out, so steady raises still email now and then.
+    const emailWorthy =
+      !raising || existingOffer!.createdAt.getTime() <= now.getTime() - OFFER_COOLDOWN_MS
     let offer
     if (raising) {
       // Guarded on the old amount and status: if the person ahead answered
       // in the meantime, they keep the price they saw.
       const raised = await prisma.swapOffer.updateMany({
         where: { id: existingOffer!.id, status: "PENDING", amount: existingOffer!.amount },
-        data: { amount, createdAt: now, expiresAt: newOfferExpiry(now) },
+        data: { amount, createdAt: emailWorthy ? now : existingOffer!.createdAt, expiresAt: newOfferExpiry(now) },
       })
       if (raised.count === 0) {
         return NextResponse.json(
@@ -251,10 +266,6 @@ export async function POST(
       where: { id: toUserId },
       select: { name: true, email: true, emailNotifications: true },
     })
-    // Raises a cent at a time would otherwise email them on every click;
-    // a raise only emails once the last send or raise is old enough.
-    const emailWorthy =
-      !raising || existingOffer!.createdAt.getTime() <= now.getTime() - OFFER_COOLDOWN_MS
     if (toUser?.email && toUser.emailNotifications && emailWorthy) {
       const lineUrl = `${getBaseUrl()}/lines/${lineId}`
       const { subject, html } = swapOfferEmail(
@@ -298,7 +309,7 @@ export async function GET(
       }),
       prisma.transaction.findMany({
         where: { lineId, status: "PENDING", OR: [{ buyerId: userId }, { sellerId: userId }] },
-        select: { id: true },
+        select: { id: true, amount: true, ownerFee: true, platformFee: true },
       }),
       prisma.line.findUnique({ where: { id: lineId }, select: { nowServingUserId: true, maxAskingPrice: true } }),
     ])
@@ -335,14 +346,18 @@ export async function GET(
       })
     }
 
-    const pendingIds = new Set(pendingPayments.map((t) => t.id))
+    const pendingById = new Map(pendingPayments.map((t) => [t.id, t]))
     const annotated = offers.map((o) => {
       const status = staleIds.includes(o.id) ? "EXPIRED" as const : o.status
+      const txn = status === "ACCEPTED" && o.transactionId ? pendingById.get(o.transactionId) : undefined
       return {
         ...o,
         status,
         expiresAt: status === "PENDING" ? o.expiresAt.toISOString() : null,
-        awaitingPayment: status === "ACCEPTED" && !!o.transactionId && pendingIds.has(o.transactionId),
+        awaitingPayment: !!txn,
+        // Fees are fixed when the offer is accepted; the live fee may have
+        // changed since, so this is what checkout will actually charge
+        chargeTotal: txn ? buyerTotal(txn) : null,
       }
     })
 

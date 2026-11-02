@@ -54,7 +54,7 @@ describe("ShareLine", () => {
   })
 
   it("gives the embed iframe an escaped title", () => {
-    render(<ShareLine lineId="l1" lineName={`Joe's "Diner"`} />)
+    render(<ShareLine lineId="l1" lineName={`Joe's "Diner"`} canEmbed />)
     fireEvent.click(screen.getByRole("button", { name: "Share" }))
     fireEvent.click(screen.getByRole("button", { name: "Embed Widget" }))
     expect(screen.getByRole("button", { name: "Hide embed code" })).toHaveFocus()
@@ -87,6 +87,7 @@ describe("EmbedWidgetClient", () => {
     )
     expect(screen.getByRole("main")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /Join Line \(opens in a new tab\)/ })).toBeInTheDocument()
-    expect(screen.getByText("Now Serving: A12").parentElement).toHaveAttribute("aria-live", "polite")
+    // The live region wraps the card and stays mounted when nothing is being served
+    expect(screen.getByText("Now Serving: A12").parentElement?.parentElement).toHaveAttribute("aria-live", "polite")
   })
 })

@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
 import { Button } from "@/components/ui/Button"
+import { buttonClasses } from "@/components/ui/buttonStyles"
 import { Card, CardContent, CardHeader } from "@/components/ui/Card"
 import { QueueDisplay } from "@/components/QueueDisplay"
 import { LineStatusBanner } from "@/components/LineStatusBanner"
@@ -126,6 +127,13 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [showAllActivity, setShowAllActivity] = useState(false)
   const [hasPayoutSetup, setHasPayoutSetup] = useState(false)
   const [stripeEnabled, setStripeEnabled] = useState(false)
+  // Instagram/TikTok/Facebook webviews: Google refuses to sign in there
+  // ("disallowed_useragent"), so a drop link tapped on social was a dead end
+  const [inAppBrowser, setInAppBrowser] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
+  useEffect(() => {
+    setInAppBrowser(/Instagram|FBAN|FBAV|TikTok|musical_ly|BytedanceWebview|Line\/|Snapchat|Twitter/i.test(navigator.userAgent))
+  }, [])
   const router = useRouter()
   const searchParams = useSearchParams()
   const { requestPermission, sendNotification } = useNotifications()
@@ -752,11 +760,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                   Try again
                 </Button>
               )}
-              <Link href="/browse">
-                <Button size="sm" variant="secondary">
-                  Browse lines
-                </Button>
-              </Link>
+              <Link href="/browse" className={buttonClasses({ variant: "secondary", size: "sm" })}>Browse lines</Link>
             </div>
           </CardContent>
         </Card>
@@ -834,7 +838,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
               )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <ShareLine lineId={line.id} lineName={line.name} />
+              <ShareLine lineId={line.id} lineName={line.name} canEmbed={isCreator} />
               {canJoin && line.kind === "RESTAURANT" && (
                 <label className="flex items-center gap-2 text-sm text-ink/60">
                   <span className="whitespace-nowrap">Party of</span>
@@ -867,22 +871,44 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                   className="border border-rule bg-white px-2 py-2 text-sm text-ink placeholder:text-ink/60 w-48"
                 />
               )}
-              {canJoin && (
+              {!session && status !== "loading" && inAppBrowser && (canJoin || lineNotYetOpen) && (
+                <div className="w-full border border-amber-300 bg-amber-50 p-3 text-sm text-ink" role="note">
+                  <p>
+                    Google sign-in doesn&apos;t work inside this app&apos;s browser. To join, open this page in Safari or
+                    Chrome (tap the ••• menu, then &quot;Open in browser&quot;).
+                  </p>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(window.location.href)
+                        setLinkCopied(true)
+                      } catch {
+                        addToast("Couldn't copy -- use the app's menu to open in your browser", "error")
+                      }
+                    }}
+                    className="mt-2 font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4 min-h-11 sm:min-h-0"
+                  >
+                    {linkCopied ? "Link copied" : "Copy link"}
+                  </button>
+                </div>
+              )}
+              {canJoin && !(inAppBrowser && !session) && (
                 // Don't send a signed-in viewer through Google again while
                 // their session is still loading
                 <Button onClick={() => handleJoin()} isLoading={joining} disabled={status === "loading"}>
                   {session || status === "loading" ? "Join Line" : "Sign in to Join"}
                 </Button>
               )}
-              {canJoin && !session && status !== "loading" && (
+              {canJoin && !session && status !== "loading" && !inAppBrowser && (
                 // Most first-timers sign in from here, not the /signin page
                 <p className="w-full text-xs text-ink/60">
-                  You&apos;ll sign in with Google, no password needed. By continuing you agree to our{" "}
+                  You&apos;ll sign in with Google, no password needed. The line&apos;s{" "}
+                  {line.kind === "RESTAURANT" ? "host" : "organizer"} sees your name and email. By continuing you agree to our{" "}
                   <Link href="/terms" className="underline underline-offset-4 hover:text-ink">Terms</Link> and{" "}
                   <Link href="/privacy" className="underline underline-offset-4 hover:text-ink">Privacy Policy</Link>.
                 </p>
               )}
-              {!session && status !== "loading" && lineNotYetOpen && !linePaused && line.opensAt && (
+              {!session && status !== "loading" && !inAppBrowser && lineNotYetOpen && !linePaused && line.opensAt && (
                 line.emailEnabled ? (
                   <Button
                     variant="secondary"
@@ -894,7 +920,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                   // Nothing to sign up for without email: signing in early
                   // wouldn't get them anything Join won't
                   <p className="text-sm text-ink/60">
-                    Opens {new Date(line.opensAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}.
+                    Opens {new Date(line.opensAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" })}.
                     {" "}Keep this page open and Join appears when it opens.
                   </p>
                 )
@@ -906,10 +932,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
               )}
               {isCreator && (
                 <>
-                  <Link href={`/lines/${lineId}/edit`}>
-                    <Button variant="secondary" size="sm">
-                      Edit
-                    </Button>
+                  <Link href={`/lines/${lineId}/edit`} className={buttonClasses({ variant: "secondary", size: "sm" })}>
+                    Edit
                   </Link>
                   <DropdownMenu
                     items={[
@@ -975,7 +999,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
               The host seats parties as tables free up, so a smaller party behind you may be seated first. You keep your place.
             </p>
           )}
-          {!isCreator && (
+          {!isCreator && (line.allowResale || !isRestaurant) && (
             <p className="text-xs text-ink/60 mt-3">
               {line.allowResale ? (
                 <>
@@ -1166,6 +1190,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       {memberStatus && userPosition && (
         <MemberStatusCard
           status={memberStatus}
+          emailEnabled={line.emailEnabled}
           maxCapacity={isRestaurant ? null : line.maxCapacity}
           isRestaurant={isRestaurant}
           allowResale={line.allowResale}
@@ -1204,7 +1229,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                     ? "The host seated you and cleared your spot. Thanks for waiting."
                     : "The organizer served you and cleared your spot. Thanks for waiting."
                   : departure.wasCalled
-                    ? `You were called but didn't show up in time, so your place went to the next party -- or the ${isRestaurant ? "host" : "organizer"} removed you.`
+                    ? `You were called but didn't show up in time, so your place went to the next ${isRestaurant ? "party" : "person"} -- or the ${isRestaurant ? "host" : "organizer"} removed you.`
                     : `You left from another device, or the ${isRestaurant ? "host" : "organizer"} removed you.`}
               </p>
               {canJoin && (
@@ -1222,6 +1247,16 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                 >
                   Rejoin at the back{isRestaurant && ` (party of ${departure.partySize})`}
                 </Button>
+              )}
+              {/* No button and no reason was a dead end */}
+              {!canJoin && !departure.wasServed && (lineFull || linePaused || lineClosed) && (
+                <p className="text-sm text-ink/60 mt-2">
+                  {lineClosed
+                    ? "This line has closed to new joins."
+                    : linePaused
+                      ? `Online joins are paused right now.${isRestaurant ? " Ask the host to add you back." : ""}`
+                      : `The line is full right now, so you can't rejoin yet.${isRestaurant ? " Ask the host." : ""}`}
+                </p>
               )}
             </div>
             <button
@@ -1279,6 +1314,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
           <QueueDisplay
             lineId={line.id}
             positions={line.positions}
+            roomLeft={line.maxCapacity != null ? Math.max(0, line.maxCapacity - line.capacityUsed) : null}
             onRefresh={refreshAll}
             isCreator={isCreator}
             feeInfo={feeInfo}

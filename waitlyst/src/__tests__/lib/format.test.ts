@@ -141,11 +141,11 @@ describe("formatCurrency", () => {
   })
 
   it("formats a decimal amount correctly", () => {
-    expect(formatCurrency(1234.56)).toBe("$1234.56")
+    expect(formatCurrency(1234.56)).toBe("$1,234.56")
   })
 
   it("formats negative numbers", () => {
-    expect(formatCurrency(-10)).toBe("$-10.00")
+    expect(formatCurrency(-10)).toBe("-$10.00")
   })
 
   it("rounds to two decimal places", () => {

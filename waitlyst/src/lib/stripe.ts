@@ -544,8 +544,12 @@ export async function releaseFunds(txn: ReleasableTransaction): Promise<ReleaseR
  * if the money couldn't be collected, leaving it open for the organizer.
  */
 export async function releaseAndSettle(txn: ReleasableTransaction): Promise<boolean> {
+  if (!(await claimOpenPurchase(txn.id))) return false
   const released = await releaseFunds(txn)
-  if (!released) return false
+  if (!released) {
+    await unclaimPurchase(txn.id)
+    return false
+  }
   await prisma.transaction.update({
     where: { id: txn.id },
     data: { settledAt: released.capturedAt, ...released },
@@ -690,10 +694,13 @@ export async function returnBuyerFunds(purchases: Transaction[]): Promise<string
   const needsRefund: Transaction[] = []
   const returned: string[] = []
   for (const purchase of purchases) {
+    // Another device may be collecting this one right now; refunding it as
+    // well would pay the buyer back after the seller was already paid
+    if (!(await claimOpenPurchase(purchase.id))) continue
     if (purchase.stripePaymentId && await cancelAuthorization(purchase.stripePaymentId)) {
       await prisma.transaction.update({
         where: { id: purchase.id },
-        data: { status: "REFUNDED" },
+        data: { status: "REFUNDED", settledAt: null },
       })
       returned.push(purchase.id)
       continue
@@ -702,8 +709,29 @@ export async function returnBuyerFunds(purchases: Transaction[]): Promise<string
   }
   if (needsRefund.length > 0) {
     returned.push(...await refundTransactions(needsRefund))
+    // The claim was only a lock: settling a refund is still up to the caller
+    for (const purchase of needsRefund) await unclaimPurchase(purchase.id)
   }
   return returned
+}
+
+/**
+ * Collect and refund can race on the same purchase (two host devices, or
+ * seating a party while the settlement page releases it). Whoever claims
+ * the open purchase first does the Stripe work; the other skips it. The
+ * claim borrows settledAt, which every open-purchase query already filters
+ * on, so nothing else picks the row up mid-flight.
+ */
+async function claimOpenPurchase(id: string): Promise<boolean> {
+  const { count } = await prisma.transaction.updateMany({
+    where: { id, status: "COMPLETED", settledAt: null },
+    data: { settledAt: new Date() },
+  })
+  return count === 1
+}
+
+async function unclaimPurchase(id: string): Promise<void> {
+  await prisma.transaction.updateMany({ where: { id }, data: { settledAt: null } })
 }
 
 async function notifySellerOfSale(transaction: {
@@ -730,11 +758,19 @@ async function notifySellerOfSale(transaction: {
   ])
   if (!seller?.email || !seller.emailNotifications || !sellerPosition || !line) return
 
+  // Seated parties stay listed on restaurant lines, so the raw spot number
+  // overcounts; say the place among parties still waiting, like the app does
+  const place = line.kind === "RESTAURANT"
+    ? (await prisma.linePosition.count({
+        where: { lineId: transaction.lineId, fulfilled: false, position: { lt: sellerPosition.position } },
+      })) + 1
+    : sellerPosition.position
+
   const { subject, html } = positionSoldEmail(
     seller.name || "there",
     line.name,
     transaction.amount,
-    sellerPosition.position,
+    place,
     `${getBaseUrl()}/lines/${transaction.lineId}`,
     line.kind === "RESTAURANT",
     !!seller.stripeConnectId && seller.stripeConnectOnboarded

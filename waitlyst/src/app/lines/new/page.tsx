@@ -2,7 +2,7 @@
 
 import { Suspense, useState, useEffect, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { signIn, useSession } from "next-auth/react"
+import { useSession } from "next-auth/react"
 import { Button } from "@/components/ui/Button"
 import { Input, Textarea } from "@/components/ui/Input"
 import { Card, CardContent } from "@/components/ui/Card"
@@ -236,7 +236,14 @@ function CreateLineForm() {
         <Card>
           <CardContent className="py-12 text-center">
             <p className="text-ink/60 mb-4">Sign in to start your first line. It takes about a minute.</p>
-            <Button onClick={() => signIn("google", { callbackUrl: "/lines/new" })}>Sign in with Google</Button>
+            {/* Through /signin, which explains the account and the terms */}
+            <Button
+              onClick={() =>
+                router.push(`/signin?callbackUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`)
+              }
+            >
+              Sign in with Google
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -266,6 +273,18 @@ function CreateLineForm() {
       }
     }
 
+    // parseInt quietly turned "150.5" into 150 and "2.5" minutes into 2
+    for (const [value, label] of [
+      [maxCapacity, "Capacity"],
+      [purchaseLimit, "Purchase limit"],
+      [responseWindow, "Time to show up"],
+    ] as const) {
+      if (value && !Number.isInteger(Number(value))) {
+        setError(`${label} must be a whole number`)
+        return
+      }
+    }
+
     setLoading(true)
     try {
       const res = await fetch("/api/lines", {
@@ -277,7 +296,7 @@ function CreateLineForm() {
           isPublic,
           opensAt: enableSchedule && opensAt ? new Date(opensAt).toISOString() : null,
           closesAt: enableSchedule && closesAt ? new Date(closesAt).toISOString() : null,
-          maxCapacity: maxCapacity ? parseInt(maxCapacity, 10) : null,
+          maxCapacity: maxCapacity ? Number(maxCapacity) : null,
           ownerFeePercent: allowResale && ownerFeePercent ? parseFloat(ownerFeePercent) : 0,
           productName: productName.trim() || null,
           productImage: productImage.trim() || null,
@@ -286,8 +305,8 @@ function CreateLineForm() {
           allowResale,
           // Hidden once swaps are off (e.g. after switching templates), so don't keep it
           maxAskingPrice: allowResale && maxAskingPrice ? parseFloat(maxAskingPrice) : null,
-          purchaseLimit: purchaseLimit && kind !== "RESTAURANT" ? parseInt(purchaseLimit, 10) : null,
-          responseWindowMinutes: responseWindow ? parseInt(responseWindow, 10) : null,
+          purchaseLimit: purchaseLimit && kind !== "RESTAURANT" ? Number(purchaseLimit) : null,
+          responseWindowMinutes: responseWindow ? Number(responseWindow) : null,
           hideCapacity: maxCapacity ? hideCapacity : false,
           kind,
         }),
@@ -537,7 +556,7 @@ function CreateLineForm() {
                     className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                   />
                   <p className="text-xs text-ink/60 mt-1">
-                    Leave empty to open immediately
+                    Leave empty to open immediately. Times are in your time zone ({Intl.DateTimeFormat().resolvedOptions().timeZone}).
                   </p>
                 </div>
                 <div>
@@ -711,6 +730,8 @@ function CreateLineForm() {
                       </div>
                       <p className="text-xs text-ink/60 mt-1">
                         Cap the maximum swap price anyone can set for their position. Leave empty for no limit.
+                        {maxAskingPrice && parseFloat(maxAskingPrice) >= 1 &&
+                          ` Fees go on top: buyers pay at most $${calcFees(parseFloat(maxAskingPrice), ownerFeeNum, platformFeePercent ?? 0).total.toFixed(2)}.`}
                       </p>
                     </div>
                   )}

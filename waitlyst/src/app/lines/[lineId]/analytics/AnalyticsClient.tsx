@@ -16,6 +16,7 @@ interface Swap {
   at: string
   ownerFee: number
   buyerPaid: number
+  settled?: boolean
 }
 
 interface Data {
@@ -83,7 +84,10 @@ export function AnalyticsClient({
     const served = data.visits.filter((v) => v.outcome === "SERVED" && v.servedAt)
     const waits = served.map((v) => (new Date(v.servedAt!).getTime() - new Date(v.joinedAt).getTime()) / 60_000)
     const noShows = data.visits.filter((v) => v.outcome === "NO_SHOW").length
-    const ownerFees = data.swaps.reduce((sum, s) => sum + s.ownerFee, 0)
+    const ownerFees = data.swaps.reduce((sum, s) => sum + (s.settled === false ? 0 : s.ownerFee), 0)
+    const ownerFeesOnHold = data.swaps.reduce((sum, s) => sum + (s.settled === false ? s.ownerFee : 0), 0)
+    // Parties who gave up waiting: the number a host most wants to shrink
+    const walkouts = data.visits.filter((v) => v.outcome === "LEFT").length
 
     // When people join, by hour of the day in the owner's time zone
     const byHour = Array.from({ length: 24 }, () => 0)
@@ -159,6 +163,8 @@ export function AnalyticsClient({
       noShowRate: served.length + noShows > 0 ? noShows / (served.length + noShows) : null,
       noShows,
       ownerFees,
+      ownerFeesOnHold,
+      walkouts,
       swapVolume: data.swaps.reduce((sum, s) => sum + s.buyerPaid, 0),
       swapCount: data.swaps.length,
       joins,
@@ -190,7 +196,11 @@ export function AnalyticsClient({
           <div className={`grid grid-cols-2 gap-3 ${allowResale || view.swapCount > 0 ? "sm:grid-cols-5" : "sm:grid-cols-4"}`}>
             {/* Total demand is the headline number for a drop, so it stays
                 visible even when the swap stat is shown too */}
-            <Stat label={isRestaurant ? "Parties joined" : "Joined"} value={view.hours.reduce((s, h) => s + h.value, 0).toLocaleString()} />
+            <Stat
+              label={isRestaurant ? "Parties joined" : "Joined"}
+              value={view.hours.reduce((s, h) => s + h.value, 0).toLocaleString()}
+              note={view.walkouts > 0 ? `${view.walkouts} left before being ${isRestaurant ? "seated" : "served"}` : undefined}
+            />
             <Stat
               label={isRestaurant ? "Parties seated" : "People served"}
               value={view.servedCount.toLocaleString()}
@@ -206,7 +216,7 @@ export function AnalyticsClient({
               note={view.noShows > 0 ? `${view.noShows} no-show${view.noShows === 1 ? "" : "s"}` : undefined}
             />
             {(allowResale || view.swapCount > 0) && (
-              <Stat label="Swap fees earned" value={formatCurrency(view.ownerFees)} note={`${view.swapCount} swap${view.swapCount === 1 ? "" : "s"}${view.swapCount > 0 ? `, buyers paid ${formatCurrency(view.swapVolume)}` : ""}`} />
+              <Stat label="Swap fees earned" value={formatCurrency(view.ownerFees)} note={`${view.swapCount} swap${view.swapCount === 1 ? "" : "s"}${view.swapCount > 0 ? `, buyers paid ${formatCurrency(view.swapVolume)}` : ""}${view.ownerFeesOnHold > 0 ? ` (+ ${formatCurrency(view.ownerFeesOnHold)} on hold)` : ""}`} />
             )}
           </div>
 

@@ -120,6 +120,26 @@ export function parseNote(value: unknown): string | null | { error: string } {
 }
 
 /**
+ * Line names, descriptions and announcements end up in email subjects,
+ * lock-screen notifications and Stripe product names. Control, zero-width and
+ * bidi-override characters are stripped so they can't hide or reverse text.
+ * Single-line text collapses whitespace; multiline keeps line breaks.
+ */
+export function cleanText(value: string, opts?: { multiline?: boolean }): string {
+  if (opts?.multiline) {
+    return value
+      .replace(/\r\n?/g, "\n")
+      .replace(/[\p{Cf}]|(?!\n)[\p{Cc}]/gu, "")
+      .replace(/[^\S\n]+/g, " ")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+  }
+  // Whitespace first: tabs and newlines are control characters too, and
+  // stripping them first would glue the words around them together
+  return value.replace(/\s+/g, " ").replace(/[\p{Cc}\p{Cf}]/gu, "").trim()
+}
+
+/**
  * A display name shown to other people (in the line, "Now serving", embeds).
  * Control, zero-width and bidi-override characters are stripped so a name
  * can't hide text or flip what's around it, and runs of whitespace collapse.

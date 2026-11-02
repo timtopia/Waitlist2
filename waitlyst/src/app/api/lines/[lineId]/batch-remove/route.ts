@@ -12,6 +12,8 @@ export async function POST(
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 })
   }
   const { positionIds, action = "payout" } = body
+  // The host closed for the night: guests are told that, not "removed"
+  const closing = body.reason === "closed"
 
   if (!Array.isArray(positionIds) || positionIds.length === 0) {
     return NextResponse.json(
@@ -47,7 +49,7 @@ export async function POST(
 
   for (const positionId of positionIds) {
     try {
-      const result = await removeByOrganizer(lineId, positionId, action)
+      const result = await removeByOrganizer(lineId, positionId, action, false, false, closing)
       removed++
       refundedCount += result.refundedCount
       refundedAmount += result.refundedAmount

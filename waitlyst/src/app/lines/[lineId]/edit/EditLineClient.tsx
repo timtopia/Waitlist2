@@ -100,7 +100,19 @@ export function EditLineClient({
       return
     }
 
-    if (maxCapacity && parseInt(maxCapacity) < line.capacityUsed) {
+    // parseInt quietly turned "150.5" into 150 and "2.5" minutes into 2
+    for (const [value, label] of [
+      [maxCapacity, "Capacity"],
+      [purchaseLimit, "Purchase limit"],
+      [responseWindow, "Time to show up"],
+    ] as const) {
+      if (value && !Number.isInteger(Number(value))) {
+        setError(`${label} must be a whole number`)
+        return
+      }
+    }
+
+    if (maxCapacity && Number(maxCapacity) < line.capacityUsed) {
       setError(`Capacity cannot be less than the ${line.capacityUsed} ${isRestaurant ? "guests waiting" : "spots already taken"}`)
       return
     }
@@ -125,7 +137,7 @@ export function EditLineClient({
           isActive,
           opensAt: enableSchedule && opensAt ? new Date(opensAt).toISOString() : null,
           closesAt: enableSchedule && closesAt ? new Date(closesAt).toISOString() : null,
-          maxCapacity: maxCapacity ? parseInt(maxCapacity, 10) : null,
+          maxCapacity: maxCapacity ? Number(maxCapacity) : null,
           ownerFeePercent: ownerFeePercent ? parseFloat(ownerFeePercent) : 0,
           productName: productName.trim() || null,
           productImage: productImage.trim() || null,
@@ -133,8 +145,8 @@ export function EditLineClient({
           productUrl: productUrl.trim() || null,
           allowResale,
           maxAskingPrice: maxAskingPrice ? parseFloat(maxAskingPrice) : null,
-          purchaseLimit: purchaseLimit && !isRestaurant ? parseInt(purchaseLimit, 10) : null,
-          responseWindowMinutes: responseWindow ? parseInt(responseWindow, 10) : null,
+          purchaseLimit: purchaseLimit && !isRestaurant ? Number(purchaseLimit) : null,
+          responseWindowMinutes: responseWindow ? Number(responseWindow) : null,
           hideCapacity: maxCapacity ? hideCapacity : false,
     }
     // Send only what was changed on this page. Sending everything wrote back
@@ -325,7 +337,13 @@ export function EditLineClient({
               <div>
                 <label className="text-sm font-medium text-ink">Active</label>
                 <p className="text-xs text-ink/60">
-                  {isActive ? "Line is accepting joins" : "Line is paused - no new joins allowed"}
+                  {!isActive
+                    ? "Line is paused - no new joins allowed"
+                    : enableSchedule && closesAt && new Date(closesAt) <= new Date()
+                      ? "Closed by schedule. Change Closes At to reopen."
+                      : enableSchedule && opensAt && new Date(opensAt) > new Date()
+                        ? `Not open yet. Opens ${new Date(opensAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}.`
+                        : "Line is accepting joins"}
                 </p>
                 {!isActive && enableSchedule && opensAt && new Date(opensAt) > new Date() && (
                   <p className="text-xs text-amber-700 mt-1">
@@ -438,6 +456,13 @@ export function EditLineClient({
                     ? "Line will only accept joins during the scheduled window"
                     : "No scheduled open/close times"}
                 </p>
+                {/* The server opens a not-yet-open line right away when its
+                    opening time is cleared, and emails everyone waiting */}
+                {line.opensAt && new Date(line.opensAt) > new Date() && (!enableSchedule || !opensAt) && (
+                  <p className="text-xs text-amber-700 mt-1">
+                    Saving opens this line now{line.isActive ? " and emails everyone waiting for it to open" : ""}.
+                  </p>
+                )}
               </div>
             </div>
 
@@ -454,7 +479,9 @@ export function EditLineClient({
                     onChange={(e) => setOpensAt(e.target.value)}
                     className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                   />
-                  <p className="text-xs text-ink/60 mt-1">Leave empty to open immediately</p>
+                  <p className="text-xs text-ink/60 mt-1">
+                    Leave empty to open immediately. Times are in your time zone ({Intl.DateTimeFormat().resolvedOptions().timeZone}).
+                  </p>
                 </div>
                 <div>
                   <label htmlFor="closesAt" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
@@ -630,6 +657,8 @@ export function EditLineClient({
                       </div>
                       <p className="text-xs text-ink/60 mt-1">
                         Cap the maximum swap price anyone can set for their position. Leave empty for no limit.
+                        {maxAskingPrice && parseFloat(maxAskingPrice) >= 1 &&
+                          ` Fees go on top: buyers pay at most $${calcFees(parseFloat(maxAskingPrice), ownerFeeNum, platformFeePercent).total.toFixed(2)}.`}
                       </p>
                       {line.allowResale && maxAskingPrice && parseFloat(maxAskingPrice) >= 1 &&
                         (line.maxAskingPrice === null || parseFloat(maxAskingPrice) < line.maxAskingPrice) && (

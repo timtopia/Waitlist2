@@ -5,7 +5,7 @@ import Image from "next/image"
 import { useSession, signOut } from "next-auth/react"
 import { Button } from "./ui/Button"
 import { useEffect, useRef, useState } from "react"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 
 export function Header() {
   const { data: session, status } = useSession()
@@ -16,6 +16,14 @@ export function Header() {
   const accountButtonRef = useRef<HTMLButtonElement>(null)
   // The sign-in page explains Google sign-in and the terms, then comes back here
   const signInHref = `/signin?callbackUrl=${encodeURIComponent(pathname || "/")}`
+  const router = useRouter()
+  // Read the query at click time (browse filters live in the URL) without
+  // useSearchParams, which would need a Suspense boundary in the root layout
+  const goToSignIn = (e: React.MouseEvent) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return
+    e.preventDefault()
+    router.push(`/signin?callbackUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`)
+  }
 
   // The account menu used to stay open until its button was clicked again
   useEffect(() => {
@@ -156,7 +164,7 @@ export function Header() {
                 </div>
               </>
             ) : (
-              <Link href={signInHref} className="hidden md:inline-flex">
+              <Link href={signInHref} onClick={goToSignIn} className="hidden md:inline-flex">
                 <Button size="sm" tabIndex={-1}>Sign in with Google</Button>
               </Link>
             )}
@@ -249,7 +257,7 @@ export function Header() {
                 </button>
               </div>
             ) : (
-              <Link href={signInHref} onClick={() => setMobileMenuOpen(false)} className="block">
+              <Link href={signInHref} onClick={(e) => { setMobileMenuOpen(false); goToSignIn(e) }} className="block">
                 <Button className="w-full" tabIndex={-1}>Sign in with Google</Button>
               </Link>
             )}

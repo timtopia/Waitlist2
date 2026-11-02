@@ -88,6 +88,20 @@ export async function PATCH(
       )
     }
 
+    // Checked before decline too: declining an offer that already lapsed
+    // would start the buyer's 10-minute cooldown, while an expired offer
+    // lets them send a fresh one straight away.
+    if (isOfferExpired(offer)) {
+      await prisma.swapOffer.updateMany({
+        where: { id: offerId, status: "PENDING" },
+        data: { status: "EXPIRED" },
+      })
+      return NextResponse.json(
+        { error: "This offer has expired. They can send you a new one." },
+        { status: 410 }
+      )
+    }
+
     // Handle decline
     if (action === "decline") {
       // Guarded like accept: a raise or withdrawal landing mid-decline
@@ -105,18 +119,6 @@ export async function PATCH(
       }
       return NextResponse.json({ ...offer, status: "DECLINED" })
     }
-
-    if (isOfferExpired(offer)) {
-      await prisma.swapOffer.updateMany({
-        where: { id: offerId, status: "PENDING" },
-        data: { status: "EXPIRED" },
-      })
-      return NextResponse.json(
-        { error: "This offer has expired. They can send you a new one." },
-        { status: 410 }
-      )
-    }
-
     if (paymentsUnavailable()) {
       return NextResponse.json(
         { error: "Payments aren't available right now, so spots can't be bought or swapped. Please try again later." },

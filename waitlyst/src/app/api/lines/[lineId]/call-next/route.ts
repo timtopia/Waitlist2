@@ -71,6 +71,19 @@ export async function POST(
       )
     }
 
+    // Two host tablets: one called them (and they tapped "On my way"), the
+    // other still shows "Call". A second call would wipe their reply and
+    // restart their clock. Only a deliberate "Call again" re-calls.
+    if (frontPosition.calledAt && body?.recall !== true) {
+      return NextResponse.json(
+        {
+          error: `${frontPosition.user?.name || "They"} ${frontPosition.user?.name ? "was" : "were"} already called (maybe from another device). Refresh to see the latest.`,
+          code: "ALREADY_CALLED",
+        },
+        { status: 409 }
+      )
+    }
+
     const userName = frontPosition.user?.name || "Next person"
     // The banner and "now serving" are shown to anyone viewing the line, so
     // they carry a first name only.

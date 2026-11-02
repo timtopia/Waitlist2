@@ -30,3 +30,15 @@ describe("jsonForScript", () => {
     expect(JSON.parse(jsonForScript(value))).toEqual(value)
   })
 })
+
+describe("cleanText", () => {
+  it("strips bidi and control characters from single-line text", async () => {
+    const { cleanText } = await import("@/lib/validate")
+    expect(cleanText(" Drop‮ ​night\n\tsale ")).toBe("Drop night sale")
+  })
+
+  it("keeps line breaks in multiline text but caps blank runs", async () => {
+    const { cleanText } = await import("@/lib/validate")
+    expect(cleanText("a\r\n\r\n\r\n\u0007b‮c", { multiline: true })).toBe("a\n\nbc")
+  })
+})
