@@ -4,6 +4,7 @@ import { useEffect } from "react"
 import Link from "next/link"
 import { Card, CardContent } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
+import { buttonClasses } from "@/components/ui/buttonStyles"
 
 export default function Error({
   error,
@@ -30,8 +31,8 @@ export default function Error({
             An unexpected error occurred. Please try again or return to the home page.
           </p>
           <div className="flex items-center justify-center gap-3">
-            <Link href="/">
-              <Button variant="secondary">Go Home</Button>
+            <Link href="/" className={buttonClasses({ variant: "secondary" })}>
+              Go Home
             </Link>
             <Button variant="primary" onClick={() => reset()}>
               Try Again

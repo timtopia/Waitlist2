@@ -38,6 +38,7 @@ interface Transaction {
   /** null if the line has since been deleted */
   lineName: string | null
   status: string
+  statusLabel: string
   role: "buyer" | "seller"
   createdAt: string
   settledAt: string | null
@@ -55,9 +56,9 @@ interface ProfileClientProps {
 
 const statusColors: Record<string, string> = {
   COMPLETED: "text-green-700",
-  PENDING: "text-amber-600",
+  PENDING: "text-amber-700",
   FAILED: "text-accent",
-  REFUNDED: "text-ink/40",
+  REFUNDED: "text-ink/60",
 }
 
 export function ProfileClient({ user, stats, recentTransactions, stripeConnectOnboarded, emailNotifications, emailEnabled = true }: ProfileClientProps) {
@@ -272,7 +273,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                     <button
                       onClick={handleCancel}
                       disabled={isSaving}
-                      className="p-1.5 text-ink/40 hover:bg-ink/5 disabled:opacity-50"
+                      className="p-1.5 text-ink/60 hover:bg-ink/5 disabled:opacity-50"
                       title="Cancel"
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -289,7 +290,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                   <h1 className="text-2xl font-semibold tracking-tight">{displayName}</h1>
                   <button
                     onClick={handleStartEdit}
-                    className="p-1 text-ink/40 hover:text-ink hover:bg-ink/5"
+                    className="p-1 text-ink/60 hover:text-ink hover:bg-ink/5"
                     title="Edit name"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -301,7 +302,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
               {user.email && (
                 <p className="text-sm text-ink/60">{user.email}</p>
               )}
-              <p className="font-mono text-xs text-ink/40 mt-1">
+              <p className="font-mono text-xs text-ink/60 mt-1">
                 Member since {formatDate(user.createdAt)}
               </p>
             </div>
@@ -315,7 +316,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
       {/* Stats & Balances */}
       <Card className="mb-6">
         <CardContent className="py-5">
-          <div className="flex items-center justify-between font-mono text-xs uppercase tracking-wider text-ink/50 mb-4">
+          <div className="flex items-center justify-between font-mono text-xs uppercase tracking-wider text-ink/60 mb-4">
             <span>{stats.linesCreated} lines created</span>
             <span className="text-ink/20">·</span>
             <span>{stats.activePositions} active positions</span>
@@ -327,11 +328,11 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
 
           {/* Total Available — hero number */}
           <div className="border border-ink p-5 text-center mb-4">
-            <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mb-1">Paid to You</p>
+            <p className="font-mono text-xs uppercase tracking-widest text-ink/60 mb-1">Paid to You</p>
             <p className="font-mono text-3xl tabular-nums text-green-700">
               {formatCurrency(stats.sellerAvailable + stats.ownerAvailable)}
             </p>
-            <p className="text-xs text-ink/40 mt-1">Sent to your payout account</p>
+            <p className="text-xs text-ink/60 mt-1">Sent to your payout account</p>
           </div>
 
           {awaitingSetup > 0 && (
@@ -376,7 +377,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                       <span className="w-1.5 h-1.5 bg-amber-500 flex-shrink-0" aria-hidden />
                       <span className="text-sm text-ink/60">On hold</span>
                     </div>
-                    <span className="font-mono text-sm tabular-nums text-amber-600">
+                    <span className="font-mono text-sm tabular-nums text-amber-700">
                       {formatCurrency(stats.sellerPendingSettlement)}
                     </span>
                   </div>
@@ -387,14 +388,14 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                       <span className="w-1.5 h-1.5 bg-ink/20 flex-shrink-0" aria-hidden />
                       <span className="text-sm text-ink/60">Pending payment</span>
                     </div>
-                    <span className="font-mono text-sm tabular-nums text-ink/40">
+                    <span className="font-mono text-sm tabular-nums text-ink/60">
                       {formatCurrency(stats.sellerPendingPayment)}
                     </span>
                   </div>
                 )}
               </div>
               {(stats.sellerPendingSettlement > 0 || stats.sellerPendingPayment > 0) && (
-                <p className="text-xs text-ink/40 mt-3 pt-2 border-t border-rule">
+                <p className="text-xs text-ink/60 mt-3 pt-2 border-t border-rule">
                   {stats.sellerPendingSettlement > 0 && "The buyer's card is held until they're served, then you're paid. "}
                   {stats.sellerPendingPayment > 0 && "Pending payments are transactions in progress."}
                 </p>
@@ -431,7 +432,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                       <span className="w-1.5 h-1.5 bg-amber-500 flex-shrink-0" aria-hidden />
                       <span className="text-sm text-ink/60">On hold</span>
                     </div>
-                    <span className="font-mono text-sm tabular-nums text-amber-600">
+                    <span className="font-mono text-sm tabular-nums text-amber-700">
                       {formatCurrency(stats.ownerPendingSettlement)}
                     </span>
                   </div>
@@ -442,14 +443,14 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                       <span className="w-1.5 h-1.5 bg-ink/20 flex-shrink-0" aria-hidden />
                       <span className="text-sm text-ink/60">Pending payment</span>
                     </div>
-                    <span className="font-mono text-sm tabular-nums text-ink/40">
+                    <span className="font-mono text-sm tabular-nums text-ink/60">
                       {formatCurrency(stats.ownerPendingPayment)}
                     </span>
                   </div>
                 )}
               </div>
               {(stats.ownerPendingSettlement > 0 || stats.ownerPendingPayment > 0) && (
-                <p className="text-xs text-ink/40 mt-3 pt-2 border-t border-rule">
+                <p className="text-xs text-ink/60 mt-3 pt-2 border-t border-rule">
                   {stats.ownerPendingSettlement > 0 && "Fees are collected when each buyer is served. "}
                   {stats.ownerPendingPayment > 0 && "Pending payments are transactions in progress."}
                 </p>
@@ -511,7 +512,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium">Email Notifications</p>
-              <p className="text-xs text-ink/50 mt-0.5">
+              <p className="text-xs text-ink/60 mt-0.5">
                 Receive emails when you&apos;re called, get swap offers, or are fulfilled
               </p>
             </div>
@@ -546,7 +547,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
           {recentTransactions.length === 0 ? (
             <div className="text-center py-8">
               <p className="text-ink/60 mb-2">No transactions yet.</p>
-              <p className="text-sm text-ink/40">
+              <p className="text-sm text-ink/60">
                 Swap a position in a line to see your transaction history here.
               </p>
             </div>
@@ -567,14 +568,14 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                     <div>
                       <p className="text-sm font-medium">
                         {tx.role === "buyer" ? "Bought a spot" : "Sold your spot"}
-                        {tx.lineName && <span className="text-ink/50 font-normal"> in {tx.lineName}</span>}
+                        {tx.lineName && <span className="text-ink/60 font-normal"> in {tx.lineName}</span>}
                       </p>
-                      <p className="font-mono text-xs text-ink/40">{formatDateTime(tx.createdAt)}</p>
+                      <p className="font-mono text-xs text-ink/60">{formatDateTime(tx.createdAt)}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className={`font-mono text-xs uppercase tracking-widest ${statusColors[tx.status] || "text-ink/50"}`}>
-                      {tx.status}
+                    <span className={`font-mono text-xs uppercase tracking-widest ${statusColors[tx.status] || "text-ink/60"}`}>
+                      {tx.statusLabel}
                     </span>
                     <p className={`font-mono text-sm tabular-nums ${
                       tx.role === "buyer" ? "text-accent" : "text-green-700"
@@ -588,14 +589,14 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                 <div className="pt-2 flex justify-center gap-3">
                   <button
                     onClick={() => setVisibleCount((c) => c + 5)}
-                    className="font-mono text-xs uppercase tracking-widest text-ink/50 hover:text-ink"
+                    className="font-mono text-xs uppercase tracking-widest text-ink/60 hover:text-ink"
                   >
                     Show more
                   </button>
                   <span className="text-ink/20">·</span>
                   <button
                     onClick={() => setVisibleCount(recentTransactions.length)}
-                    className="font-mono text-xs uppercase tracking-widest text-ink/50 hover:text-ink"
+                    className="font-mono text-xs uppercase tracking-widest text-ink/60 hover:text-ink"
                   >
                     View all {recentTransactions.length} transactions
                   </button>

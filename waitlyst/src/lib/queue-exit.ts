@@ -80,7 +80,7 @@ export async function removeByOrganizer(
           where: { id: position.userId },
           select: { name: true, email: true, emailNotifications: true },
         }),
-        prisma.line.findUnique({ where: { id: lineId }, select: { name: true } }),
+        prisma.line.findUnique({ where: { id: lineId }, select: { name: true, kind: true } }),
       ])
       if (!user?.email || !user.emailNotifications || !line) return
       const { subject, html } = removedFromLineEmail(
@@ -89,7 +89,8 @@ export async function removeByOrganizer(
         refunded.length > 0,
         `${getBaseUrl()}/lines/${lineId}`,
         missedCall,
-        collectedCount > 0
+        collectedCount > 0,
+        line.kind === "RESTAURANT"
       )
       await sendEmail(user.email, subject, html)
     })

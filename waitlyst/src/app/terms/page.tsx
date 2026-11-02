@@ -11,13 +11,13 @@ export default function TermsOfServicePage() {
     <div className="py-12 sm:py-16">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="border-b border-ink pb-6 mb-10">
-          <p className="font-mono text-xs uppercase tracking-[0.25em] text-ink/50 mb-3">
+          <p className="font-mono text-xs uppercase tracking-[0.25em] text-ink/60 mb-3">
             Legal
           </p>
           <h1 className="text-4xl font-semibold tracking-tight mb-3">
             Terms of Service
           </h1>
-          <p className="font-mono text-xs uppercase tracking-widest text-ink/40">
+          <p className="font-mono text-xs uppercase tracking-widest text-ink/60">
             Last updated: October 30, 2026
           </p>
         </div>

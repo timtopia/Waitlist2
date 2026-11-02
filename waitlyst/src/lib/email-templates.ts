@@ -56,7 +56,10 @@ function wrapTemplate(title: string, body: string, ctaText: string, ctaUrl: stri
 export function positionCalledEmail(
   userName: string,
   lineName: string,
-  lineUrl: string
+  lineUrl: string,
+  /** The line's show-up window; null when nobody is skipped automatically */
+  windowMinutes: number | null = null,
+  isRestaurant = false
 ): { subject: string; html: string } {
   const safeName = escapeHtml(userName)
   const safeLine = escapeHtml(lineName)
@@ -64,7 +67,9 @@ export function positionCalledEmail(
   const body = `
     <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">You're up, ${safeName}!</h2>
     <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">You've been called to the front of <strong>${safeLine}</strong>.</p>
-    <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Please come forward as soon as possible so you don't lose your spot.</p>
+    <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">${isRestaurant ? "Head to the host stand now." : "Please come forward now."}${windowMinutes
+      ? ` You have <strong>${windowMinutes} minute${windowMinutes === 1 ? "" : "s"}</strong> to show up, or your place goes to the next ${isRestaurant ? "party" : "person"}. Open the line and tap "On my way" if you need a little more time.`
+      : ""}</p>
   `
   return { subject, html: wrapTemplate(subject, body, "Go to Line", lineUrl) }
 }
@@ -72,14 +77,15 @@ export function positionCalledEmail(
 export function youreNextEmail(
   userName: string,
   lineName: string,
-  lineUrl: string
+  lineUrl: string,
+  isRestaurant = false
 ): { subject: string; html: string } {
   const safeName = escapeHtml(userName)
   const safeLine = escapeHtml(lineName)
   const subject = `You're next in ${lineName}`
   const body = `
     <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">You're next, ${safeName}</h2>
-    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">The person ahead of you in <strong>${safeLine}</strong> was just called.</p>
+    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">The ${isRestaurant ? "party" : "person"} ahead of you in <strong>${safeLine}</strong> was just called.</p>
     <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Head back now so you're ready when it's your turn.</p>
   `
   return { subject, html: wrapTemplate(subject, body, "Go to Line", lineUrl) }
@@ -91,7 +97,8 @@ export function removedFromLineEmail(
   refunded: boolean,
   lineUrl: string,
   missedCall = false,
-  charged = false
+  charged = false,
+  isRestaurant = false
 ): { subject: string; html: string } {
   const safeName = escapeHtml(userName)
   const safeLine = escapeHtml(lineName)
@@ -99,8 +106,8 @@ export function removedFromLineEmail(
   const body = `
     <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">You're no longer in line, ${safeName}</h2>
     <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">${missedCall
-      ? `You were called in <strong>${safeLine}</strong> but didn't show up in time, so your place was given to the next person.`
-      : `The organizer of <strong>${safeLine}</strong> removed you from the line.`}</p>
+      ? `You were called in <strong>${safeLine}</strong> but didn't show up in time, so your place was given to the next ${isRestaurant ? "party" : "person"}.`
+      : `The ${isRestaurant ? "host" : "organizer"} of <strong>${safeLine}</strong> removed you from the line.`}</p>
     <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">${refunded
       ? "A payment of yours that was on hold for this line has been released or refunded."
       : charged
@@ -163,15 +170,18 @@ export function lineOpeningEmail(
 export function fulfilledEmail(
   userName: string,
   lineName: string,
-  lineUrl: string
+  lineUrl: string,
+  isRestaurant = false
 ): { subject: string; html: string } {
   const safeName = escapeHtml(userName)
   const safeLine = escapeHtml(lineName)
-  const subject = `You've been fulfilled in ${lineName}`
+  const subject = isRestaurant ? `You've been seated at ${lineName}` : `You've been served in ${lineName}`
   const body = `
     <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">All done, ${safeName}!</h2>
-    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">You've been marked as fulfilled in <strong>${safeLine}</strong>.</p>
-    <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Thanks for using Waitlyst!</p>
+    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">${isRestaurant
+      ? `You've been seated at <strong>${safeLine}</strong>.`
+      : `You've been marked as served in <strong>${safeLine}</strong>.`}</p>
+    <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">${isRestaurant ? "Enjoy your meal." : "Thanks for using Waitlyst!"}</p>
   `
   return { subject, html: wrapTemplate(subject, body, "View Line", lineUrl) }
 }
@@ -182,7 +192,9 @@ export function positionSoldEmail(
   amount: number,
   newPosition: number,
   lineUrl: string,
-  heldUntilSeated = false
+  heldUntilSeated = false,
+  /** The seller has a payout account connected, so money can reach them */
+  payoutReady = false
 ): { subject: string; html: string } {
   const safeName = escapeHtml(userName)
   const safeLine = escapeHtml(lineName)
@@ -191,9 +203,14 @@ export function positionSoldEmail(
   const body = `
     <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">Your spot sold, ${safeName}!</h2>
     <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">Someone bought your position in <strong>${safeLine}</strong> for <strong>${formattedAmount}</strong>. You traded places with them and are now <strong>#${newPosition}</strong>.</p>
-    <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">${heldUntilSeated
-      ? "The buyer's payment is held until they're seated, and you're paid once it's collected."
-      : "You're paid right away."} Make sure a payout account is connected in your profile so the money can reach you.</p>
+    <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">${[
+      heldUntilSeated
+        ? "The buyer's payment is held until they're seated, and you're paid once it's collected."
+        : payoutReady
+          ? "You're paid right away."
+          : "",
+      payoutReady ? "" : "Connect a payout account in your profile so the money can reach you.",
+    ].filter(Boolean).join(" ")}</p>
   `
   return { subject, html: wrapTemplate(subject, body, "View Line", lineUrl) }
 }

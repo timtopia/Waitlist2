@@ -7,6 +7,7 @@ import { Button } from "./ui/Button"
 import { ConfirmModal } from "./ui/ConfirmModal"
 import { useToast } from "./ui/Toast"
 import { formatCurrency } from "@/lib/format"
+import { callDeadline, timeLeft } from "@/lib/call-deadline"
 
 interface ConsolePosition {
   id: string
@@ -15,8 +16,11 @@ interface ConsolePosition {
   lockedUntil: string | null
   calledAt?: string | null
   response?: "ON_MY_WAY" | "RUNNING_LATE" | null
+  respondedAt?: string | null
+  /** Extra minutes the host gave them to show up */
+  graceMinutes?: number
   partySize?: number
-  user: { id: string; name: string | null }
+  user: { id: string; name: string | null; isWalkIn?: boolean }
 }
 
 interface OwnerConsoleProps {
@@ -34,6 +38,8 @@ interface OwnerConsoleProps {
   /** Paid swaps are on, so there can be payments to review even with no owner fee */
   allowResale?: boolean
   purchaseLimit?: number | null
+  /** Minutes a called party has to show up before being skipped */
+  responseWindowMinutes?: number | null
 }
 
 interface Earnings {
@@ -70,6 +76,7 @@ export function OwnerConsole({
   purchaseLimit = null,
   onChanged,
   isRestaurant = false,
+  responseWindowMinutes = null,
 }: OwnerConsoleProps) {
   const { addToast } = useToast()
   const [busy, setBusy] = useState<string | null>(null)
@@ -84,13 +91,31 @@ export function OwnerConsole({
   const [walkInSize, setWalkInSize] = useState(2)
   const [walkInNote, setWalkInNote] = useState("")
   const [copied, setCopied] = useState(false)
+  // Tick so the up-next party's show-up countdown stays current
+  const [clock, setClock] = useState(() => Date.now())
 
   const waiting = positions.filter((p) => !p.fulfilled)
   const served = positions.filter((p) => p.fulfilled)
   const upNext = waiting[0] ?? null
   const afterNext = waiting[1] ?? null
   const isServingUpNext = !!upNext && (!!upNext.calledAt || nowServingUserId === upNext.user.id)
+  // Already called out of order: serving the up-next party won't call anyone
+  const canCallAfterNext = !!afterNext && !afterNext.calledAt
   const upNextLocked = !!upNext?.lockedUntil && new Date(upNext.lockedUntil) > new Date()
+  // Parties called out of order sit behind the up-next one; keep them in view
+  const calledOthers = waiting.filter((p) => p !== upNext && !!p.calledAt)
+  // Walk-ins and paused lines have no running clock (see expireMissedCalls)
+  const upNextDeadline =
+    upNext?.calledAt && responseWindowMinutes && !upNext.user.isWalkIn && isActive
+      ? callDeadline(upNext.calledAt, responseWindowMinutes, upNext.respondedAt, upNext.graceMinutes)
+      : null
+  const upNextLeft = timeLeft(upNextDeadline, clock)
+  const hasDeadline = !!upNextDeadline
+  useEffect(() => {
+    if (!hasDeadline) return
+    const timer = setInterval(() => setClock(Date.now()), 30_000)
+    return () => clearInterval(timer)
+  }, [hasDeadline])
   // Restaurants seat parties; everyone else serves people
   const servedWord = isRestaurant ? "seated" : "served"
   const markServedLabel = isRestaurant ? "Mark Seated" : "Mark Served"
@@ -171,6 +196,33 @@ export function OwnerConsole({
       } else {
         addToast(`${name} marked as ${servedWord}`, "success")
       }
+    } finally {
+      setBusy(null)
+      onChanged()
+    }
+  }
+
+  /** Seat or serve a party that was called out of order */
+  async function handleServeCalled(p: ConsolePosition) {
+    setBusy(`serve-${p.id}`)
+    try {
+      const { ok, data } = await post("fulfill", { positionId: p.id })
+      if (ok) addToast(`${p.user.name || "Guest"} marked as ${servedWord}`, "success")
+      else addToast(data.error || `Failed to mark as ${servedWord}`, "error")
+    } finally {
+      setBusy(null)
+      onChanged()
+    }
+  }
+
+  /** Running late and the host is happy to wait: more time without re-calling */
+  async function handleGiveMoreTime() {
+    if (!upNext) return
+    setBusy("grace")
+    try {
+      const { ok, data } = await post("grace", { positionId: upNext.id })
+      if (ok) addToast("Gave them 5 more minutes", "success")
+      else addToast(data.error || "Couldn't give more time", "error")
     } finally {
       setBusy(null)
       onChanged()
@@ -397,14 +449,14 @@ export function OwnerConsole({
                   {copied ? "Copied!" : "Copy Link"}
                 </Button>
               </div>
-              <p className="text-xs text-ink/50 mt-1.5">
+              <p className="text-xs text-ink/60 mt-1.5">
                 Use Share above for a printable QR code or a website embed.
               </p>
             </div>
             {onDismissCreated && (
               <button
                 onClick={onDismissCreated}
-                className="text-ink/40 hover:text-ink flex-shrink-0"
+                className="text-ink/60 hover:text-ink flex-shrink-0"
                 aria-label="Dismiss"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -419,7 +471,7 @@ export function OwnerConsole({
       <div className="px-4 py-3 flex items-center justify-between gap-3 border-b border-rule">
         <div className="flex items-center gap-3">
           <p className="font-mono text-xs uppercase tracking-[0.2em] text-ink/60">Run your line</p>
-          <span className={`inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest ${isActive ? "text-green-700" : "text-amber-600"}`}>
+          <span className={`inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest ${isActive ? "text-green-700" : "text-amber-700"}`}>
             <span className={`w-1.5 h-1.5 ${isActive ? "bg-green-600" : "bg-amber-500"}`} aria-hidden />
             {isActive ? "Open" : "Paused"}
           </span>
@@ -446,7 +498,7 @@ export function OwnerConsole({
         ) : (
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="min-w-0">
-              <p className="font-mono text-xs uppercase tracking-widest text-ink/50">
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/60">
                 {isServingUpNext ? "Now serving" : "Up next"}
               </p>
               <p className="text-lg font-semibold tracking-tight truncate">
@@ -454,15 +506,28 @@ export function OwnerConsole({
                 {upNext.user.name || "Anonymous"}
               </p>
               {isServingUpNext && upNext.response && (
-                <p className={`text-xs ${upNext.response === "ON_MY_WAY" ? "text-green-700" : "text-amber-600"}`}>
+                <p className={`text-xs ${upNext.response === "ON_MY_WAY" ? "text-green-700" : "text-amber-700"}`}>
                   {upNext.response === "ON_MY_WAY" ? "Says they're on the way" : "Says they're running late"}
+                </p>
+              )}
+              {isServingUpNext && upNextLeft && (
+                <p className="text-xs text-ink/60">
+                  {upNextLeft} left to show up{" "}
+                  <button
+                    onClick={handleGiveMoreTime}
+                    disabled={!!busy}
+                    aria-label={`Give ${upNext.user.name || "this party"} 5 more minutes`}
+                    className="font-mono uppercase tracking-widest text-accent hover:underline underline-offset-4 disabled:opacity-50"
+                  >
+                    +5 min
+                  </button>
                 </p>
               )}
               {purchaseLimit && (
                 <p className="text-xs text-ink/60">Limit {purchaseLimit} per person</p>
               )}
               {upNextLocked && (
-                <p className="text-xs text-amber-600">A swap for this spot is in progress -- wait for it to finish before serving.</p>
+                <p className="text-xs text-amber-700">A swap for this spot is in progress -- wait for it to finish before serving.</p>
               )}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -470,13 +535,17 @@ export function OwnerConsole({
                 <>
                   <Button
                     size="sm"
-                    onClick={() => handleServe(!!afterNext)}
-                    isLoading={busy === "serve-next"}
+                    onClick={() => handleServe(canCallAfterNext)}
+                    isLoading={busy === (canCallAfterNext ? "serve-next" : "serve")}
                     disabled={!!busy || upNextLocked}
                   >
-                    {afterNext ? "Done · Call Next" : markServedLabel}
+                    {!canCallAfterNext
+                      ? markServedLabel
+                      : isRestaurant
+                        ? `Seated · Call ${afterNext.user.name || "Next"} (${afterNext.partySize ?? 1})`
+                        : "Done · Call Next"}
                   </Button>
-                  {afterNext && (
+                  {canCallAfterNext && (
                     <Button
                       size="sm"
                       variant="ghost"
@@ -517,6 +586,33 @@ export function OwnerConsole({
                 </>
               )}
             </div>
+          </div>
+        )}
+
+        {calledOthers.length > 0 && (
+          <div className="mt-3 border-t border-rule pt-3">
+            <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Called</p>
+            <ul className="mt-1 divide-y divide-rule">
+              {calledOthers.map((p) => (
+                <li key={p.id} className="flex items-center justify-between gap-3 py-1.5">
+                  <span className="text-sm text-ink min-w-0 truncate">
+                    <span className="font-mono tabular-nums text-accent mr-2">#{p.position}</span>
+                    {p.user.name || "Anonymous"}
+                    {isRestaurant && <span className="text-ink/60"> · party of {p.partySize ?? 1}</span>}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleServeCalled(p)}
+                    isLoading={busy === `serve-${p.id}`}
+                    disabled={!!busy || (!!p.lockedUntil && new Date(p.lockedUntil) > new Date())}
+                    aria-label={`${markServedLabel}: ${p.user.name || "Anonymous"}`}
+                  >
+                    {markServedLabel}
+                  </Button>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
@@ -592,7 +688,7 @@ export function OwnerConsole({
           </button>
         )}
 
-        <div className="mt-3 flex items-center gap-3 font-mono text-xs uppercase tracking-widest text-ink/50 tabular-nums">
+        <div className="mt-3 flex items-center gap-3 font-mono text-xs uppercase tracking-widest text-ink/60 tabular-nums">
           <span>{waiting.length} waiting</span>
           <span className="text-ink/20">·</span>
           <span>{served.length} {servedWord}</span>
@@ -617,13 +713,13 @@ export function OwnerConsole({
       {showMoney && (
         <div className="px-4 py-3 border-t border-rule flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <p className="font-mono text-xs uppercase tracking-widest text-ink/50">
+            <p className="font-mono text-xs uppercase tracking-widest text-ink/60">
               {ownerFeePercent > 0 ? `Your fees (${ownerFeePercent}% per swap)` : "Paid swaps"}
             </p>
             <p className="font-mono tabular-nums text-green-700">
               {formatCurrency(earnings?.earned ?? 0)} earned
               {(earnings?.pending ?? 0) > 0 && (
-                <span className="text-amber-600"> + {formatCurrency(earnings?.pending ?? 0)} pending</span>
+                <span className="text-amber-700"> + {formatCurrency(earnings?.pending ?? 0)} pending</span>
               )}
             </p>
           </div>

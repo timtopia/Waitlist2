@@ -47,7 +47,8 @@ export async function GET(
         if (abandoned && offer) {
           const { count } = await prisma.swapOffer.updateMany({
             where: { id: offer.id, status: "ACCEPTED" },
-            data: { status: "WITHDRAWN" },
+            // createdAt restarts the cooldown before they can send another
+            data: { status: "WITHDRAWN", createdAt: new Date() },
           })
           offerWithdrawn = count > 0
         }

@@ -169,7 +169,7 @@ export function AnalyticsClient({
       </p>
 
       {error && <p className="text-sm text-accent">Couldn&apos;t load analytics. Please refresh to try again.</p>}
-      {!data && !error && <p className="text-sm text-ink/50">Loading…</p>}
+      {!data && !error && <p className="text-sm text-ink/60">Loading…</p>}
 
       {view && (
         <div className="space-y-6">
@@ -249,9 +249,9 @@ export function AnalyticsClient({
 function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
     <div className="border border-rule bg-white p-3">
-      <p className="text-xs text-ink/50">{label}</p>
+      <p className="text-xs text-ink/60">{label}</p>
       <p className="text-2xl font-semibold tracking-tight text-ink mt-1">{value}</p>
-      {note && <p className="text-xs text-ink/50 mt-0.5">{note}</p>}
+      {note && <p className="text-xs text-ink/60 mt-0.5">{note}</p>}
     </div>
   )
 }

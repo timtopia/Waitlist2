@@ -50,7 +50,7 @@ export function AnimatedStat({ value, label }: { value: number; label: string })
       <div className="font-mono text-4xl sm:text-5xl tabular-nums tracking-tight">
         {display.toLocaleString()}
       </div>
-      <div className="font-mono text-xs uppercase tracking-[0.2em] text-ink/50 mt-2">{label}</div>
+      <div className="font-mono text-xs uppercase tracking-[0.2em] text-ink/60 mt-2">{label}</div>
     </div>
   )
 }

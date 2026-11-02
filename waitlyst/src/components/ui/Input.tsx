@@ -7,6 +7,7 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
   ({ className = "", label, error, id, ...props }, ref) => {
+    const errorId = error && id ? `${id}-error` : undefined
     return (
       <div className="w-full">
         {label && (
@@ -17,12 +18,14 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         <input
           ref={ref}
           id={id}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={errorId}
           className={`w-full px-3 py-2 bg-white border focus:outline-none focus:border-ink ${
             error ? "border-accent" : "border-rule"
           } ${className}`}
           {...props}
         />
-        {error && <p className="mt-1 text-sm text-accent">{error}</p>}
+        {error && <p id={errorId} className="mt-1 text-sm text-accent">{error}</p>}
       </div>
     )
   }
@@ -37,6 +40,7 @@ interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
   ({ className = "", label, error, id, ...props }, ref) => {
+    const errorId = error && id ? `${id}-error` : undefined
     return (
       <div className="w-full">
         {label && (
@@ -47,12 +51,14 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
         <textarea
           ref={ref}
           id={id}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={errorId}
           className={`w-full px-3 py-2 bg-white border focus:outline-none focus:border-ink ${
             error ? "border-accent" : "border-rule"
           } ${className}`}
           {...props}
         />
-        {error && <p className="mt-1 text-sm text-accent">{error}</p>}
+        {error && <p id={errorId} className="mt-1 text-sm text-accent">{error}</p>}
       </div>
     )
   }

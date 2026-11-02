@@ -16,7 +16,7 @@ export default async function EditLinePage({ params }: Props) {
   const { lineId } = await params
 
   if (!session?.user?.id) {
-    redirect("/")
+    redirect(`/api/auth/signin?callbackUrl=${encodeURIComponent(`/lines/${lineId}/edit`)}`)
   }
 
   const line = await prisma.line.findUnique({

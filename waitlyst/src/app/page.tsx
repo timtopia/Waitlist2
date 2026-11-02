@@ -112,7 +112,7 @@ export default async function HomePage() {
       {/* How it works — numbered ledger */}
       <section id="how-it-works" className="border-b border-rule">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24">
-          <h2 className="font-mono text-xs uppercase tracking-[0.25em] text-ink/50 mb-10">
+          <h2 className="font-mono text-xs uppercase tracking-[0.25em] text-ink/60 mb-10">
             How it works
           </h2>
           <div className="divide-y divide-rule border-t border-b border-rule">
@@ -143,7 +143,7 @@ export default async function HomePage() {
       {/* Use cases */}
       <section className="border-b border-rule">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24">
-          <h2 className="font-mono text-xs uppercase tracking-[0.25em] text-ink/50 mb-10">
+          <h2 className="font-mono text-xs uppercase tracking-[0.25em] text-ink/60 mb-10">
             Built for
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 border-t border-l border-rule">
@@ -160,7 +160,7 @@ export default async function HomePage() {
       {/* Features */}
       <section className="border-b border-rule">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24">
-          <h2 className="font-mono text-xs uppercase tracking-[0.25em] text-ink/50 mb-10">
+          <h2 className="font-mono text-xs uppercase tracking-[0.25em] text-ink/60 mb-10">
             What&apos;s in the box
           </h2>
           <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-8">

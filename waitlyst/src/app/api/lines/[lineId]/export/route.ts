@@ -69,7 +69,33 @@ export async function GET(
       ].join(",")
     })
 
-    const csv = [headers.join(","), ...rows].join("\n")
+    // Everyone who already left the list -- served and cleared, left, removed
+    // or skipped -- so the export is still a full record after clearing or
+    // closing the line.
+    const visits = await prisma.queueVisit.findMany({
+      where: { lineId },
+      include: { user: { select: { name: true, email: true, isWalkIn: true } } },
+      orderBy: { exitedAt: "asc" },
+    })
+    const outcomeLabel = {
+      SERVED: isRestaurant ? "Seated" : "Served",
+      LEFT: "Left",
+      REMOVED: "Removed",
+      NO_SHOW: "No-show",
+    } as const
+    const pastRows = visits.map((v) => [
+      `(${v.position})`,
+      escapeCsvField(v.user.name || "Anonymous"),
+      escapeCsvField(v.user.isWalkIn ? "(walk-in)" : v.user.email || ""),
+      ...(isRestaurant ? [String(v.partySize), ""] : []),
+      v.joinedAt.toISOString(),
+      v.calledAt ? v.calledAt.toISOString() : "",
+      v.servedAt ? v.servedAt.toISOString() : "",
+      "",
+      `${outcomeLabel[v.outcome]} (no longer in line)`,
+    ].join(","))
+
+    const csv = [headers.join(","), ...rows, ...pastRows].join("\n")
 
     // Sanitize line name for filename
     const safeName = result.line.name

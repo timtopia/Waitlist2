@@ -1,12 +1,13 @@
 "use client"
 
-import { Suspense, useState, useEffect } from "react"
+import { Suspense, useState, useEffect, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { signIn, useSession } from "next-auth/react"
 import { Button } from "@/components/ui/Button"
 import { Input, Textarea } from "@/components/ui/Input"
 import { Card, CardContent } from "@/components/ui/Card"
 import { useToast } from "@/components/ui/Toast"
+import { calcFees } from "@/lib/fees"
 
 const DRAFT_KEY = "waitlyst:new-line-draft"
 
@@ -51,6 +52,7 @@ function CreateLineForm() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedTemplate, setSelectedTemplate] = useState<string>("custom")
+  const nameRef = useRef<HTMLInputElement>(null)
 
   const templates = [
     {
@@ -80,6 +82,7 @@ function CreateLineForm() {
         setHideCapacity(true)
         setDescription("Limited release drop")
         setShowResaleControls(true)
+        setShowProductDetails(true)
         setKind("STANDARD")
       },
     },
@@ -226,6 +229,7 @@ function CreateLineForm() {
 
     if (!name.trim()) {
       setError("Name is required")
+      nameRef.current?.focus()
       return
     }
 
@@ -241,7 +245,7 @@ function CreateLineForm() {
           opensAt: enableSchedule && opensAt ? new Date(opensAt).toISOString() : null,
           closesAt: enableSchedule && closesAt ? new Date(closesAt).toISOString() : null,
           maxCapacity: maxCapacity ? parseInt(maxCapacity, 10) : null,
-          ownerFeePercent: ownerFeePercent ? parseFloat(ownerFeePercent) : 0,
+          ownerFeePercent: allowResale && ownerFeePercent ? parseFloat(ownerFeePercent) : 0,
           productName: productName.trim() || null,
           productImage: productImage.trim() || null,
           productPrice: productPrice ? parseFloat(productPrice) : null,
@@ -269,10 +273,17 @@ function CreateLineForm() {
     }
   }
 
+  const ownerFeeNum = parseFloat(ownerFeePercent) || 0
+  const exampleFees = calcFees(10, ownerFeeNum, platformFeePercent ?? 0)
+  const feeHint =
+    `Buyers pay this on top of the asking price${platformFeePercent ? `, plus a ${platformFeePercent}% platform fee` : ""}: ` +
+    `a $10 spot costs them $${exampleFees.total.toFixed(2)}` +
+    `${ownerFeeNum > 0 ? ` and you earn $${exampleFees.ownerFee.toFixed(2)}` : ""}.`
+
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-10 sm:py-14">
       <div className="border-b border-ink pb-6 mb-10">
-        <p className="font-mono text-xs uppercase tracking-[0.25em] text-ink/50 mb-3">
+        <p className="font-mono text-xs uppercase tracking-[0.25em] text-ink/60 mb-3">
           Open for business
         </p>
         <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight">Create a New Line</h1>
@@ -301,16 +312,17 @@ function CreateLineForm() {
                     }`}
                   >
                     <span className="text-sm font-semibold tracking-tight">{tpl.name}</span>
-                    <span className="text-xs text-ink/50 mt-0.5 leading-tight">{tpl.desc}</span>
+                    <span className="text-xs text-ink/60 mt-0.5 leading-tight">{tpl.desc}</span>
                   </button>
                 ))}
               </div>
             </div>
 
             <Input
+              ref={nameRef}
               id="name"
               label="Line Name"
-              placeholder="e.g., Friday dinner waitlist"
+              placeholder={kind === "RESTAURANT" ? "e.g., Friday dinner waitlist" : 'e.g., Air Max 1 "Chicago" drop'}
               value={name}
               onChange={(e) => setName(e.target.value)}
               error={error && !name.trim() ? "Name is required" : undefined}
@@ -346,7 +358,7 @@ function CreateLineForm() {
                 <label className="font-mono text-xs uppercase tracking-widest text-ink/60">
                   Public Line
                 </label>
-                <p className="text-xs text-ink/50">
+                <p className="text-xs text-ink/60">
                   {isPublic
                     ? "Anyone can find this line in Browse"
                     : "Only people with the link can join"}
@@ -364,7 +376,7 @@ function CreateLineForm() {
               />
               <span>
                 <span className="block text-sm text-ink">Restaurant waitlist</span>
-                <span className="block text-xs text-ink/50 mt-0.5">
+                <span className="block text-xs text-ink/60 mt-0.5">
                   {kind === "RESTAURANT"
                     ? "Guests give a party size, capacity counts guests, and you can call any party. Paid swaps are held on the buyer's card until you seat them, so you can still release them if the evening goes wrong."
                     : "Everyone holds one spot and is called in order. Paid swaps are collected and paid out as soon as they happen."}
@@ -386,7 +398,7 @@ function CreateLineForm() {
                 onChange={(e) => setMaxCapacity(e.target.value)}
                 className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
               />
-              <p className="text-xs text-ink/50 mt-1">
+              <p className="text-xs text-ink/60 mt-1">
                 {kind === "RESTAURANT" ? "Total guests across all parties. Leave empty for no limit" : "Leave empty for unlimited spots"}
               </p>
               {maxCapacity && (
@@ -401,64 +413,9 @@ function CreateLineForm() {
                 </label>
               )}
               {maxCapacity && hideCapacity && (
-                <p className="text-xs text-ink/50 mt-1">
+                <p className="text-xs text-ink/60 mt-1">
                   Members will see &quot;Limited spots available&quot; instead of the exact number
                 </p>
-              )}
-            </div>
-
-            {/* Owner Fee */}
-            <div>
-              <label htmlFor="ownerFee" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
-                Your Fee on Position Swaps (%)
-              </label>
-              <div className="relative">
-                <input
-                  id="ownerFee"
-                  type="number"
-                  min="0"
-                  max="50"
-                  step="0.5"
-                  placeholder="0"
-                  value={ownerFeePercent}
-                  onChange={(e) => setOwnerFeePercent(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
-                />
-              </div>
-              <p className="text-xs text-ink/50 mt-1">
-                Percentage you earn when someone swaps a position in your line.
-                {ownerFeePercent && parseFloat(ownerFeePercent) > 0 ? (
-                  <span className="text-accent ml-1">
-                    e.g. on a $10 swap, you earn ${(10 * parseFloat(ownerFeePercent) / 100).toFixed(2)}
-                  </span>
-                ) : platformFeePercent !== null ? (
-                  <span> A {platformFeePercent}% platform fee also applies to each swap.</span>
-                ) : null}
-              </p>
-              {parseFloat(ownerFeePercent) > 0 && !allowResale && (
-                <p className="text-xs text-amber-600 mt-1">
-                  Swaps are off, so this fee won&apos;t apply. Turn on swapping in Swap Settings below.
-                </p>
-              )}
-              {ownerFeePercent && parseFloat(ownerFeePercent) > 0 && stripeEnabled && connectOnboarded === false && (
-                <div className="mt-2 flex items-center justify-between gap-3 bg-accent/5 border border-accent/30 px-3 py-2">
-                  <p className="text-xs text-ink/70">
-                    You haven&apos;t connected a payout account yet -- without one, this fee has nowhere to go.
-                  </p>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    onClick={handleConnectSetup}
-                    isLoading={connectLoading}
-                    className="flex-shrink-0"
-                  >
-                    Connect Now
-                  </Button>
-                </div>
-              )}
-              {connectError && (
-                <p className="text-xs text-accent mt-1">{connectError}</p>
               )}
             </div>
 
@@ -479,7 +436,7 @@ function CreateLineForm() {
                     onChange={(e) => setPurchaseLimit(e.target.value)}
                     className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                   />
-                  <p className="text-xs text-ink/50 mt-1">e.g. 1 per person. Shown on the line page and when someone is called.</p>
+                  <p className="text-xs text-ink/60 mt-1">e.g. 1 per person. Shown on the line page and when someone is called.</p>
                 </div>
               )}
               <div>
@@ -496,7 +453,7 @@ function CreateLineForm() {
                   onChange={(e) => setResponseWindow(e.target.value)}
                   className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                 />
-                <p className="text-xs text-ink/50 mt-1">
+                <p className="text-xs text-ink/60 mt-1">
                   Minutes. Anyone who doesn&apos;t show up in time is skipped as a no-show and the next person moves up. Tapping &ldquo;On my way&rdquo; gives them one more window.
                 </p>
               </div>
@@ -524,7 +481,7 @@ function CreateLineForm() {
                 <label className="font-mono text-xs uppercase tracking-widest text-ink/60">
                   Schedule Open/Close Times
                 </label>
-                <p className="text-xs text-ink/50">
+                <p className="text-xs text-ink/60">
                   {enableSchedule
                     ? "Line will only accept joins during the scheduled window"
                     : "Line is open immediately with no end time"}
@@ -545,7 +502,7 @@ function CreateLineForm() {
                     onChange={(e) => setOpensAt(e.target.value)}
                     className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                   />
-                  <p className="text-xs text-ink/50 mt-1">
+                  <p className="text-xs text-ink/60 mt-1">
                     Leave empty to open immediately
                   </p>
                 </div>
@@ -561,7 +518,7 @@ function CreateLineForm() {
                     min={opensAt || undefined}
                     className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                   />
-                  <p className="text-xs text-ink/50 mt-1">
+                  <p className="text-xs text-ink/60 mt-1">
                     Leave empty for no end time
                   </p>
                 </div>
@@ -577,7 +534,7 @@ function CreateLineForm() {
               >
                 <span>Product Details (optional)</span>
                 <svg
-                  className={`h-4 w-4 text-ink/40 transition-transform ${showProductDetails ? "rotate-180" : ""}`}
+                  className={`h-4 w-4 text-ink/60 transition-transform ${showProductDetails ? "rotate-180" : ""}`}
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -654,7 +611,7 @@ function CreateLineForm() {
               >
                 <span>Swap Settings (optional)</span>
                 <svg
-                  className={`h-4 w-4 text-ink/40 transition-transform ${showResaleControls ? "rotate-180" : ""}`}
+                  className={`h-4 w-4 text-ink/60 transition-transform ${showResaleControls ? "rotate-180" : ""}`}
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -685,13 +642,13 @@ function CreateLineForm() {
                       <label className="font-mono text-xs uppercase tracking-widest text-ink/60">
                         Allow position swapping
                       </label>
-                      <p className="text-xs text-ink/50">
+                      <p className="text-xs text-ink/60">
                         {allowResale
                           ? "People can swap their positions with the person next to them"
                           : "Swapping is disabled — no one can swap positions"}
                       </p>
                       {allowResale && (
-                        <p className="text-xs text-ink/50 mt-1">
+                        <p className="text-xs text-ink/60 mt-1">
                           {kind === "RESTAURANT"
                             ? "Paid swaps are held until the buyer is seated. Seating them collects the payment; before then you can release it."
                             : "Paid swaps are final: the buyer is charged and the seller is paid out right away, with no refunds later."}
@@ -705,7 +662,7 @@ function CreateLineForm() {
                         Max Asking Price (optional)
                       </label>
                       <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink/40">$</span>
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink/60">$</span>
                         <input
                           id="maxAskingPrice"
                           type="number"
@@ -717,9 +674,53 @@ function CreateLineForm() {
                           className="w-full pl-7 pr-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                         />
                       </div>
-                      <p className="text-xs text-ink/50 mt-1">
+                      <p className="text-xs text-ink/60 mt-1">
                         Cap the maximum swap price anyone can set for their position. Leave empty for no limit.
                       </p>
+                    </div>
+                  )}
+                  {/* Owner Fee */}
+                  {allowResale && (
+                    <div>
+                      <label htmlFor="ownerFee" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
+                        Your Fee on Position Swaps (%)
+                      </label>
+                      <div className="relative">
+                        <input
+                          id="ownerFee"
+                          type="number"
+                          min="0"
+                          max="50"
+                          step="0.5"
+                          placeholder="0"
+                          value={ownerFeePercent}
+                          onChange={(e) => setOwnerFeePercent(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
+                        />
+                      </div>
+                      <p className="text-xs text-ink/60 mt-1">
+                        {feeHint}
+                      </p>
+                      {ownerFeePercent && parseFloat(ownerFeePercent) > 0 && stripeEnabled && connectOnboarded === false && (
+                        <div className="mt-2 flex items-center justify-between gap-3 bg-accent/5 border border-accent/30 px-3 py-2">
+                          <p className="text-xs text-ink/70">
+                            You haven&apos;t connected a payout account yet -- without one, this fee has nowhere to go.
+                          </p>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            onClick={handleConnectSetup}
+                            isLoading={connectLoading}
+                            className="flex-shrink-0"
+                          >
+                            Connect Now
+                          </Button>
+                        </div>
+                      )}
+                      {connectError && (
+                        <p className="text-xs text-accent mt-1">{connectError}</p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -727,14 +728,14 @@ function CreateLineForm() {
             </div>
 
             {error && name.trim() && (
-              <p className="text-sm text-accent">{error}</p>
+              <p role="alert" className="text-sm text-accent">{error}</p>
             )}
 
             <div className="flex justify-end space-x-3">
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => router.back()}
+                onClick={() => router.push("/dashboard")}
               >
                 Cancel
               </Button>

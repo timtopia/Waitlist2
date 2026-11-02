@@ -18,7 +18,10 @@ import { shortName } from "@/lib/privacy"
 import { isOfferExpired } from "@/lib/offers"
 import { tradeBlocker, MAX_ABANDONED_CHECKOUTS, ABANDON_WINDOW_MS } from "@/lib/trading"
 
-const LOCK_DURATION_MS = 30 * 60 * 1000 // 30 minutes
+// Stripe requires a Checkout Session to expire at least 30 minutes after it's
+// created. The lock is computed before the database work, so a bare 30 would
+// land under that by the time the session is created.
+const LOCK_DURATION_MS = 31 * 60 * 1000
 const offerRespondLimiter = rateLimit({ interval: 60000, limit: 10 })
 
 export async function PATCH(
@@ -34,7 +37,11 @@ export async function PATCH(
   }
 
   const { lineId, offerId } = await params
-  const { action } = await req.json()
+  const body = await req.json().catch(() => ({}))
+  const action: unknown = body?.action
+  // The amount the recipient saw, so a raise landing mid-click isn't
+  // declined unseen
+  const expectedAmount: unknown = body?.expectedAmount
 
   if (action !== "accept" && action !== "decline") {
     return NextResponse.json(
@@ -74,10 +81,22 @@ export async function PATCH(
 
     // Handle decline
     if (action === "decline") {
-      const updated = await prisma.swapOffer.update({
-        where: { id: offerId },
-        data: { status: "DECLINED" },
+      // createdAt restarts the cooldown before they can send another
+      const declined = await prisma.swapOffer.updateMany({
+        where: {
+          id: offerId,
+          status: "PENDING",
+          ...(typeof expectedAmount === "number" ? { amount: expectedAmount } : {}),
+        },
+        data: { status: "DECLINED", createdAt: new Date() },
       })
+      if (declined.count === 0) {
+        return NextResponse.json(
+          { error: "This offer just changed. Refresh to see the latest." },
+          { status: 409 }
+        )
+      }
+      const updated = await prisma.swapOffer.findUniqueOrThrow({ where: { id: offerId } })
       return NextResponse.json(updated)
     }
 
@@ -387,7 +406,7 @@ export async function PATCH(
 /**
  * The offerer withdraws their offer. Works while it's still PENDING, and also
  * after it was accepted but before they paid -- that abandons the checkout
- * and frees both spots instead of leaving them locked for 30 minutes.
+ * and frees both spots instead of leaving them locked for half an hour.
  */
 export async function DELETE(
   req: Request,
@@ -435,9 +454,10 @@ export async function DELETE(
     }
 
     // Kept (not deleted) so the person in front sees it was taken back.
+    // createdAt restarts the cooldown before they can send another.
     await prisma.swapOffer.update({
       where: { id: offerId },
-      data: { status: "WITHDRAWN", transactionId: null },
+      data: { status: "WITHDRAWN", transactionId: null, createdAt: new Date() },
     })
     return NextResponse.json({ success: true })
   } catch (error) {

@@ -308,7 +308,7 @@ describe("DELETE /api/lines/[lineId]/offer/[offerId] (withdraw)", () => {
     // Kept as WITHDRAWN so the person in front can see it was taken back
     expect(mockPrisma.swapOffer.update).toHaveBeenCalledWith({
       where: { id: "offer-1" },
-      data: { status: "WITHDRAWN", transactionId: null },
+      data: { status: "WITHDRAWN", transactionId: null, createdAt: expect.any(Date) },
     })
     expect(mockPrisma.swapOffer.delete).not.toHaveBeenCalled()
   })

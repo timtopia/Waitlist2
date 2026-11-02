@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { runAfterResponse } from "@/lib/after-response"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
-import { releaseAndSettle } from "@/lib/stripe"
+import { getBaseUrl, releaseAndSettle } from "@/lib/stripe"
 import { sendEmail } from "@/lib/email"
 import { fulfilledEmail } from "@/lib/email-templates"
 
@@ -97,14 +97,14 @@ export async function POST(
     // Send email notification to the fulfilled person (fire-and-forget)
     const fulfilledUser = result.position.user
     if (fulfilledUser?.email && fulfilledUser.emailNotifications) {
-      const baseUrl = process.env.NEXTAUTH_URL || process.env.AUTH_URL || "http://localhost:3000"
-      const line = await prisma.line.findUnique({ where: { id: lineId }, select: { name: true } })
+      const line = await prisma.line.findUnique({ where: { id: lineId }, select: { name: true, kind: true } })
       if (line) {
-        const lineUrl = `${baseUrl}/lines/${lineId}`
+        const lineUrl = `${getBaseUrl()}/lines/${lineId}`
         const { subject, html } = fulfilledEmail(
           fulfilledUser.name || "there",
           line.name,
-          lineUrl
+          lineUrl,
+          line.kind === "RESTAURANT"
         )
         runAfterResponse(() => sendEmail(fulfilledUser.email!, subject, html))
       }

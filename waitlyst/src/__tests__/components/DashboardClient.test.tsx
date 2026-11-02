@@ -73,7 +73,7 @@ const mockPositions = [
 function openMenuForLine1() {
   // The "..." buttons are the vertical dots icons — get all of them and click the first
   const menuButtons = screen.getAllByRole("button").filter(
-    (btn) => btn.querySelector("svg") && btn.className.includes("text-ink/40")
+    (btn) => btn.querySelector("svg") && btn.className.includes("text-ink/60")
   )
   // First "..." button belongs to line-1 (which has frontPerson so it also has "Serve Next")
   fireEvent.click(menuButtons[0])
@@ -272,7 +272,7 @@ describe("DashboardClient", () => {
       await waitFor(() => {
         expect(screen.getByText("$75.00")).toBeInTheDocument()
         expect(screen.getByText("Pending Settlement (3)")).toBeInTheDocument()
-        expect(screen.getByText("Paid; closes out once both people have left the line")).toBeInTheDocument()
+        expect(screen.getByText("Couldn't be collected automatically -- check the settlement page")).toBeInTheDocument()
       })
     })
 

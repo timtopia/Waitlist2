@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { Card, CardContent } from "@/components/ui/Card"
-import { Button } from "@/components/ui/Button"
+import { buttonClasses } from "@/components/ui/buttonStyles"
 
 export default function NotFound() {
   return (
@@ -15,11 +15,11 @@ export default function NotFound() {
             This page doesn&apos;t exist, or the line was deleted.
           </p>
           <div className="flex items-center justify-center gap-3">
-            <Link href="/browse">
-              <Button variant="secondary">Browse Lines</Button>
+            <Link href="/browse" className={buttonClasses({ variant: "secondary" })}>
+              Browse Lines
             </Link>
-            <Link href="/">
-              <Button variant="primary">Go Home</Button>
+            <Link href="/" className={buttonClasses({ variant: "primary" })}>
+              Go Home
             </Link>
           </div>
         </CardContent>

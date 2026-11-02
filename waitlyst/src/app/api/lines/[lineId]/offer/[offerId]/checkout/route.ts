@@ -60,7 +60,7 @@ export async function GET(
     const session = await stripe.checkout.sessions.retrieve(transaction.stripePaymentId)
     if (!session.url) {
       return NextResponse.json(
-        { error: "This payment link has expired. Ask them to accept the offer again." },
+        { error: "The payment window closed. The offer goes back to them shortly." },
         { status: 410 }
       )
     }

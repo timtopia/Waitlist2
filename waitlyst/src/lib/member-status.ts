@@ -126,14 +126,17 @@ export interface MemberAlert {
 const MOVED_ALERT_THRESHOLD = 5
 
 /** What (if anything) to tell the person about an event. */
-export function describeMemberEvent(event: MemberEvent, lineName: string): MemberAlert | null {
+export function describeMemberEvent(event: MemberEvent, lineName: string, isRestaurant = false): MemberAlert | null {
+  const organizer = isRestaurant ? "the host" : "the organizer"
   switch (event.kind) {
     case "called":
       return { title: "It's your turn!", body: `${lineName} is ready for you.`, toast: true, tone: "success" }
     case "next":
       return { title: "You're next", body: `You're at the front of ${lineName}. Get ready.`, toast: true, tone: "info" }
     case "served":
-      return { title: "You've been served", body: `${lineName} marked you as served.`, toast: true, tone: "success" }
+      return isRestaurant
+        ? { title: "You've been seated", body: `Enjoy your meal at ${lineName}.`, toast: true, tone: "success" }
+        : { title: "You've been served", body: `${lineName} marked you as served.`, toast: true, tone: "success" }
     case "moved":
       // Every shuffle in a long line would be noise; only alert near the front.
       if (event.to > MOVED_ALERT_THRESHOLD) return null
@@ -142,12 +145,12 @@ export function describeMemberEvent(event: MemberEvent, lineName: string): Membe
       return { title: "Your spot sold", body: `Someone bought your place in ${lineName}. You're now #${event.to}.`, toast: true, tone: "success" }
     case "removed":
       return event.wasServed
-        ? { title: "All done", body: `You've left ${lineName} after being served.`, toast: true, tone: "info" }
+        ? { title: "All done", body: `You've left ${lineName} after being ${isRestaurant ? "seated" : "served"}.`, toast: true, tone: "info" }
         // Leaving from this tab is handled by the caller; reaching here means
         // it happened elsewhere -- another device, or the organizer.
         : event.wasCalled
-          ? { title: "You're no longer in line", body: `You were called in ${lineName} but didn't show up in time, so your place went to the next party -- or the organizer removed you.`, toast: true, tone: "warning" }
-          : { title: "You're no longer in line", body: `You're no longer in ${lineName}. You left from another device, or the organizer removed you.`, toast: true, tone: "warning" }
+          ? { title: "You're no longer in line", body: `You were called in ${lineName} but didn't show up in time, so your place went to the next party -- or ${organizer} removed you.`, toast: true, tone: "warning" }
+          : { title: "You're no longer in line", body: `You're no longer in ${lineName}. You left from another device, or ${organizer} removed you.`, toast: true, tone: "warning" }
     case "announcement":
       return { title: `Update from ${lineName}`, body: event.text, toast: false, tone: "info" }
     case "paused":
@@ -158,9 +161,9 @@ export function describeMemberEvent(event: MemberEvent, lineName: string): Membe
 }
 
 /** Browser-tab title while in line, so the place is visible from other tabs. */
-export function memberTabTitle(status: MemberStatus | null, lineName: string): string | null {
+export function memberTabTitle(status: MemberStatus | null, lineName: string, isRestaurant = false): string | null {
   if (!status) return null
   if (status.phase === "called") return `Your turn! · ${lineName}`
-  if (status.phase === "served") return `Served · ${lineName}`
+  if (status.phase === "served") return `${isRestaurant ? "Seated" : "Served"} · ${lineName}`
   return `#${status.position} · ${lineName}`
 }

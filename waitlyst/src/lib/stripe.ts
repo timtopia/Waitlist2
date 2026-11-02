@@ -55,10 +55,24 @@ export async function recordPaymentIntent(transactionId: string, session: Stripe
 }
 
 /**
- * Get the base URL for redirects.
+ * The site's public URL from the environment, or null when none is set.
+ */
+export function configuredBaseUrl(): string | null {
+  return (
+    process.env.NEXTAUTH_URL ||
+    process.env.AUTH_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    (process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : null)
+  )
+}
+
+/**
+ * Get the base URL for redirects and links in emails.
  */
 export function getBaseUrl(): string {
-  return process.env.NEXTAUTH_URL || process.env.AUTH_URL || "http://localhost:3000"
+  return configuredBaseUrl() || "http://localhost:3000"
 }
 
 interface Transaction {
@@ -673,7 +687,13 @@ async function notifySellerOfSale(transaction: {
   const [seller, sellerPosition, line] = await Promise.all([
     prisma.user.findUnique({
       where: { id: transaction.sellerId },
-      select: { name: true, email: true, emailNotifications: true },
+      select: {
+        name: true,
+        email: true,
+        emailNotifications: true,
+        stripeConnectId: true,
+        stripeConnectOnboarded: true,
+      },
     }),
     prisma.linePosition.findUnique({
       where: { lineId_userId: { lineId: transaction.lineId, userId: transaction.sellerId } },
@@ -689,7 +709,8 @@ async function notifySellerOfSale(transaction: {
     transaction.amount,
     sellerPosition.position,
     `${getBaseUrl()}/lines/${transaction.lineId}`,
-    line.kind === "RESTAURANT"
+    line.kind === "RESTAURANT",
+    !!seller.stripeConnectId && seller.stripeConnectOnboarded
   )
   await sendEmail(seller.email, subject, html)
 }

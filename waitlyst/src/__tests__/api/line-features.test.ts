@@ -61,6 +61,7 @@ const mockStripe = {
 vi.mock("@/lib/stripe", () => ({
   getStripe: vi.fn(() => null), // default: dev mode (no Stripe)
   getBaseUrl: vi.fn(() => "http://localhost:3000"),
+  configuredBaseUrl: vi.fn(() => "http://localhost:3000"),
   performPositionSwap: vi.fn().mockResolvedValue(true),
   abandonPendingTransaction: vi.fn().mockResolvedValue(true),
   isCheckoutAuthorized: vi.fn(async (s: { payment_status?: string }) => s.payment_status === "paid"),
@@ -298,7 +299,7 @@ describe("GET /api/lines/[lineId]/cancel-payment", () => {
     expect(abandonPendingTransaction).toHaveBeenCalledWith("txn-1", { byBuyer: true, offerId: null })
     expect(mockPrisma.swapOffer.updateMany).toHaveBeenCalledWith({
       where: { id: "offer-1", status: "ACCEPTED" },
-      data: { status: "WITHDRAWN" },
+      data: { status: "WITHDRAWN", createdAt: expect.any(Date) },
     })
     expect(response.headers.get("Location")).toContain("payment=offer_withdrawn")
   })

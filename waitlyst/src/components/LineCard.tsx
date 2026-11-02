@@ -65,10 +65,10 @@ export function LineCard({ line }: LineCardProps) {
           <div className="font-mono text-2xl sm:text-3xl tabular-nums leading-none">
             {line.guestCount ?? line._count.positions}
             {line.maxCapacity ? (
-              <span className="text-ink/40 text-base sm:text-lg">/{line.maxCapacity}</span>
+              <span className="text-ink/60 text-base sm:text-lg">/{line.maxCapacity}</span>
             ) : null}
           </div>
-          <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink/40 mt-1.5">
+          <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink/60 mt-1.5">
             {line.kind === "RESTAURANT" ? "Guests waiting" : "In line"}
           </div>
         </div>
@@ -90,7 +90,7 @@ export function LineCard({ line }: LineCardProps) {
               <h3 className="font-semibold tracking-tight truncate group-hover:underline underline-offset-4">
                 {line.name}
               </h3>
-              <p className="text-sm text-ink/50 truncate">
+              <p className="text-sm text-ink/60 truncate">
                 {line.productName ||
                   line.description ||
                   `Started by ${line.createdBy.name || "Anonymous"}`}
@@ -103,7 +103,7 @@ export function LineCard({ line }: LineCardProps) {
                     </span>
                   )}
                   {line.productPrice != null && (
-                    <span className="font-mono text-xs text-ink/50 whitespace-nowrap">
+                    <span className="font-mono text-xs text-ink/60 whitespace-nowrap">
                       Retail ${line.productPrice.toFixed(2)}
                     </span>
                   )}
