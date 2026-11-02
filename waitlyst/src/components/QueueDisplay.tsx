@@ -376,6 +376,8 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
         fetchOffers()
       } else {
         addToast(data.error || "Failed to send offer", "error")
+        // They answered, or a payment is waiting: show the offer as it is now
+        if (res.status === 409) fetchOffers()
       }
     } finally {
       setOfferLoading(false)
@@ -482,7 +484,15 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
         window.location.href = data.checkoutUrl
         return
       }
-      addToast(data.error || "Could not start payment", "error")
+      if (res.ok && data.paid) {
+        // Paid in another tab, or the return page never loaded
+        addToast(data.message || "Your payment already went through.", "success")
+      } else {
+        addToast(data.error || "Could not start payment", "error")
+      }
+      // Paid, window closed, or the swap fell through: the card above is stale
+      fetchOffers()
+      onRefresh()
     } finally {
       setLoadingAction(null)
     }
@@ -556,6 +566,14 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
         onRefresh()
       } else {
         const data = await res.json().catch(() => ({}))
+        // A retry after a dropped reply (the first tap did go through), or
+        // they'd already been removed: either way they're out, not stuck
+        if (res.status === 400 && data.error === "You are not in this line") {
+          onLeft?.()
+          addToast("You're no longer in this line", "info")
+          onRefresh()
+          return
+        }
         addToast(data.error || "Couldn't leave the line. Please try again.", "error")
         onRefresh()
       }

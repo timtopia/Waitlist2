@@ -383,7 +383,13 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       }
       if (change.kind === "called" || change.kind === "next") setDeparture(null)
       if (change.kind === "called") alertTurn()
-      const alert = describeMemberEvent(change, next.name, next.kind === "RESTAURANT")
+      const alert = describeMemberEvent(
+        change,
+        next.name,
+        next.kind === "RESTAURANT",
+        // No deadline while paused: the show-up clock is on hold
+        next.isActive ? next.responseWindowMinutes : null
+      )
       if (!alert) continue
       sendNotification(alert.title, {
         body: alert.body,
@@ -1114,6 +1120,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             isFull={line.isFull}
             kind={line.kind}
             hideCapacity={line.hasCapacityLimit && line.maxCapacity === null}
+            inLine={!!memberStatus && memberStatus.phase !== "served"}
           />
         </div>
       )}

@@ -72,6 +72,19 @@ describe("useLineUpdates", () => {
     expect(fetchMock.mock.calls.length).toBe(callsBefore)
   })
 
+  it("catches up the moment a page opened in a background tab is first viewed", async () => {
+    visibility = "hidden"
+    respondWith('{"v":1}')
+    renderHook(() => useLineUpdates("line-1", vi.fn(), { intervalMs: 30_000 }))
+    await advance(5000)
+    expect(fetchMock).not.toHaveBeenCalled()
+    visibility = "visible"
+    document.dispatchEvent(new Event("visibilitychange"))
+    await advance(0)
+    // Not left waiting for the next 30s tick
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   it("keeps polling in the background when asked, so alerts can fire", async () => {
     const onUpdate = vi.fn()
     respondWith('{"v":1}')

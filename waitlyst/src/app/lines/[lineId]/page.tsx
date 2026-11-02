@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import { prisma } from "@/lib/prisma"
 import { capacityUnit, capacityUsed, capacityView, guestCount } from "@/lib/capacity"
+import { jsonForScript } from "@/lib/validate"
 import { LineDetailClient } from "./LineDetailClient"
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || "https://waitlyst.app"
@@ -159,7 +160,7 @@ export default async function LineDetailPage({ params }: Props) {
       {jsonLd && (
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+          dangerouslySetInnerHTML={{ __html: jsonForScript(jsonLd) }}
         />
       )}
       <LineDetailClient lineId={lineId} />

@@ -19,6 +19,21 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const panelId = useId()
+  // The QR / embed toggles swap a button for a section (and back), which
+  // would drop keyboard focus onto <body>; move it to the new control instead.
+  const qrToggleRef = useRef<HTMLButtonElement>(null)
+  const qrHideRef = useRef<HTMLButtonElement>(null)
+  const embedToggleRef = useRef<HTMLButtonElement>(null)
+  const embedHideRef = useRef<HTMLButtonElement>(null)
+  const focusAfterToggle = useRef<"qr" | "embed" | null>(null)
+
+  useEffect(() => {
+    const which = focusAfterToggle.current
+    if (!which) return
+    focusAfterToggle.current = null
+    if (which === "qr") (showQr ? qrHideRef : qrToggleRef).current?.focus()
+    else (showEmbed ? embedHideRef : embedToggleRef).current?.focus()
+  }, [showQr, showEmbed])
 
   function closePanel() {
     setOpen(false)
@@ -46,7 +61,9 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
   const url = `${origin}/lines/${lineId}`
   const embedUrl = `${origin}/lines/${lineId}/embed`
 
-  const embedCode = `<iframe src="${embedUrl}" width="350" height="450" frameborder="0" style="border:1px solid #d8d4ca;"></iframe>`
+  // title names the frame for screen readers on the restaurant's own site
+  const embedTitle = `${lineName} waitlist`.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")
+  const embedCode = `<iframe src="${embedUrl}" title="${embedTitle}" width="350" height="450" frameborder="0" style="border:1px solid #d8d4ca;"></iframe>`
   const directLink = `<a href="${url}">Join the line on Waitlyst</a>`
 
   function handleCopy() {
@@ -89,6 +106,7 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
   }, [lineId])
 
   function handleShowQr() {
+    focusAfterToggle.current = "qr"
     setShowQr(true)
     if (!qrSvg) {
       fetchQrCode()
@@ -259,7 +277,9 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
             {/* QR Code button */}
             {!showQr ? (
               <button
+                ref={qrToggleRef}
                 onClick={handleShowQr}
+                aria-expanded={false}
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-ink hover:bg-paper transition-colors"
               >
                 <svg className="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -272,9 +292,10 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-ink">QR Code</span>
                   <button
-                    onClick={() => setShowQr(false)}
+                    ref={qrHideRef}
+                    onClick={() => { focusAfterToggle.current = "qr"; setShowQr(false) }}
                     aria-label="Hide QR code"
-                    className="font-mono text-xs uppercase tracking-widest text-ink/60 hover:text-ink"
+                    className="font-mono text-xs uppercase tracking-widest text-ink/60 hover:text-ink px-2 -mr-2 min-h-11 sm:min-h-0"
                   >
                     Hide
                   </button>
@@ -333,7 +354,9 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
             {/* Embed Widget button */}
             {!showEmbed ? (
               <button
-                onClick={() => setShowEmbed(true)}
+                ref={embedToggleRef}
+                onClick={() => { focusAfterToggle.current = "embed"; setShowEmbed(true) }}
+                aria-expanded={false}
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-ink hover:bg-paper transition-colors"
               >
                 <svg className="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -346,9 +369,10 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-ink">Embed Widget</span>
                   <button
-                    onClick={() => setShowEmbed(false)}
+                    ref={embedHideRef}
+                    onClick={() => { focusAfterToggle.current = "embed"; setShowEmbed(false) }}
                     aria-label="Hide embed code"
-                    className="font-mono text-xs uppercase tracking-widest text-ink/60 hover:text-ink"
+                    className="font-mono text-xs uppercase tracking-widest text-ink/60 hover:text-ink px-2 -mr-2 min-h-11 sm:min-h-0"
                   >
                     Hide
                   </button>

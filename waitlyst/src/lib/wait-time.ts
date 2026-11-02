@@ -1,12 +1,24 @@
 const SAME_EVENT_WINDOW_MS = 5000
 const MAX_INTERVALS = 10
+/**
+ * How far back a restaurant's pace is taken from. Tables turn at a different
+ * rate at lunch than at a Friday dinner, and last night's sitting says
+ * nothing about tonight's.
+ */
+export const RESTAURANT_PACE_WINDOW_MS = 3 * 60 * 60_000
 
 /**
  * Average minutes between service events, from timestamps of people being
  * served (fulfilled, or their swaps settling as they leave).
  */
-export function estimateMinutesPerPerson(timestamps: Date[]): { minutes: number | null; basedOn: number } {
-  const sorted = [...timestamps].sort((a, b) => a.getTime() - b.getTime())
+export function estimateMinutesPerPerson(
+  timestamps: Date[],
+  /** Ignore service before this, e.g. a previous night's sitting */
+  since: Date | null = null
+): { minutes: number | null; basedOn: number } {
+  const sorted = timestamps
+    .filter((t) => !since || t.getTime() >= since.getTime())
+    .sort((a, b) => a.getTime() - b.getTime())
   // Fulfilling someone settles their swaps in the same request, so several
   // timestamps a few seconds apart are one service event, not several.
   const events: Date[] = []

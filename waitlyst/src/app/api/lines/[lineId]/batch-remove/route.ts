@@ -7,7 +7,11 @@ export async function POST(
   { params }: { params: Promise<{ lineId: string }> }
 ) {
   const { lineId } = await params
-  const { positionIds, action = "payout" } = await req.json()
+  const body = await req.json().catch(() => null)
+  if (!body || typeof body !== "object") {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 })
+  }
+  const { positionIds, action = "payout" } = body
 
   if (!Array.isArray(positionIds) || positionIds.length === 0) {
     return NextResponse.json(

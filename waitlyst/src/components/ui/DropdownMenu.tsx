@@ -90,7 +90,9 @@ export function DropdownMenu({ items, separatorBefore = [], label = "More action
           />
           <div ref={menuRef} className="absolute right-0 top-full mt-1 w-48 bg-white border border-ink py-1 z-20" role="menu" aria-label={label}>
             {items.map((item, index) => (
-              <div key={index}>
+              // Wrapper is presentational so the menu's children are just
+              // menuitems/separators, as role="menu" requires
+              <div key={index} role="none">
                 {separatorBefore.includes(index) && (
                   <div role="separator" className="border-t border-rule my-1" />
                 )}

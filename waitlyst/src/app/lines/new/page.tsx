@@ -264,7 +264,8 @@ function CreateLineForm() {
           productPrice: productPrice ? parseFloat(productPrice) : null,
           productUrl: productUrl.trim() || null,
           allowResale,
-          maxAskingPrice: maxAskingPrice ? parseFloat(maxAskingPrice) : null,
+          // Hidden once swaps are off (e.g. after switching templates), so don't keep it
+          maxAskingPrice: allowResale && maxAskingPrice ? parseFloat(maxAskingPrice) : null,
           purchaseLimit: purchaseLimit && kind !== "RESTAURANT" ? parseInt(purchaseLimit, 10) : null,
           responseWindowMinutes: responseWindow ? parseInt(responseWindow, 10) : null,
           hideCapacity: maxCapacity ? hideCapacity : false,

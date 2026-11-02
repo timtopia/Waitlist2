@@ -416,7 +416,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
           onClick={() => handleAction("capture", txn.id)}
           isLoading={isLoading}
         >
-          Capture
+          {isDrop ? "Collect" : "Capture"}
         </Button>
       )
     }
@@ -429,7 +429,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
           onClick={() => handleAction("capture", txn.id)}
           isLoading={isLoading}
         >
-          Capture (Honor)
+          {isDrop ? "Collect" : "Capture (Honor)"}
         </Button>
         {releasable(txn) && (
           <Button
@@ -438,7 +438,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
             onClick={() => setCancelConfirm(txn)}
             isLoading={isLoading}
           >
-            Cancel (Release)
+            {isDrop ? "Release" : "Cancel (Release)"}
           </Button>
         )}
       </div>
@@ -583,14 +583,32 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
               </p>
               <p className="font-mono text-xs uppercase tracking-widest text-ink/60" title="Asking price of every paid swap, including any not yet collected or still waiting on the seller's payout setup. Excludes your fee.">Swap sales</p>
             </div>
-            <div className="text-center">
-              <p className="font-mono text-2xl tabular-nums text-green-700">{summary.fulfilled}</p>
-              <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Awaiting capture: served</p>
-            </div>
-            <div className="text-center">
-              <p className="font-mono text-2xl tabular-nums text-amber-700">{summary.unfulfilled}</p>
-              <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Awaiting capture: not served</p>
-            </div>
+            {isDrop ? (
+              // Drop swaps are collected as they happen, so "awaiting capture"
+              // is nearly always 0/0 here. Say what the owner wants to know:
+              // how many went through, and how many need a look.
+              <>
+                <div className="text-center">
+                  <p className="font-mono text-2xl tabular-nums text-green-700">{summary.total - completedUnsettled.length}</p>
+                  <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Collected</p>
+                </div>
+                <div className="text-center">
+                  <p className={`font-mono text-2xl tabular-nums ${completedUnsettled.length > 0 ? "text-amber-700" : "text-ink/60"}`}>{completedUnsettled.length}</p>
+                  <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Need attention</p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-center">
+                  <p className="font-mono text-2xl tabular-nums text-green-700">{summary.fulfilled}</p>
+                  <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Awaiting capture: served</p>
+                </div>
+                <div className="text-center">
+                  <p className="font-mono text-2xl tabular-nums text-amber-700">{summary.unfulfilled}</p>
+                  <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Awaiting capture: not served</p>
+                </div>
+              </>
+            )}
           </div>
           <div className="mt-4 pt-4 border-t border-rule grid grid-cols-2 gap-4">
             <div className="text-center">
@@ -682,7 +700,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
             onClick={() => setBulkConfirm("capture-all")}
             disabled={actionLoading !== null}
           >
-            Capture All ({completedUnsettled.length})
+            {isDrop ? "Collect All" : "Capture All"} ({completedUnsettled.length})
           </Button>
           {hasUnfulfilled && (
             <Button

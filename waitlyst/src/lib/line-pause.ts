@@ -9,7 +9,7 @@ import { prisma } from "./prisma"
  */
 export async function setLineActive(lineId: string, isActive: boolean, now = new Date()) {
   return prisma.$transaction(async (tx) => {
-    const line = await tx.line.findUnique({ where: { id: lineId }, select: { isActive: true, pausedAt: true } })
+    const line = await tx.line.findUnique({ where: { id: lineId }, select: { isActive: true, pausedAt: true, nowServingAt: true } })
     if (!line || line.isActive === isActive) return line
 
     if (!isActive) {
@@ -17,9 +17,16 @@ export async function setLineActive(lineId: string, isActive: boolean, now = new
       return { isActive: false, pausedAt: now }
     }
 
+    let resumedServingAt: Date | undefined
     if (line.pausedAt) {
       const pausedAt = line.pausedAt.getTime()
       const resumed = (t: Date) => new Date(t.getTime() + now.getTime() - Math.max(t.getTime(), pausedAt))
+      // "Called 5 min ago" on the line page counts from nowServingAt; keep it
+      // in step with the call it describes, or it reads 20 min more than the
+      // host's console and the guest's timer after a long pause
+      if (line.nowServingAt) {
+        resumedServingAt = resumed(line.nowServingAt)
+      }
       const called = await tx.linePosition.findMany({
         where: { lineId, fulfilled: false, calledAt: { not: null } },
         select: { id: true, calledAt: true, respondedAt: true },
@@ -31,7 +38,10 @@ export async function setLineActive(lineId: string, isActive: boolean, now = new
         })
       }
     }
-    await tx.line.update({ where: { id: lineId }, data: { isActive: true, pausedAt: null } })
+    await tx.line.update({
+      where: { id: lineId },
+      data: { isActive: true, pausedAt: null, ...(resumedServingAt && { nowServingAt: resumedServingAt }) },
+    })
     return { isActive: true, pausedAt: null }
   })
 }

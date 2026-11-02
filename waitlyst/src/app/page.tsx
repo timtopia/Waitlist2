@@ -30,6 +30,14 @@ const useCases = [
   ["Pop-ups & events", "Tastings, openings, signings. Cap the line and open it on a schedule."],
 ]
 
+// What people ask before their first line, answered before they have to sign in
+const faqs = [
+  ["Do I need an app?", "No. Lines run in your phone's browser. You sign in with Google once so your spot is saved to you."],
+  ["Can't find the line you were told about?", "Private lines aren't listed on the board. Open the link or scan the QR code the restaurant, shop, or organizer shared."],
+  ["How will I know it's my turn?", "Your spot updates live on the line's page, and you get a heads-up when you're called."],
+  ["Do I have to buy or sell my spot?", "Never. Swaps only happen on lines where the owner turns them on, both people have to agree, and payment goes through Stripe."],
+]
+
 const features = [
   ["Scheduled lines", "Open and close times with live countdowns"],
   ["Live updates", "Joins, leaves, and trades show up within seconds"],
@@ -168,6 +176,23 @@ export default async function HomePage() {
               <div key={title} className="border-t border-ink pt-4">
                 <dt className="font-semibold">{title}</dt>
                 <dd className="text-sm text-ink/60 mt-1">{body}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </section>
+
+      {/* FAQ */}
+      <section id="faq" className="border-b border-rule">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24">
+          <h2 className="font-mono text-xs uppercase tracking-[0.25em] text-ink/60 mb-10">
+            Good to know
+          </h2>
+          <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
+            {faqs.map(([question, answer]) => (
+              <div key={question} className="border-t border-ink pt-4">
+                <dt className="font-semibold">{question}</dt>
+                <dd className="text-sm text-ink/60 mt-1 leading-relaxed">{answer}</dd>
               </div>
             ))}
           </dl>

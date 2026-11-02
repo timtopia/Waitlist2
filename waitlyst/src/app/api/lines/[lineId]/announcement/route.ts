@@ -8,7 +8,10 @@ export async function PATCH(
   { params }: { params: Promise<{ lineId: string }> }
 ) {
   const { lineId } = await params
-  const body = await req.json()
+  const body = await req.json().catch(() => null)
+  if (!body || typeof body !== "object") {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 })
+  }
 
   const result = await requireLineOwner(lineId)
   if (result instanceof NextResponse) return result

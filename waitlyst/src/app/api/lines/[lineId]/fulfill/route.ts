@@ -11,7 +11,8 @@ export async function POST(
   { params }: { params: Promise<{ lineId: string }> }
 ) {
   const { lineId } = await params
-  const { positionId } = await req.json()
+  const body = await req.json().catch(() => null)
+  const positionId = body && typeof body === "object" ? body.positionId : undefined
 
   if (!positionId || typeof positionId !== "string") {
     return NextResponse.json({ error: "Position ID is required" }, { status: 400 })

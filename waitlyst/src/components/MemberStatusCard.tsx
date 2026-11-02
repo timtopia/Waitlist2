@@ -147,8 +147,13 @@ export function MemberStatusCard({
       : `${ahead} ${ahead === 1 ? "person" : "people"} ahead of you`
     if (quoteDetail) detail = quoteDetail
     else if (waitTimeLoading) detail = "Estimating your wait..."
-    else if (minutesPerPerson != null) detail = `Est. wait: ${formatWaitTime(minutesPerPerson * ahead)}`
-    else detail = `Wait estimate appears once the ${organizer} starts ${isRestaurant ? "seating" : "serving"} people.`
+    else if (minutesPerPerson != null) {
+      // A clock time, like the host's quote: someone stepping away for a
+      // drink needs to know when to be back, not do the maths
+      const minutes = minutesPerPerson * ahead
+      const around = new Date(Date.now() + minutes * 60_000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+      detail = `Est. wait: ${formatWaitTime(minutes)}${minutes >= 1 ? ` (around ${around})` : ""}`
+    } else detail = `Wait estimate appears once the ${organizer} starts ${isRestaurant ? "seating" : "serving"} people.`
   }
 
   const accent = phase === "called"
@@ -269,7 +274,10 @@ export function MemberStatusCard({
 
         {isPaused && !done && (
           <p className="mt-3 text-sm text-amber-700">
-            {isRestaurant
+            {phase === "called"
+              // "The host may still call you" read oddly to someone already called
+              ? `The line is paused, so your time to show up is on hold. ${isRestaurant ? "Head to the host stand when you can." : "Go when you can."}`
+              : isRestaurant
               ? "The line is paused. You keep your place, and the host may still call you."
               : "The line is paused. You keep your place while it's paused."}
           </p>

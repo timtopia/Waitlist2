@@ -15,6 +15,12 @@ const mockSendEmail = vi.fn().mockResolvedValue(true)
 vi.mock("@/lib/email", () => ({ sendEmail: (...args: unknown[]) => mockSendEmail(...args) }))
 
 describe("email templates", () => {
+  it("links the footer to the profile page where emails can be turned off", async () => {
+    const { youreNextEmail } = await import("@/lib/email-templates")
+    const { html } = youreNextEmail("Ann", "Dinner", "https://waitlyst.test/lines/1?x=1")
+    expect(html).toContain(`href="https://waitlyst.test/profile"`)
+  })
+
   it("escapes user-controlled names in the HTML body but keeps the subject plain text", async () => {
     const { positionCalledEmail } = await import("@/lib/email-templates")
     const { subject, html } = positionCalledEmail(

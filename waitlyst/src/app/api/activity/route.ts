@@ -13,7 +13,8 @@ export async function GET() {
 
   try {
     // Get recent transactions involving the user
-    const [transactions, recentPositions] = await Promise.all([
+    const now = new Date()
+    const [transactions, recentPositions, recentVisits, openOffers] = await Promise.all([
       // Only money that moved: an abandoned checkout (PENDING/FAILED) never
       // charged anyone, so it isn't "bought a position"
       prisma.transaction.findMany({
@@ -34,12 +35,29 @@ export async function GET() {
         orderBy: { joinedAt: "desc" },
         take: 10,
       }),
+      // Positions are deleted when someone leaves, so how a visit ended
+      // (served, skipped as a no-show, removed) only survives here. Without
+      // it, being skipped or removed while away just made the line vanish
+      // from the dashboard with no trace of why.
+      prisma.queueVisit.findMany({
+        where: { userId },
+        include: { line: { select: { id: true, name: true, kind: true } } },
+        orderBy: { exitedAt: "desc" },
+        take: 10,
+      }),
+      // Offers waiting on their answer: the one thing in the feed they need
+      // to act on, and it lapses if left
+      prisma.swapOffer.findMany({
+        where: { toUserId: userId, status: "PENDING", expiresAt: { gt: now } },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+      }),
     ])
 
     // Build activity feed
     type Activity = {
       id: string
-      type: "joined" | "purchase" | "sale" | "refund"
+      type: "joined" | "purchase" | "sale" | "refund" | "served" | "left" | "removed" | "offer"
       description: string
       amount?: number
       lineId?: string
@@ -50,7 +68,7 @@ export async function GET() {
     const activities: Activity[] = []
 
     const txLines = await prisma.line.findMany({
-      where: { id: { in: [...new Set(transactions.map((t) => t.lineId))] } },
+      where: { id: { in: [...new Set([...transactions, ...openOffers].map((t) => t.lineId))] } },
       select: { id: true, name: true },
     })
     const lineNameOf = new Map(txLines.map((l) => [l.id, l.name]))
@@ -64,6 +82,44 @@ export async function GET() {
         lineId: pos.line.id,
         lineName: pos.line.name,
         createdAt: pos.joinedAt.toISOString(),
+      })
+    }
+
+    // Add finished visits: when they joined, and how it ended
+    for (const visit of recentVisits) {
+      const name = visit.line.name
+      const link = { lineId: visit.line.id, lineName: name }
+      activities.push({
+        id: `join-visit-${visit.id}`,
+        type: "joined",
+        description: `Joined "${name}"`,
+        ...link,
+        createdAt: visit.joinedAt.toISOString(),
+      })
+      const exit = visit.outcome === "SERVED"
+        ? { type: "served" as const, description: visit.line.kind === "RESTAURANT" ? `Seated at "${name}"` : `Served in "${name}"` }
+        : visit.outcome === "NO_SHOW"
+          ? { type: "removed" as const, description: `Skipped in "${name}" after not showing up in time` }
+          : visit.outcome === "REMOVED"
+            ? { type: "removed" as const, description: `Removed from "${name}" by the organizer` }
+            : { type: "left" as const, description: `Left "${name}"` }
+      activities.push({
+        id: `exit-${visit.id}`,
+        ...exit,
+        ...link,
+        createdAt: (visit.outcome === "SERVED" ? visit.servedAt ?? visit.exitedAt : visit.exitedAt).toISOString(),
+      })
+    }
+
+    for (const offer of openOffers) {
+      const lineName = lineNameOf.get(offer.lineId)
+      activities.push({
+        id: `offer-${offer.id}`,
+        type: "offer",
+        description: `Received a $${offer.amount.toFixed(2)} swap offer${lineName ? ` in "${lineName}"` : ""}`,
+        amount: offer.amount,
+        ...(lineName && { lineId: offer.lineId, lineName }),
+        createdAt: offer.createdAt.toISOString(),
       })
     }
 

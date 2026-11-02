@@ -65,6 +65,16 @@ export async function PATCH(
           { status: 400 }
         )
       }
+      // Moving the close time into the past closes the line on the spot,
+      // which is what pausing is for. Leaving an old close time as it was
+      // is fine (the edit form works to the minute, so compare to the minute).
+      const sameMinute = (a: Date, b: Date | null) => !!b && Math.floor(a.getTime() / 60000) === Math.floor(b.getTime() / 60000)
+      if (field === "closesAt" && date <= new Date() && !sameMinute(date, result.line.closesAt)) {
+        return NextResponse.json(
+          { error: "The closing time has already passed. Pick a later time, or leave it empty for no end time." },
+          { status: 400 }
+        )
+      }
       allowedUpdates[field] = date
     }
     // Compare against what's stored for whichever end wasn't sent

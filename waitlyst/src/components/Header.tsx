@@ -31,6 +31,32 @@ export function Header() {
     }
   }, [menuOpen])
 
+  // Following a link (or Back) used to leave the mobile menu covering the new page
+  const [menuPath, setMenuPath] = useState(pathname)
+  if (menuPath !== pathname) {
+    setMenuPath(pathname)
+    setMobileMenuOpen(false)
+    setMenuOpen(false)
+  }
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileMenuOpen(false)
+    }
+    document.addEventListener("keydown", onKeyDown)
+    return () => document.removeEventListener("keydown", onKeyDown)
+  }, [mobileMenuOpen])
+
+  // Signing out on an account-only page used to bounce straight to
+  // "Sign in to continue to your dashboard"; send those people home instead
+  const handleSignOut = () => {
+    const accountOnly =
+      /^\/(dashboard|profile)(\/|$)/.test(pathname ?? "") ||
+      /^\/lines\/(new$|[^/]+\/(edit|analytics|settlement))/.test(pathname ?? "")
+    signOut(accountOnly ? { redirectTo: "/" } : undefined)
+  }
+
   // Show visitors where they are
   const isCurrent = (href: string) => pathname === href || !!pathname?.startsWith(`${href}/`)
   const desktopLink = (href: string) =>
@@ -111,7 +137,7 @@ export function Header() {
                         Profile
                       </Link>
                       <button
-                        onClick={() => signOut()}
+                        onClick={handleSignOut}
                         className="block w-full text-left px-4 py-2 text-sm text-ink/70 hover:bg-paper"
                       >
                         Sign out
@@ -206,7 +232,7 @@ export function Header() {
                 <button
                   onClick={() => {
                     setMobileMenuOpen(false)
-                    signOut()
+                    handleSignOut()
                   }}
                   className="px-3 py-2 text-sm font-medium text-ink/60 hover:text-ink hover:bg-ink/5"
                 >

@@ -47,6 +47,15 @@ describe("sendEmail", () => {
     expect(text).not.toMatch(/<|&amp;/)
   })
 
+  it("passes an idempotency key through so a retry can't send twice", async () => {
+    vi.stubEnv("EMAIL_FROM", "Waitlyst <hello@waitlyst.app>")
+    send.mockResolvedValue({ data: { id: "e1" }, error: null })
+    const { sendEmail } = await import("@/lib/email")
+
+    await sendEmail("a@test.com", "Hi", "<p>Hi</p>", { idempotencyKey: "line-reminder/r1" })
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: "a@test.com" }), { idempotencyKey: "line-reminder/r1" })
+  })
+
   it("reports failure when Resend refuses the email instead of throwing", async () => {
     vi.stubEnv("EMAIL_FROM", "Waitlyst <hello@waitlyst.app>")
     send.mockResolvedValue({ data: null, error: { name: "validation_error", message: "domain not verified" } })

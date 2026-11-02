@@ -977,6 +977,28 @@ describe("QueueDisplay", () => {
       return addToast
     }
 
+    it("treats leaving when already out of the line as left, not an error", async () => {
+      // e.g. a retry after the first tap's reply was lost on a weak signal
+      asUser("user-3")
+      const addToast = withToast()
+      const onLeft = vi.fn()
+      ;(fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+        if (url.includes("/leave")) {
+          return Promise.resolve({ ok: false, status: 400, json: () => Promise.resolve({ error: "You are not in this line" }) })
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ sent: [], received: [] }) })
+      })
+
+      render(<QueueDisplay lineId="line-1" positions={mockPositions} onRefresh={mockOnRefresh} onLeft={onLeft} />)
+      fireEvent.click(screen.getByText("Leave"))
+      fireEvent.click(await screen.findByRole("button", { name: "Leave Line" }))
+
+      await waitFor(() => expect(addToast).toHaveBeenCalledWith("You're no longer in this line", "info"))
+      expect(onLeft).toHaveBeenCalled()
+      expect(mockOnRefresh).toHaveBeenCalled()
+      expect(addToast).not.toHaveBeenCalledWith(expect.anything(), "error")
+    })
+
     it("tells the host to call a walk-in out at the stand", async () => {
       asUser("creator-1")
       const addToast = withToast()

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { estimateMinutesPerPerson } from "@/lib/wait-time"
+import { RESTAURANT_PACE_WINDOW_MS, estimateMinutesPerPerson } from "@/lib/wait-time"
 
 export const dynamic = "force-dynamic"
 
@@ -13,7 +13,7 @@ export async function GET(
   try {
     const line = await prisma.line.findUnique({
       where: { id: lineId },
-      select: { id: true },
+      select: { id: true, kind: true },
     })
     if (!line) {
       return NextResponse.json({ error: "Line not found" }, { status: 404 })
@@ -42,7 +42,10 @@ export async function GET(
       ...servedVisits.map((v) => v.servedAt),
     ].filter((t): t is Date => t instanceof Date)
 
-    const { minutes, basedOn } = estimateMinutesPerPerson(timestamps)
+    // A restaurant's pace is tonight's: guests were being promised a wait
+    // from yesterday's (or last week's) sitting before anyone was seated today
+    const since = line.kind === "RESTAURANT" ? new Date(Date.now() - RESTAURANT_PACE_WINDOW_MS) : null
+    const { minutes, basedOn } = estimateMinutesPerPerson(timestamps, since)
 
     return NextResponse.json({ estimatedMinutesPerPerson: minutes, basedOn })
   } catch (error) {

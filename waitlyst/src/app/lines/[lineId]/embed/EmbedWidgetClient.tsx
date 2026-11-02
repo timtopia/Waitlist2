@@ -173,8 +173,8 @@ export function EmbedWidgetClient({
 
   return (
     <div className="flex flex-col h-screen bg-white">
-      {/* Main content */}
-      <div className="flex-1 overflow-auto p-4">
+      {/* Main content: a landmark, since this page has no site chrome */}
+      <main className="flex-1 overflow-auto p-4">
         {/* Product Image */}
         {productImage && (
           <div className="w-full aspect-[16/9] overflow-hidden mb-3 bg-paper border border-rule">
@@ -202,8 +202,10 @@ export function EmbedWidgetClient({
         </div>
 
         {/* Now Serving */}
+        {/* Guests watch this from the restaurant's site; announce when the
+            refresh moves it on */}
         {nowServing && (
-          <div className="bg-white border border-green-700 p-3 mb-3">
+          <div className="bg-white border border-green-700 p-3 mb-3" aria-live="polite" aria-atomic="true">
             <p className="text-sm font-semibold text-green-700">
               Now Serving: {nowServing}
             </p>
@@ -364,8 +366,9 @@ export function EmbedWidgetClient({
             : status.state === "full"
             ? "Line Full"
             : "Join Line"}
+          {canJoin && <span className="sr-only"> (opens in a new tab)</span>}
         </a>
-      </div>
+      </main>
 
       {/* Powered by footer */}
       <div className="px-4 py-2 border-t border-rule">
@@ -377,6 +380,7 @@ export function EmbedWidgetClient({
         >
           Powered by
           <span className="font-semibold">Waitlyst</span>
+          <span className="sr-only">(opens in a new tab)</span>
         </a>
       </div>
     </div>

@@ -95,7 +95,7 @@ interface DashboardClientProps {
 
 interface Activity {
   id: string
-  type: "joined" | "purchase" | "sale" | "refund"
+  type: "joined" | "purchase" | "sale" | "refund" | "served" | "left" | "removed" | "offer"
   description: string
   amount?: number
   lineId?: string
@@ -414,9 +414,15 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
     }
   }
 
-  function handleCopyLink(lineId: string) {
+  async function handleCopyLink(lineId: string) {
     const url = `${window.location.origin}/lines/${lineId}`
-    navigator.clipboard.writeText(url)
+    try {
+      await navigator.clipboard.writeText(url)
+    } catch {
+      // Blocked clipboard (permissions, older browsers) used to still say "copied"
+      addToast(`Couldn't copy automatically. The link is ${url}`, "error")
+      return
+    }
     setCopiedId(lineId)
     addToast("Link copied to clipboard!", "success")
     setTimeout(() => setCopiedId(null), 2000)
@@ -697,6 +703,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
             <select
               value={positionsSort}
               onChange={(e) => setPositionsSort(e.target.value as SortOption)}
+              aria-label="Sort my positions"
               className="text-sm border border-rule px-2 py-1 bg-white text-ink/70 focus:outline-none focus:border-ink"
             >
               <option value="newest">Newest first</option>
@@ -765,6 +772,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
               <select
                 value={createdSort}
                 onChange={(e) => setCreatedSort(e.target.value as SortOption)}
+                aria-label="Sort lines I created"
                 className="text-sm border border-rule px-2 py-1 bg-white text-ink/70 focus:outline-none focus:border-ink"
               >
                 <option value="newest">Newest first</option>
@@ -788,6 +796,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                   <button
                     key={filter}
                     onClick={() => setStatusFilter(filter)}
+                    aria-pressed={isSelected}
                     className={`font-mono text-xs uppercase tracking-widest pb-1 border-b-2 transition-colors ${
                       isSelected
                         ? "border-accent text-ink"
@@ -972,6 +981,10 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                   purchase: "bg-accent",
                   sale: "bg-green-600",
                   refund: "bg-amber-500",
+                  served: "bg-green-600",
+                  left: "bg-ink/30",
+                  removed: "bg-red-600",
+                  offer: "bg-accent",
                 }
                 const dotColor = dotColors[activity.type] || dotColors.joined
 

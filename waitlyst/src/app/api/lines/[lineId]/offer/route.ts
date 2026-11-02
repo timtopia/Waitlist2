@@ -8,6 +8,7 @@ import { swapOfferEmail } from "@/lib/email-templates"
 import { MIN_OFFER_AMOUNT, OFFER_COOLDOWN_MS, isOfferExpired, newOfferExpiry } from "@/lib/offers"
 import { tradeBlocker, MAX_ABANDONED_CHECKOUTS, ABANDON_WINDOW_MS } from "@/lib/trading"
 import { getBaseUrl } from "@/lib/stripe"
+import { paymentsUnavailable } from "@/lib/payments-mode"
 import { formatCurrency } from "@/lib/format"
 
 const offerLimiter = rateLimit({ interval: 60_000, limit: 10 })
@@ -62,6 +63,15 @@ export async function POST(
       return NextResponse.json(
         { error: "Swapping is disabled for this line" },
         { status: 400 }
+      )
+    }
+
+    // Accepting would only be refused, after the person ahead was already
+    // emailed and the buyer told to wait for an answer.
+    if (paymentsUnavailable()) {
+      return NextResponse.json(
+        { error: "Payments aren't available right now, so spots can't be bought or swapped. Please try again later." },
+        { status: 503 }
       )
     }
 
@@ -282,7 +292,7 @@ export async function GET(
         where: { lineId, status: "PENDING", OR: [{ buyerId: userId }, { sellerId: userId }] },
         select: { id: true },
       }),
-      prisma.line.findUnique({ where: { id: lineId }, select: { nowServingUserId: true } }),
+      prisma.line.findUnique({ where: { id: lineId }, select: { nowServingUserId: true, maxAskingPrice: true } }),
     ])
 
     // Positions move (swaps, leaves, removals), people get called or served,
@@ -291,6 +301,8 @@ export async function GET(
     // accept would only reject.
     const positionOf = new Map(positions.map((p) => [p.userId, p]))
     const nowServingUserId = line?.nowServingUserId ?? null
+    // The organizer may have lowered the cap since; accept would refuse these
+    const maxAskingPrice = line?.maxAskingPrice ?? null
     const now = new Date()
     const staleIds = offers
       .filter((o) => {
@@ -303,7 +315,8 @@ export async function GET(
           to === undefined ||
           to.position !== from.position - 1 ||
           tradeBlocker(from, nowServingUserId, "theirs") !== null ||
-          tradeBlocker(to, nowServingUserId, "theirs") !== null
+          tradeBlocker(to, nowServingUserId, "theirs") !== null ||
+          (maxAskingPrice !== null && o.amount > maxAskingPrice)
         )
       })
       .map((o) => o.id)

@@ -248,6 +248,18 @@ describe("performPositionSwap under concurrency", () => {
     expect(fakeStripe.paymentIntents.cancel).toHaveBeenCalledWith("pi_for_cs_1")
   })
 
+  it("an accepted offer whose paid checkout can't swap is retired, not left looking accepted", async () => {
+    // Before: the offer stayed ACCEPTED with a FAILED checkout, so the buyer
+    // saw "accepted" with nothing to pay and no sign the hold was released.
+    addTxn("t1", "ben", "sam", { stripePaymentId: "cs_1" })
+    db.offers.push({ id: "o-1", lineId: "line-1", fromUserId: "ben", toUserId: "sam", amount: 40, status: "ACCEPTED", createdAt: new Date(), transactionId: "t1" })
+    db.positions.find((p) => p.userId === "sam")!.fulfilled = true
+    const { performPositionSwap } = await import("@/lib/stripe")
+
+    expect(await performPositionSwap("t1")).toBe(false)
+    expect(db.offers[0].status).toBe("EXPIRED")
+  })
+
   it("a seller the organizer called up mid-checkout isn't pushed back behind the buyer", async () => {
     addTxn("t1", "ben", "sam", { stripePaymentId: "cs_1" })
     db.lines[0].nowServingUserId = "sam"

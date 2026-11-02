@@ -18,6 +18,9 @@ const mockPrisma = {
   user: {
     findMany: vi.fn(),
   },
+  swapOffer: {
+    findMany: vi.fn().mockResolvedValue([]),
+  },
 }
 
 vi.mock("@/lib/prisma", () => ({
@@ -239,6 +242,25 @@ describe("GET /api/lines/[lineId]/wait-time", () => {
     const data = await response.json()
     expect(data.estimatedMinutesPerPerson).toBe(10)
     expect(data.basedOn).toBe(3)
+  })
+
+  it("only uses the last few hours of seating on a restaurant line", async () => {
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", kind: "RESTAURANT" })
+    const now = Date.now()
+    mockPrisma.queueVisit.findMany.mockResolvedValue([
+      // Last night: slow
+      { servedAt: new Date(now - 24 * 3600_000) },
+      { servedAt: new Date(now - 23.5 * 3600_000) },
+      { servedAt: new Date(now - 23 * 3600_000) },
+      // Tonight: a table every 6 minutes
+      { servedAt: new Date(now - 12 * 60000) },
+      { servedAt: new Date(now - 6 * 60000) },
+    ])
+
+    const { GET } = await import("@/app/api/lines/[lineId]/wait-time/route")
+    const req = new Request("http://localhost/api/lines/line-1/wait-time")
+    const data = await (await GET(req, { params: Promise.resolve({ lineId: "line-1" }) })).json()
+    expect(data).toEqual({ estimatedMinutesPerPerson: 6, basedOn: 2 })
   })
 
   it("should estimate from fulfillments of people still in line", async () => {
@@ -570,6 +592,8 @@ describe("GET /api/activity -- only money that moved", () => {
 describe("GET /api/activity", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockPrisma.queueVisit.findMany.mockResolvedValue([])
+    mockPrisma.swapOffer.findMany.mockResolvedValue([])
   })
 
   it("should return 401 if not authenticated", async () => {

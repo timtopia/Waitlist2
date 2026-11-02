@@ -112,6 +112,18 @@ export function AnalyticsClient({
       return { label: dayLabel(d), value: count, display: `${count} seated (${guests} ${guests === 1 ? "guest" : "guests"})` }
     })
 
+    // Joins per day, last 30 days: demand over time. A drop's spike is a
+    // single day that "busiest hours" (pooled over 90 days) flattens out.
+    const joinsPerDay = new Map<string, number>()
+    for (const v of data.visits) {
+      const k = dayKey(new Date(v.joinedAt))
+      joinsPerDay.set(k, (joinsPerDay.get(k) ?? 0) + 1)
+    }
+    const joins: Bar[] = days.map((d) => {
+      const count = joinsPerDay.get(dayKey(d)) ?? 0
+      return { label: dayLabel(d), value: count, display: `${count} ${count === 1 ? "join" : "joins"}` }
+    })
+
     // Swap fees earned per day, last 30 days
     const feesPerDay = new Map<string, number>()
     for (const s of data.swaps) {
@@ -147,7 +159,9 @@ export function AnalyticsClient({
       noShowRate: served.length + noShows > 0 ? noShows / (served.length + noShows) : null,
       noShows,
       ownerFees,
+      swapVolume: data.swaps.reduce((sum, s) => sum + s.buyerPaid, 0),
       swapCount: data.swaps.length,
+      joins,
       hours,
       perDay,
       fees,
@@ -192,7 +206,7 @@ export function AnalyticsClient({
               note={view.noShows > 0 ? `${view.noShows} no-show${view.noShows === 1 ? "" : "s"}` : undefined}
             />
             {(allowResale || view.swapCount > 0) && (
-              <Stat label="Swap fees earned" value={formatCurrency(view.ownerFees)} note={`${view.swapCount} swap${view.swapCount === 1 ? "" : "s"}`} />
+              <Stat label="Swap fees earned" value={formatCurrency(view.ownerFees)} note={`${view.swapCount} swap${view.swapCount === 1 ? "" : "s"}${view.swapCount > 0 ? `, buyers paid ${formatCurrency(view.swapVolume)}` : ""}`} />
             )}
           </div>
 
@@ -209,6 +223,14 @@ export function AnalyticsClient({
                 labelHeader="Hour"
                 valueHeader="Joins"
                 labelEvery={3}
+              />
+              <BarChart
+                title={isRestaurant ? "Parties joined per day" : "Joins per day"}
+                subtitle={`Last ${RECENT_DAYS} days`}
+                bars={view.joins}
+                labelHeader="Day"
+                valueHeader="Joins"
+                labelEvery={5}
               />
               <BarChart
                 title={isRestaurant ? "Parties seated per day" : "People served per day"}

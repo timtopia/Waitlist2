@@ -445,4 +445,41 @@ describe("ProfileClient", () => {
       expect(screen.getByText("Anonymous")).toBeInTheDocument()
     })
   })
+
+  it("says so when the email setting can't be saved, instead of silently not moving", async () => {
+    ;(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: false,
+      json: () => Promise.resolve({ error: "Too many requests. Please try again later." }),
+    })
+    render(
+      <ProfileClient
+        user={mockUser}
+        stats={mockStats}
+        recentTransactions={mockTransactions}
+        stripeConnectOnboarded={false}
+        emailNotifications={true}
+      />
+    )
+
+    const toggle = screen.getByRole("switch", { name: "Email notifications" })
+    fireEvent.click(toggle)
+
+    expect(await screen.findByText("Too many requests. Please try again later.")).toBeInTheDocument()
+    expect(toggle).toHaveAttribute("aria-checked", "true")
+  })
+
+  it("tells people how to get a copy of their data or delete their account", () => {
+    render(
+      <ProfileClient
+        user={mockUser}
+        stats={mockStats}
+        recentTransactions={mockTransactions}
+        stripeConnectOnboarded={false}
+        emailNotifications={true}
+      />
+    )
+
+    expect(screen.getByText("Privacy policy").closest("a")).toHaveAttribute("href", "/privacy")
+    expect(screen.getByText("Email support@waitlyst.app").closest("a")?.getAttribute("href")).toMatch(/^mailto:support@waitlyst\.app/)
+  })
 })

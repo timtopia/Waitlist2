@@ -15,7 +15,7 @@ export default async function DashboardPage() {
   const session = await auth()
 
   if (!session?.user?.id) {
-    redirect("/api/auth/signin?callbackUrl=%2Fdashboard")
+    redirect("/signin?callbackUrl=%2Fdashboard")
   }
 
   const [createdLines, positions] = await Promise.all([
@@ -40,7 +40,8 @@ export default async function DashboardPage() {
       include: {
         line: {
           include: {
-            _count: { select: { positions: true } },
+            // "N in line" means people still waiting, not everyone ever served
+            _count: { select: { positions: { where: { fulfilled: false } } } },
           },
         },
       },
