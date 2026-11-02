@@ -15,7 +15,7 @@ export default async function SettlementPage({ params }: Props) {
   const { lineId } = await params
 
   if (!session?.user?.id) {
-    redirect("/")
+    redirect(`/api/auth/signin?callbackUrl=${encodeURIComponent(`/lines/${lineId}/settlement`)}`)
   }
 
   const line = await prisma.line.findUnique({

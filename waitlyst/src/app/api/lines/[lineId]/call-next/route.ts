@@ -5,7 +5,7 @@ import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { sendEmail } from "@/lib/email"
 import { positionCalledEmail, youreNextEmail } from "@/lib/email-templates"
-import { abandonPendingTransaction } from "@/lib/stripe"
+import { abandonPendingTransaction, getBaseUrl } from "@/lib/stripe"
 
 export async function POST(
   req: Request,
@@ -102,8 +102,8 @@ export async function POST(
     ])
 
     // Send email notifications (fire-and-forget)
-    const baseUrl = process.env.NEXTAUTH_URL || process.env.AUTH_URL || "http://localhost:3000"
-    const lineUrl = `${baseUrl}/lines/${lineId}`
+    const lineUrl = `${getBaseUrl()}/lines/${lineId}`
+    const isRestaurant = result.line.kind === "RESTAURANT"
     const calledUser = frontPosition.user
     if (calledUser?.email && calledUser.emailNotifications) {
       const { subject, html } = positionCalledEmail(userName, line.name, lineUrl, {
@@ -125,7 +125,7 @@ export async function POST(
         include: { user: { select: { name: true, email: true, emailNotifications: true } } },
       })
       if (onDeck?.user.email && onDeck.user.emailNotifications) {
-        const { subject, html } = youreNextEmail(onDeck.user.name || "there", line.name, lineUrl)
+        const { subject, html } = youreNextEmail(onDeck.user.name || "there", line.name, lineUrl, isRestaurant)
         runAfterResponse(() => sendEmail(onDeck.user.email!, subject, html))
       }
     }

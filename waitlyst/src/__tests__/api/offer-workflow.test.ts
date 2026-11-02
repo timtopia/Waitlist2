@@ -264,7 +264,7 @@ describe("PATCH /api/lines/[lineId]/offer/[offerId] decline", () => {
     expect((await res.json()).status).toBe("DECLINED")
     expect(mockPrisma.swapOffer.updateMany).toHaveBeenCalledWith({
       where: { id: "offer-1", status: "PENDING", amount: 10 },
-      data: { status: "DECLINED" },
+      data: { status: "DECLINED", createdAt: expect.any(Date) },
     })
   })
 
@@ -389,7 +389,7 @@ describe("DELETE /api/lines/[lineId]/offer/[offerId] (withdraw)", () => {
     // Kept as WITHDRAWN so the person in front can see it was taken back
     expect(mockPrisma.swapOffer.update).toHaveBeenCalledWith({
       where: { id: "offer-1" },
-      data: { status: "WITHDRAWN", transactionId: null },
+      data: { status: "WITHDRAWN", transactionId: null, createdAt: expect.any(Date) },
     })
     expect(mockPrisma.swapOffer.delete).not.toHaveBeenCalled()
   })

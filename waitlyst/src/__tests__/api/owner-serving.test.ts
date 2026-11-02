@@ -32,7 +32,10 @@ const sendEmail = vi.fn().mockResolvedValue(undefined)
 vi.mock("@/lib/email", () => ({ sendEmail: (...a: unknown[]) => sendEmail(...a) }))
 
 const abandonPendingTransaction = vi.fn().mockResolvedValue(true)
-vi.mock("@/lib/stripe", () => ({ abandonPendingTransaction: (...a: unknown[]) => abandonPendingTransaction(...a) }))
+vi.mock("@/lib/stripe", () => ({
+  abandonPendingTransaction: (...a: unknown[]) => abandonPendingTransaction(...a),
+  getBaseUrl: () => "http://localhost:3000",
+}))
 
 const params = { params: Promise.resolve({ lineId: "line-1" }) }
 

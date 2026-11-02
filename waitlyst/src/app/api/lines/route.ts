@@ -203,7 +203,8 @@ export async function GET(req: Request) {
       const used = line.kind === "RESTAURANT"
         ? rows.filter((g) => !g.fulfilled).reduce((sum, g) => sum + (g._sum.partySize ?? 0), 0)
         : rows.reduce((sum, g) => sum + g._count, 0) + (clearedIn.get(line.id) ?? 0)
-      return { ...line, guestCount: guests, ...capacityView(line, used) }
+      // Seated parties have left the wait, so restaurants count only who is waiting
+      return { ...line, guestCount: line.kind === "RESTAURANT" ? used : guests, ...capacityView(line, used) }
     })
 
     return NextResponse.json(visible, {

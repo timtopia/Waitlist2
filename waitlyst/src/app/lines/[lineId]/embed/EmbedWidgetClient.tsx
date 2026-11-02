@@ -114,6 +114,8 @@ export function EmbedWidgetClient({
     opensAt: initial.opensAt,
     closesAt: initial.closesAt,
   })
+  // The owner deleted the line: stop offering a Join button that 404s
+  const [gone, setGone] = useState(false)
   const { positionCount, capacityUsed, maxCapacity, isFull, isActive, nowServing, opensAt, closesAt } = live
 
   useEffect(() => {
@@ -128,6 +130,10 @@ export function EmbedWidgetClient({
       if (document.visibilityState !== "visible") return
       try {
         const res = await fetch(`/api/lines/${lineId}`)
+        if (res.status === 404) {
+          setGone(true)
+          return
+        }
         if (!res.ok) return
         const line = await res.json()
         setLive({
@@ -156,6 +162,14 @@ export function EmbedWidgetClient({
 
   // A paused line can still be viewed; joining waits until it resumes
   const canJoin = status.state === "open" || status.state === "not_yet_open" || status.state === "paused"
+
+  if (gone) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-white p-4">
+        <p className="text-sm text-ink/60">This line has closed.</p>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col h-screen bg-white">
@@ -203,10 +217,10 @@ export function EmbedWidgetClient({
             <div className="bg-white border border-amber-600 p-3 mb-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-amber-600">
+                  <p className="text-sm font-semibold text-amber-700">
                     Opens Soon
                   </p>
-                  <p className="text-xs text-ink/50">
+                  <p className="text-xs text-ink/60">
                     {status.opensAt.toLocaleDateString(undefined, {
                       month: "short",
                       day: "numeric",
@@ -216,10 +230,10 @@ export function EmbedWidgetClient({
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="font-mono text-lg text-amber-600 tabular-nums">
+                  <p className="font-mono text-lg text-amber-700 tabular-nums">
                     {formatTimeLeft(msLeft)}
                   </p>
-                  <p className="text-xs text-ink/50">until open</p>
+                  <p className="text-xs text-ink/60">until open</p>
                 </div>
               </div>
             </div>
@@ -236,7 +250,7 @@ export function EmbedWidgetClient({
                 <p className="font-mono text-lg text-green-700 tabular-nums">
                   {formatTimeLeft(status.closesAt.getTime() - now.getTime())}
                 </p>
-                <p className="text-xs text-ink/50">remaining</p>
+                <p className="text-xs text-ink/60">remaining</p>
               </div>
             </div>
           </div>
@@ -244,8 +258,8 @@ export function EmbedWidgetClient({
 
         {status.state === "paused" && (
           <div className="bg-white border border-amber-600 p-3 mb-3">
-            <p className="text-sm font-semibold text-amber-600">Paused</p>
-            <p className="text-xs text-ink/50">
+            <p className="text-sm font-semibold text-amber-700">Paused</p>
+            <p className="text-xs text-ink/60">
               Not taking new joins right now.
             </p>
           </div>
@@ -254,7 +268,7 @@ export function EmbedWidgetClient({
         {status.state === "closed" && (
           <div className="bg-white border border-accent p-3 mb-3">
             <p className="text-sm font-semibold text-accent">Line Closed</p>
-            <p className="text-xs text-ink/50">
+            <p className="text-xs text-ink/60">
               No longer accepting new joins.
             </p>
           </div>
@@ -263,7 +277,7 @@ export function EmbedWidgetClient({
         {status.state === "full" && (
           <div className="bg-white border border-accent p-3 mb-3">
             <p className="text-sm font-semibold text-accent">Line Full</p>
-            <p className="text-xs text-ink/50">
+            <p className="text-xs text-ink/60">
               {maxCapacity === null ? `All ${capacityUnit(kind, 2)} have been taken.` : `All ${maxCapacity} ${capacityUnit(kind, maxCapacity)} have been taken.`}
             </p>
           </div>
@@ -273,7 +287,7 @@ export function EmbedWidgetClient({
         {maxCapacity !== null && status.state !== "closed" ? (
           <div className="mb-3">
             <div className="flex items-center justify-between mb-1">
-              <span className="font-mono text-xs uppercase tracking-widest text-ink/50">
+              <span className="font-mono text-xs uppercase tracking-widest text-ink/60">
                 {kind === "RESTAURANT" ? "Guests" : "Spots Filled"}
               </span>
               <span className="font-mono text-xs tabular-nums text-ink">
@@ -298,18 +312,18 @@ export function EmbedWidgetClient({
               />
             </div>
             {capacityUsed < maxCapacity && (
-              <p className="text-xs text-ink/40 mt-1">
+              <p className="text-xs text-ink/60 mt-1">
                 {maxCapacity - capacityUsed} {capacityUnit(kind, maxCapacity - capacityUsed)} remaining
               </p>
             )}
           </div>
         ) : status.state !== "closed" && hideCapacity ? (
           <div className="mb-3">
-            <p className="text-xs text-ink/50">Limited spots available</p>
+            <p className="text-xs text-ink/60">Limited spots available</p>
           </div>
         ) : maxCapacity === null && !hideCapacity ? (
           <div className="mb-3">
-            <p className="text-xs text-ink/50">
+            <p className="text-xs text-ink/60">
               {positionCount} {positionCount === 1 ? "person" : "people"} waiting
             </p>
           </div>
@@ -323,7 +337,7 @@ export function EmbedWidgetClient({
           className={`block w-full text-center py-2.5 font-semibold text-sm transition-colors ${
             canJoin
               ? "bg-ink text-paper hover:bg-accent"
-              : "bg-ink/10 text-ink/40 cursor-not-allowed pointer-events-none"
+              : "bg-ink/10 text-ink/60 cursor-not-allowed pointer-events-none"
           }`}
         >
           {status.state === "not_yet_open" || status.state === "paused"
@@ -342,7 +356,7 @@ export function EmbedWidgetClient({
           href={typeof window !== "undefined" ? window.location.origin : "/"}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center justify-center gap-1 font-mono text-xs uppercase tracking-widest text-ink/40 hover:text-ink/60 transition-colors"
+          className="flex items-center justify-center gap-1 font-mono text-xs uppercase tracking-widest text-ink/60 hover:text-ink/60 transition-colors"
         >
           Powered by
           <span className="font-semibold">Waitlyst</span>

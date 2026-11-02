@@ -9,12 +9,15 @@ import { shortName } from "@/lib/privacy"
 import { tradeBlocker, MAX_ABANDONED_CHECKOUTS, ABANDON_WINDOW_MS } from "@/lib/trading"
 
 // Checkouts the buyer cancelled or let time out, per line, before they must
-// wait. Each one locks the person ahead for up to 30 minutes, so the window
+// wait. Each one locks the person ahead for about half an hour, so the window
 // is long enough that the limit actually bites.
 
 const checkoutLimiter = rateLimit({ interval: 60_000, limit: 10 })
 
-const LOCK_DURATION_MS = 30 * 60 * 1000 // 30 minutes (Stripe minimum for checkout session expiry)
+// Stripe requires a Checkout Session to expire at least 30 minutes after it's
+// created. The lock is computed before the database work, so a bare 30 would
+// land under that by the time the session is created.
+const LOCK_DURATION_MS = 31 * 60 * 1000
 
 export async function POST(
   req: Request,

@@ -436,7 +436,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
       <div className="border-b border-ink pb-6 mb-10">
-        <p className="font-mono text-xs uppercase tracking-[0.25em] text-ink/50 mb-3">
+        <p className="font-mono text-xs uppercase tracking-[0.25em] text-ink/60 mb-3">
           Your desk
         </p>
         <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight">Dashboard</h1>
@@ -465,7 +465,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
               </div>
               <button
                 onClick={dismissOnboarding}
-                className="text-ink/40 hover:text-ink ml-4 flex-shrink-0"
+                className="text-ink/60 hover:text-ink ml-4 -mr-2.5 -mt-2.5 p-2.5 flex-shrink-0 inline-flex items-center justify-center"
                 aria-label="Dismiss"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -480,7 +480,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
       {/* Search Bar */}
       <div className="relative mb-6">
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-          <svg className="h-4 w-4 text-ink/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="h-4 w-4 text-ink/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
         </div>
@@ -498,7 +498,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
               setSearchText("")
               searchInputRef.current?.focus()
             }}
-            className="absolute inset-y-0 right-0 pr-3 flex items-center text-ink/40 hover:text-ink"
+            className="absolute inset-y-0 right-0 pr-3 flex items-center text-ink/60 hover:text-ink"
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -518,7 +518,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
             {statsModal.loading ? (
               <div className="text-center py-4">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent mx-auto"></div>
-                <p className="text-sm text-ink/50 mt-2">Loading stats...</p>
+                <p className="text-sm text-ink/60 mt-2">Loading stats...</p>
               </div>
             ) : statsModal.stats ? (
               <div className="space-y-4">
@@ -526,24 +526,24 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                   const s = statsModal.stats.service
                   return (
                     <>
-                      <p className="font-mono text-xs uppercase tracking-widest text-ink/40">Service</p>
+                      <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Service</p>
                       <div className="grid grid-cols-3 divide-x divide-rule border border-rule">
                         <div className="p-3 text-center">
                           <p className="font-mono text-2xl tabular-nums">{s.served}</p>
-                          <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mt-1">Served</p>
+                          <p className="font-mono text-xs uppercase tracking-widest text-ink/60 mt-1">Served</p>
                         </div>
                         <div className="p-3 text-center">
                           <p className="font-mono text-2xl tabular-nums">{s.waiting}</p>
-                          <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mt-1">Waiting</p>
+                          <p className="font-mono text-xs uppercase tracking-widest text-ink/60 mt-1">Waiting</p>
                         </div>
                         <div className="p-3 text-center">
                           <p className="font-mono text-2xl tabular-nums">
                             {s.medianWaitMinutes === null ? "--" : formatWaitTime(s.medianWaitMinutes)}
                           </p>
-                          <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mt-1">Typical wait</p>
+                          <p className="font-mono text-xs uppercase tracking-widest text-ink/60 mt-1">Typical wait</p>
                         </div>
                       </div>
-                      <p className="text-xs text-ink/50 text-center">
+                      <p className="text-xs text-ink/60 text-center">
                         {s.servedLastHour} served in the last hour · {s.left} left on their own · {s.removed} removed
                       </p>
                     </>
@@ -554,26 +554,26 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                   <p className="font-mono text-3xl tabular-nums text-green-700">
                     {formatCurrency(statsModal.stats.ownerFeeEarned ?? 0)}
                   </p>
-                  <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mt-1">Your Fee Earnings</p>
+                  <p className="font-mono text-xs uppercase tracking-widest text-ink/60 mt-1">Your Fee Earnings</p>
                   {(statsModal.stats.ownerFeePending ?? 0) > 0 && (
-                    <p className="text-xs text-amber-600 mt-1">
+                    <p className="text-xs text-amber-700 mt-1">
                       + {formatCurrency(statsModal.stats.ownerFeePending ?? 0)} pending settlement
                     </p>
                   )}
                   {(statsModal.stats.ownerFeeAwaitingPayout ?? 0) > 0 && (
-                    <p className="text-xs text-amber-600 mt-1">
+                    <p className="text-xs text-amber-700 mt-1">
                       {formatCurrency(statsModal.stats.ownerFeeAwaitingPayout ?? 0)} collected but not yet sent to your payout account
                     </p>
                   )}
                 </div>
 
-                <p className="font-mono text-xs uppercase tracking-widest text-ink/40 pt-2">Swap volume (paid to sellers)</p>
+                <p className="font-mono text-xs uppercase tracking-widest text-ink/60 pt-2">Swap volume (paid to sellers)</p>
                 <div className="grid grid-cols-2 divide-x divide-rule border border-rule">
                   <div className="p-4 text-center">
                     <p className="font-mono text-2xl tabular-nums text-green-700">
                       {formatCurrency(statsModal.stats.totalCompleted)}
                     </p>
-                    <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mt-1">
+                    <p className="font-mono text-xs uppercase tracking-widest text-ink/60 mt-1">
                       Settled ({statsModal.stats.completedCount})
                     </p>
                   </div>
@@ -581,7 +581,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                     <p className="font-mono text-2xl tabular-nums text-accent">
                       {formatCurrency(statsModal.stats.totalRefunded)}
                     </p>
-                    <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mt-1">
+                    <p className="font-mono text-xs uppercase tracking-widest text-ink/60 mt-1">
                       Refunded ({statsModal.stats.refundedCount})
                     </p>
                   </div>
@@ -589,16 +589,17 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
 
                 {statsModal.stats.pendingSettlement > 0 && (
                   <div className="border border-rule p-4 text-center">
-                    <p className="font-mono text-2xl tabular-nums text-amber-600">
+                    <p className="font-mono text-2xl tabular-nums text-amber-700">
                       {formatCurrency(statsModal.stats.pendingSettlement)}
                     </p>
-                    <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mt-1">
+                    <p className="font-mono text-xs uppercase tracking-widest text-ink/60 mt-1">
                       Pending Settlement ({statsModal.stats.pendingSettlementCount})
                     </p>
-                    <p className="text-xs text-ink/40 mt-1">
+                    <p className="text-xs text-ink/60 mt-1">
                       {statsModal.stats.kind === "RESTAURANT"
                         ? "Collected when each buyer is seated"
-                        : "Paid; closes out once both people have left the line"}
+                        // Drop swaps are collected the moment they happen, so an open one means collecting failed
+                        : "Couldn't be collected automatically -- check the settlement page"}
                     </p>
                   </div>
                 )}
@@ -607,10 +608,10 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                   <p className="font-mono text-2xl tabular-nums">
                     {formatCurrency(statsModal.stats.netRevenue)}
                   </p>
-                  <p className="font-mono text-xs uppercase tracking-widest text-ink/50 mt-1">Net Swap Volume (Settled)</p>
+                  <p className="font-mono text-xs uppercase tracking-widest text-ink/60 mt-1">Net Swap Volume (Settled)</p>
                 </div>
 
-                <p className="text-sm text-ink/50 text-center">
+                <p className="text-sm text-ink/60 text-center">
                   Total transactions: {statsModal.stats.totalTransactions}
                 </p>
               </div>
@@ -717,7 +718,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                         <span className={phaseLabel[pos.phase].className}>
                           {phaseLabel[pos.phase].text(pos.ahead)}
                         </span>
-                        <span className="text-ink/40">
+                        <span className="text-ink/60">
                           {" · "}{pos.line._count.positions} in line
                           {!pos.line.isActive && " · Paused"}
                         </span>
@@ -774,7 +775,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                     className={`font-mono text-xs uppercase tracking-widest pb-1 border-b-2 transition-colors ${
                       isSelected
                         ? "border-accent text-ink"
-                        : "border-transparent text-ink/40 hover:text-ink"
+                        : "border-transparent text-ink/60 hover:text-ink"
                     }`}
                   >
                     {label}
@@ -816,13 +817,13 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                           <span className={`inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest flex-shrink-0 ${
                             line.isPublic
                               ? "text-green-700"
-                              : "text-ink/50"
+                              : "text-ink/60"
                           }`}>
                             <span className={`w-1.5 h-1.5 ${line.isPublic ? "bg-green-600" : "bg-ink/30"}`} aria-hidden />
                             {line.isPublic ? "Public" : "Private"}
                           </span>
                           {!line.isActive && (
-                            <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-amber-600 flex-shrink-0">
+                            <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-amber-700 flex-shrink-0">
                               <span className="w-1.5 h-1.5 bg-amber-500" aria-hidden />
                               Paused
                             </span>
@@ -943,7 +944,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
           ) : activities.length === 0 ? (
             <div className="text-center py-6">
               <p className="text-ink/60">No recent activity.</p>
-              <p className="text-sm text-ink/40 mt-1">
+              <p className="text-sm text-ink/60 mt-1">
                 Join a line or swap a position to see activity here.
               </p>
             </div>
@@ -975,7 +976,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                         </Link>
                       )}
                     </div>
-                    <span className="font-mono text-xs text-ink/40 flex-shrink-0">{timeAgo(activity.createdAt)}</span>
+                    <span className="font-mono text-xs text-ink/60 flex-shrink-0">{timeAgo(activity.createdAt)}</span>
                   </div>
                 )
               })}

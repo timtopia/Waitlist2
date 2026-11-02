@@ -61,9 +61,14 @@ export async function POST(
         })
         for (const v of servedVisits) if (!fulfilledMap.has(v.userId)) fulfilledMap.set(v.userId, true)
 
+        // Buyers still waiting hold the spot they bought: releasing their
+        // payment would hand it to them free, and the seller gets nothing.
+        // They're refunded when they leave or are removed instead.
+        const stillWaiting = new Set(positions.filter((p) => !p.fulfilled).map((p) => p.userId))
+
         // Only cancel transactions where the buyer was NOT fulfilled
         const unfulfilledTxns = transactions.filter(
-          (t) => !fulfilledMap.get(t.buyerId)
+          (t) => !fulfilledMap.get(t.buyerId) && !stillWaiting.has(t.buyerId)
         )
 
         // Release the hold, or refund it if it was already collected. Only
@@ -171,6 +176,16 @@ export async function POST(
     }
 
     if (action === "cancel") {
+      const stillWaiting = await prisma.linePosition.findFirst({
+        where: { lineId, userId: transaction.buyerId, fulfilled: false },
+        select: { id: true },
+      })
+      if (stillWaiting) {
+        return NextResponse.json(
+          { error: "They're still in line in the spot they bought. Remove them with a refund instead, or collect the payment." },
+          { status: 409 }
+        )
+      }
       const [returnedId] = await returnBuyerFunds([transaction])
       if (!returnedId) {
         return NextResponse.json(

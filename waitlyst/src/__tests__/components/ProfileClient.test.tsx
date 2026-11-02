@@ -58,6 +58,7 @@ const mockTransactions = [
     amount: 25.0,
     lineName: "Friday dinner",
     status: "COMPLETED",
+    statusLabel: "Charged",
     role: "buyer" as const,
     createdAt: "2025-04-01T14:30:00.000Z",
     settledAt: "2025-04-01T14:35:00.000Z",
@@ -67,6 +68,7 @@ const mockTransactions = [
     amount: 50.0,
     lineName: null,
     status: "PENDING",
+    statusLabel: "Buyer's card on hold",
     role: "seller" as const,
     createdAt: "2025-04-02T09:00:00.000Z",
     settledAt: null,
@@ -76,6 +78,7 @@ const mockTransactions = [
     amount: 15.0,
     lineName: null,
     status: "COMPLETED",
+    statusLabel: "Paid",
     role: "seller" as const,
     createdAt: "2025-04-03T11:15:00.000Z",
     settledAt: "2025-04-03T11:20:00.000Z",
@@ -252,9 +255,10 @@ describe("ProfileClient", () => {
     expect(soldLabels).toHaveLength(2)
 
     // Statuses are displayed
-    const completedBadges = screen.getAllByText("COMPLETED")
-    expect(completedBadges).toHaveLength(2)
-    expect(screen.getByText("PENDING")).toBeInTheDocument()
+    // Statuses say where the money is
+    expect(screen.getByText("Charged")).toBeInTheDocument()
+    expect(screen.getByText("Buyer's card on hold")).toBeInTheDocument()
+    expect(screen.getByText("Paid")).toBeInTheDocument()
   })
 
   it("renders empty transaction state", () => {

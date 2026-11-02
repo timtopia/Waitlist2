@@ -203,7 +203,9 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   }, [searchParams, lineId, addToast, router])
 
   useEffect(() => {
-    if (typeof window !== "undefined" && "Notification" in window) {
+    // Android Chrome has the Notification API but throws "Illegal constructor"
+    // on new Notification(), so page alerts never show there: don't promise them
+    if (typeof window !== "undefined" && "Notification" in window && !/Android/i.test(navigator.userAgent)) {
       setNotificationPermission(Notification.permission)
     }
   }, [])
@@ -383,7 +385,12 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       if (change.kind === "called") alertTurn()
       const alert = describeMemberEvent(change, next.name, next.kind === "RESTAURANT")
       if (!alert) continue
-      sendNotification(alert.title, { body: alert.body, tag: `waitlyst-${lineId}` })
+      sendNotification(alert.title, {
+        body: alert.body,
+        tag: `waitlyst-${lineId}`,
+        // Their turn shouldn't vanish on its own before they've seen it
+        ...(change.kind === "called" && { requireInteraction: true }),
+      })
       if (alert.toast && document.visibilityState === "visible") {
         addToast(`${alert.title}: ${alert.body}`, alert.tone)
       }
@@ -409,7 +416,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   // the host keeps calling and seating.
   const hostingLive = !!line && line.createdBy.id === session?.user?.id
   const { stale } = useLineUpdates(lineId, handleLineUpdate, {
-    intervalMs: nearFront || hostingLive ? 10000 : 30000,
+    // Called guests further back need the quick poll too, not just the front two
+    intervalMs: awaitingTurn || hostingLive ? 10000 : 30000,
     pollWhenHidden: !!memberStatus && notificationsEnabled,
   })
 
@@ -708,7 +716,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       <div className="max-w-4xl mx-auto px-4 py-8">
         <Card>
           <CardContent className="py-12 text-center">
-            <p className="text-ink/50">{error || "Line not found"}</p>
+            <p className="text-ink/60">{error || "Line not found"}</p>
             <div className="mt-4 flex items-center justify-center gap-2">
               {canRetry && (
                 <Button size="sm" onClick={retryLoad}>
@@ -817,7 +825,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                 </label>
               )}
               {canJoin && isRestaurant && line.maxCapacity != null && maxPartySize < MAX_PARTY_SIZE && (
-                <span className="text-xs text-ink/50">
+                <span className="text-xs text-ink/60">
                   Room for {maxPartySize} more guest{maxPartySize === 1 ? "" : "s"}. Bigger party? Ask the host.
                 </span>
               )}
@@ -896,7 +904,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2 text-sm text-ink/50">
+          <div className="flex items-center space-x-2 text-sm text-ink/60">
             <span>Created by</span>
             {line.createdBy.image ? (
               <Image
@@ -917,20 +925,20 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
           </div>
           </div>
           {!isCreator && (line.purchaseLimit || line.responseWindowMinutes) && (
-            <p className="text-xs text-ink/50 mt-3">
+            <p className="text-xs text-ink/60 mt-3">
               {line.purchaseLimit && <>Limit {line.purchaseLimit} per person. </>}
               {line.responseWindowMinutes && (
-                <>When you&apos;re called, you have {line.responseWindowMinutes} min to show up, or your place goes to the next person.</>
+                <>When you&apos;re called, you have {line.responseWindowMinutes} min to show up, or your place goes to the next {isRestaurant ? "party" : "person"}.</>
               )}
             </p>
           )}
           {!isCreator && isRestaurant && (
-            <p className="text-xs text-ink/50 mt-3">
+            <p className="text-xs text-ink/60 mt-3">
               The host seats parties as tables free up, so a smaller party behind you may be seated first. You keep your place.
             </p>
           )}
           {!isCreator && (
-            <p className="text-xs text-ink/50 mt-3">
+            <p className="text-xs text-ink/60 mt-3">
               {line.allowResale ? (
                 <>
                   You can buy the spot of the person directly ahead of you if they list it
@@ -980,7 +988,9 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                   ? isRestaurant
                     ? "Guests can't join online, and called parties' show-up timers are on hold. You can still add walk-ins and call and seat parties."
                     : "You have paused this line. No one can join or swap positions until you resume it. Called people's show-up timers are on hold."
-                  : "New joins and position swaps are temporarily disabled."}
+                  : isRestaurant
+                    ? "Online joins are paused. The host can still call parties, so keep an eye on this page."
+                    : "New joins and position swaps are temporarily disabled."}
               </p>
             </div>
           </div>
@@ -995,7 +1005,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
               <div className="flex-1 min-w-0">
                 <p className="text-ink whitespace-pre-wrap break-words">{line.announcement}</p>
                 {line.announcementAt && (
-                  <p className="font-mono text-xs text-ink/40 mt-1">{timeAgo(line.announcementAt)}</p>
+                  <p className="font-mono text-xs text-ink/60 mt-1">{timeAgo(line.announcementAt)}</p>
                 )}
               </div>
               {isCreator && (
@@ -1004,7 +1014,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                     setAnnouncementDraft(line.announcement || "")
                     setShowAnnouncementEditor(true)
                   }}
-                  className="text-ink/40 hover:text-ink flex-shrink-0"
+                  className="text-ink/60 hover:text-ink flex-shrink-0"
                   title="Edit announcement"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1021,10 +1031,11 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       {isCreator && showAnnouncementEditor && (
         <div className="mb-6">
           <div className="bg-white border border-ink p-4">
-            <label className="block font-mono text-xs uppercase tracking-widest text-ink/50 mb-2">
+            <label htmlFor="announcement-draft" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
               {line.announcement ? "Edit Announcement" : "New Announcement"}
             </label>
             <textarea
+              id="announcement-draft"
               value={announcementDraft}
               onChange={(e) => setAnnouncementDraft(e.target.value)}
               maxLength={280}
@@ -1033,7 +1044,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
               className="w-full px-3 py-2 border border-rule text-sm focus:outline-none focus:border-ink placeholder:text-ink/30 resize-none"
             />
             <div className="flex items-center justify-between mt-2">
-              <span className={`font-mono text-xs tabular-nums ${announcementDraft.length > 260 ? "text-amber-600" : "text-ink/40"}`}>
+              <span className={`font-mono text-xs tabular-nums ${announcementDraft.length > 260 ? "text-amber-700" : "text-ink/60"}`}>
                 {announcementDraft.length}/280
               </span>
               <div className="flex items-center gap-2">
@@ -1078,7 +1089,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                 Now Serving: {line.nowServing}
               </p>
               {line.nowServingAt && (
-                <p className="text-sm text-ink/50 mt-0.5">
+                <p className="text-sm text-ink/60 mt-0.5">
                   Called {timeAgo(line.nowServingAt)}
                 </p>
               )}
@@ -1137,11 +1148,13 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         />
       )}
 
+      {/* Always mounted so screen readers announce the card when it appears */}
+      <div aria-live="polite">
       {!memberStatus && departure && (
         <Card className={`mb-6 border-l-2 ${departure.wasServed ? "border-l-green-700" : "border-l-amber-600"}`}>
-          <div className="px-5 py-4 sm:px-6 flex items-start justify-between gap-4" role="status">
+          <div className="px-5 py-4 sm:px-6 flex items-start justify-between gap-4">
             <div>
-              <p className="font-mono text-xs uppercase tracking-widest text-ink/50">Your place</p>
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Your place</p>
               <p className="text-xl font-semibold tracking-tight text-ink mt-1">
                 {departure.wasServed ? "You're all done here" : "You're no longer in this line"}
               </p>
@@ -1151,8 +1164,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                     ? "The host seated you and cleared your spot. Thanks for waiting."
                     : "The organizer served you and cleared your spot. Thanks for waiting."
                   : departure.wasCalled
-                    ? "You were called but didn't show up in time, so your place went to the next party -- or the organizer removed you."
-                    : "You left from another device, or the organizer removed you."}
+                    ? `You were called but didn't show up in time, so your place went to the next party -- or the ${isRestaurant ? "host" : "organizer"} removed you.`
+                    : `You left from another device, or the ${isRestaurant ? "host" : "organizer"} removed you.`}
               </p>
               {canJoin && (
                 <Button
@@ -1173,7 +1186,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             </div>
             <button
               onClick={() => setDeparture(null)}
-              className="text-ink/40 hover:text-ink flex-shrink-0"
+              className="text-ink/60 hover:text-ink flex-shrink-0 p-2.5 -m-2.5 inline-flex items-center justify-center"
               aria-label="Dismiss"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1183,6 +1196,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
           </div>
         </Card>
       )}
+      </div>
 
       <Card>
         <CardHeader>
@@ -1196,11 +1210,11 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             {line.hasCapacityLimit && (
               <div className="flex items-center gap-3">
                 {line.maxCapacity !== null ? (
-                  <span className="font-mono text-xs uppercase tracking-widest text-ink/40 tabular-nums">
+                  <span className="font-mono text-xs uppercase tracking-widest text-ink/60 tabular-nums">
                     {line.capacityUsed} of {line.maxCapacity} {capacityUnit(line.kind, line.maxCapacity)} filled
                   </span>
                 ) : (
-                  <span className="font-mono text-xs uppercase tracking-widest text-ink/40">
+                  <span className="font-mono text-xs uppercase tracking-widest text-ink/60">
                     Limited {capacityUnit(line.kind, 2)} available
                   </span>
                 )}
@@ -1211,7 +1225,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                       Your spot is secured
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-amber-600">
+                    <span className="inline-flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-amber-700">
                       <span className="w-1.5 h-1.5 bg-amber-600" aria-hidden />
                       You&apos;re on the waitlist (#{userPosition.position - line.maxCapacity} past capacity)
                     </span>
@@ -1256,7 +1270,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
               ))}
             </div>
           ) : activities.length === 0 ? (
-            <p className="text-sm text-ink/40 text-center py-4">No activity yet</p>
+            <p className="text-sm text-ink/60 text-center py-4">No activity yet</p>
           ) : (
             <>
               <div className="divide-y divide-rule">
@@ -1278,7 +1292,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                       <p className="text-xs text-ink/70 flex-1 min-w-0 truncate">
                         {activity.description}
                       </p>
-                      <span className="font-mono text-xs text-ink/40 flex-shrink-0">
+                      <span className="font-mono text-xs text-ink/60 flex-shrink-0">
                         {timeAgo(activity.timestamp)}
                       </span>
                     </div>

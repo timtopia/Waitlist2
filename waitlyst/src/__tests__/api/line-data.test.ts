@@ -35,6 +35,7 @@ vi.mock("@/auth", () => ({
 describe("GET /api/lines/[lineId]/export", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockPrisma.queueVisit.findMany.mockResolvedValue([])
   })
 
   it("should return 401 if not authenticated", async () => {

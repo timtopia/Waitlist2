@@ -35,11 +35,20 @@ export function useNotifications() {
     // Don't notify if page is focused
     if (document.visibilityState === "visible") return
 
-    const notification = new Notification(title, {
-      icon: "/favicon.ico",
-      badge: "/favicon.ico",
-      ...options,
-    })
+    let notification: Notification
+    try {
+      notification = new Notification(title, {
+        icon: "/favicon.ico",
+        badge: "/favicon.ico",
+        // A notification replacing one with the same tag is silent unless asked
+        ...(!!options?.tag && { renotify: true }),
+        ...options,
+      } as NotificationOptions)
+    } catch {
+      // Android Chrome only allows notifications from a service worker and
+      // throws "Illegal constructor" here; don't break the caller's update loop
+      return
+    }
 
     notification.onclick = () => {
       window.focus()

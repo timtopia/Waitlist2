@@ -74,7 +74,7 @@ export async function GET(
     }
     if (!session.url) {
       return NextResponse.json(
-        { error: "This payment link has expired. Ask them to accept the offer again." },
+        { error: "The payment window closed. The offer goes back to them shortly." },
         { status: 410 }
       )
     }

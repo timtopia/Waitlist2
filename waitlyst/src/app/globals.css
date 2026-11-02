@@ -66,3 +66,13 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* iOS Safari zooms the page when focusing a field under 16px. Unlayered so it
+   beats text-sm/text-xs utilities on phones. */
+@media (max-width: 639px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}

@@ -6,10 +6,13 @@ import { rateLimit } from "@/lib/rate-limit"
 import { sendEmail } from "@/lib/email"
 import { swapOfferEmail } from "@/lib/email-templates"
 import { MIN_OFFER_AMOUNT, isOfferExpired, newOfferExpiry } from "@/lib/offers"
-import { tradeBlocker } from "@/lib/trading"
+import { tradeBlocker, MAX_ABANDONED_CHECKOUTS, ABANDON_WINDOW_MS } from "@/lib/trading"
+import { getBaseUrl } from "@/lib/stripe"
 import { formatCurrency } from "@/lib/format"
 
-// Between one declined or withdrawn offer and the next to the same person
+// Between one declined or withdrawn offer and the next to the same person,
+// and between raise emails. Measured from createdAt, which restarts on every
+// send, raise, decline and withdrawal.
 const OFFER_COOLDOWN_MS = 10 * 60 * 1000
 const offerLimiter = rateLimit({ interval: 60_000, limit: 10 })
 
@@ -118,6 +121,25 @@ export async function POST(
       return NextResponse.json({ error: blocked }, { status: 400 })
     }
 
+    // Each offer the person ahead accepts locks their spot until the buyer
+    // pays, so someone who keeps backing out of payments here can't keep
+    // sending offers (same brake as direct buys).
+    const recentAbandoned = await prisma.transaction.count({
+      where: {
+        lineId,
+        buyerId: result.userId,
+        status: "FAILED",
+        abandonedByBuyer: true,
+        createdAt: { gt: new Date(Date.now() - ABANDON_WINDOW_MS) },
+      },
+    })
+    if (recentAbandoned >= MAX_ABANDONED_CHECKOUTS) {
+      return NextResponse.json(
+        { error: "You've backed out of several payments here recently. Try again later." },
+        { status: 429 }
+      )
+    }
+
     // Check for existing PENDING offer from this user to this person in this line
     const existingOffer = await prisma.swapOffer.findUnique({
       where: {
@@ -174,7 +196,7 @@ export async function POST(
       // in the meantime, they keep the price they saw.
       const raised = await prisma.swapOffer.updateMany({
         where: { id: existingOffer!.id, status: "PENDING", amount: existingOffer!.amount },
-        data: { amount, expiresAt: newOfferExpiry(now) },
+        data: { amount, createdAt: now, expiresAt: newOfferExpiry(now) },
       })
       if (raised.count === 0) {
         return NextResponse.json(
@@ -215,9 +237,12 @@ export async function POST(
       where: { id: toUserId },
       select: { name: true, email: true, emailNotifications: true },
     })
-    if (toUser?.email && toUser.emailNotifications) {
-      const baseUrl = process.env.NEXTAUTH_URL || process.env.AUTH_URL || "http://localhost:3000"
-      const lineUrl = `${baseUrl}/lines/${lineId}`
+    // Raises a cent at a time would otherwise email them on every click;
+    // a raise only emails once the last send or raise is old enough.
+    const emailWorthy =
+      !raising || existingOffer!.createdAt.getTime() <= now.getTime() - OFFER_COOLDOWN_MS
+    if (toUser?.email && toUser.emailNotifications && emailWorthy) {
+      const lineUrl = `${getBaseUrl()}/lines/${lineId}`
       const { subject, html } = swapOfferEmail(
         toUser.name || "there",
         line.name,

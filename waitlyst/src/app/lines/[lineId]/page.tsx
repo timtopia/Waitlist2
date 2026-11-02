@@ -20,9 +20,19 @@ async function getLine(lineId: string) {
   })
 }
 
-function buildDescription(line: NonNullable<Awaited<ReturnType<typeof getLine>>>) {
-  const positionCount = guestCount(line.positions)
-  const { maxCapacity, isFull } = capacityView(line, capacityUsed(line.kind, line.positions))
+type PageLine = NonNullable<Awaited<ReturnType<typeof getLine>>>
+
+/** Drops count buyers served and cleared from the list, like the line API */
+async function servedAndCleared(line: PageLine) {
+  return line.kind === "RESTAURANT"
+    ? 0
+    : prisma.queueVisit.count({ where: { lineId: line.id, outcome: "SERVED" } })
+}
+
+function buildDescription(line: PageLine, cleared: number) {
+  // Seated and served guests aren't in line any more
+  const positionCount = guestCount(line.positions.filter((p) => !p.fulfilled))
+  const { maxCapacity, isFull } = capacityView(line, capacityUsed(line.kind, line.positions, cleared))
   const capacityText = maxCapacity
     ? `${positionCount}/${maxCapacity} ${capacityUnit(line.kind, maxCapacity)} filled`
     : `${positionCount} ${positionCount === 1 ? "person" : "people"} in line`
@@ -38,6 +48,8 @@ function buildDescription(line: NonNullable<Awaited<ReturnType<typeof getLine>>>
     })}`
   } else if (line.closesAt && now > new Date(line.closesAt)) {
     statusText = "Closed"
+  } else if (!line.isActive) {
+    statusText = "Paused"
   } else if (isFull) {
     statusText = "Full"
   } else {
@@ -60,7 +72,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     return { title: "Line Not Found" }
   }
 
-  const description = buildDescription(line)
+  const description = buildDescription(line, await servedAndCleared(line))
 
   return {
     title: line.name,
@@ -93,7 +105,8 @@ export default async function LineDetailPage({ params }: Props) {
   // shouldn't hand search engines its details
   let jsonLd: Record<string, unknown> | null = null
   if (line.isPublic) {
-    const description = buildDescription(line)
+    const cleared = await servedAndCleared(line)
+    const description = buildDescription(line, cleared)
 
     if (line.productName || line.productPrice) {
       // Product-style structured data
@@ -109,7 +122,7 @@ export default async function LineDetailPage({ params }: Props) {
             "@type": "Offer",
             price: line.productPrice,
             priceCurrency: "USD",
-            availability: capacityView(line, capacityUsed(line.kind, line.positions)).isFull
+            availability: !line.isActive || capacityView(line, capacityUsed(line.kind, line.positions, cleared)).isFull
               ? "https://schema.org/SoldOut"
               : "https://schema.org/InStock",
           },

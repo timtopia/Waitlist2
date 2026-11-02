@@ -65,7 +65,16 @@ interface SettlementClientProps {
   kind: "STANDARD" | "RESTAURANT"
 }
 
+/**
+ * A hold the owner may release: the buyer left without being served. A buyer
+ * still in line keeps the spot they bought, so releasing would make it free.
+ */
+function releasable(t: { buyerFulfilled: boolean; buyerPosition: number | null }) {
+  return !t.buyerFulfilled && t.buyerPosition === null
+}
+
 export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, stripeEnabled, kind }: SettlementClientProps) {
+  const isDrop = kind !== "RESTAURANT"
   const { addToast } = useToast()
   const router = useRouter()
   const pathname = usePathname()
@@ -257,17 +266,19 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
       return {
         ...prev,
         transactions: prev.transactions.map((t) => {
-          if (t.status === "COMPLETED" && !t.settledAt && !t.buyerFulfilled) {
+          if (t.status === "COMPLETED" && !t.settledAt && releasable(t)) {
             return { ...t, status: "REFUNDED" as const, settledAt: new Date().toISOString() }
           }
           return t
         }),
         summary: {
           ...prev.summary,
-          unfulfilled: 0,
+          unfulfilled: prev.transactions.filter(
+            (t) => t.status === "COMPLETED" && !t.settledAt && !t.buyerFulfilled && !releasable(t)
+          ).length,
           pendingAmount: prev.summary.pendingAmount -
             prev.transactions
-              .filter((t) => t.status === "COMPLETED" && !t.settledAt && !t.buyerFulfilled)
+              .filter((t) => t.status === "COMPLETED" && !t.settledAt && releasable(t))
               .reduce((sum, t) => sum + t.amount, 0),
         },
       }
@@ -318,13 +329,13 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
       return (
         <span className="inline-flex flex-col items-center">
           <span className="font-mono text-xs uppercase tracking-widest text-accent">Hold expired</span>
-          <span className="text-xs text-ink/50 mt-0.5">Not collected in time</span>
+          <span className="text-xs text-ink/60 mt-0.5">Not collected in time</span>
         </span>
       )
     }
     if (txn.status === "FAILED") {
       return (
-        <span className="inline-flex items-center font-mono text-xs uppercase tracking-widest text-ink/50">
+        <span className="inline-flex items-center font-mono text-xs uppercase tracking-widest text-ink/60">
           Failed
         </span>
       )
@@ -346,7 +357,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
         <span className="inline-flex flex-col items-center">
           <span className="font-mono text-xs uppercase tracking-widest text-green-700">Captured</span>
           {waitingOn.length > 0 && (
-            <span className="text-xs text-ink/50 mt-0.5" title="Sent automatically once they set up payouts">
+            <span className="text-xs text-ink/60 mt-0.5" title="Sent automatically once they set up payouts">
               Holding {waitingOn.join(" and ")} until payout setup
             </span>
           )}
@@ -354,7 +365,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
       )
     }
     const deadline = txn.captureBefore && (
-      <span className="text-xs text-amber-600 mt-0.5" title="The buyer's card hold lapses after this and the payment can no longer be collected">
+      <span className="text-xs text-amber-700 mt-0.5" title="The buyer's card hold lapses after this and the payment can no longer be collected">
         Collect by {formatDeadline(txn.captureBefore)}
       </span>
     )
@@ -368,7 +379,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
     }
     return (
       <span className="inline-flex flex-col items-center">
-        <span className="font-mono text-xs uppercase tracking-widest text-amber-600">Not fulfilled</span>
+        <span className="font-mono text-xs uppercase tracking-widest text-amber-700">Not fulfilled</span>
         {deadline}
       </span>
     )
@@ -418,14 +429,16 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
         >
           Capture (Honor)
         </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => handleAction("cancel", txn.id)}
-          isLoading={isLoading}
-        >
-          Cancel (Release)
-        </Button>
+        {releasable(txn) && (
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => handleAction("cancel", txn.id)}
+            isLoading={isLoading}
+          >
+            Cancel (Release)
+          </Button>
+        )}
       </div>
     )
   }
@@ -460,7 +473,8 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
     (t) => t.status === "COMPLETED" && !t.settledAt
   )
   const hasPendingActions = completedUnsettled.length > 0
-  const hasUnfulfilled = completedUnsettled.some((t) => !t.buyerFulfilled)
+  const releasableCount = completedUnsettled.filter(releasable).length
+  const hasUnfulfilled = releasableCount > 0
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
@@ -478,7 +492,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
       <ConfirmModal
         open={bulkConfirm === "cancel-all-unfulfilled"}
         title="Release Holds for Buyers Not Served"
-        message={`This will release the payment hold for all ${summary.unfulfilled} transaction(s) awaiting capture whose buyer wasn't served. The buyers will not be charged.`}
+        message={`This will release the payment hold for ${releasableCount} transaction(s) awaiting capture whose buyer left without being served. They will not be charged. Buyers still in line aren't affected.`}
         confirmLabel="Release All Not Served"
         variant="danger"
         isLoading={actionLoading === "cancel-all-unfulfilled"}
@@ -540,21 +554,21 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div className="text-center">
               <p className="font-mono text-2xl tabular-nums">{summary.total}</p>
-              <p className="font-mono text-xs uppercase tracking-widest text-ink/50">Transactions</p>
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Transactions</p>
             </div>
             <div className="text-center">
               <p className="font-mono text-2xl tabular-nums">
                 {formatCurrency(summary.totalAmount)}
               </p>
-              <p className="font-mono text-xs uppercase tracking-widest text-ink/50">Paid to sellers</p>
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Paid to sellers</p>
             </div>
             <div className="text-center">
               <p className="font-mono text-2xl tabular-nums text-green-700">{summary.fulfilled}</p>
-              <p className="font-mono text-xs uppercase tracking-widest text-ink/50">Awaiting capture: served</p>
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Awaiting capture: served</p>
             </div>
             <div className="text-center">
-              <p className="font-mono text-2xl tabular-nums text-amber-600">{summary.unfulfilled}</p>
-              <p className="font-mono text-xs uppercase tracking-widest text-ink/50">Awaiting capture: not served</p>
+              <p className="font-mono text-2xl tabular-nums text-amber-700">{summary.unfulfilled}</p>
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Awaiting capture: not served</p>
             </div>
           </div>
           <div className="mt-4 pt-4 border-t border-rule grid grid-cols-2 gap-4">
@@ -562,26 +576,26 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
               <p className="font-mono text-lg tabular-nums text-green-700">
                 {formatCurrency(summary.capturedAmount)}
               </p>
-              <p className="font-mono text-xs uppercase tracking-widest text-ink/50">Captured</p>
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Captured</p>
             </div>
             <div className="text-center">
-              <p className="font-mono text-lg tabular-nums text-amber-600">
+              <p className="font-mono text-lg tabular-nums text-amber-700">
                 {formatCurrency(summary.pendingAmount)}
               </p>
-              <p className="font-mono text-xs uppercase tracking-widest text-ink/50">Pending Decision</p>
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/60">{isDrop ? "Not collected" : "Pending Decision"}</p>
             </div>
           </div>
           {(summary.ownerFeeCaptured > 0 || summary.ownerFeePending > 0) && (
             <div className="mt-4 pt-4 border-t border-rule flex items-center justify-between">
               <div>
                 <p className="font-mono text-sm text-ink/60 uppercase tracking-widest">Your fee earnings</p>
-                <p className="text-xs text-ink/50 mt-0.5">What you actually receive, on top of what sellers get.</p>
+                <p className="text-xs text-ink/60 mt-0.5">What you actually receive, on top of what sellers get.</p>
               </div>
               <div className="text-right">
                 <p className="font-mono text-lg tabular-nums text-green-700">
                   {formatCurrency(summary.ownerFeeCaptured)}
                   {summary.ownerFeePending > 0 && (
-                    <span className="text-amber-600"> + {formatCurrency(summary.ownerFeePending)} pending</span>
+                    <span className="text-amber-700"> + {formatCurrency(summary.ownerFeePending)} pending</span>
                   )}
                 </p>
               </div>
@@ -589,7 +603,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
           )}
           {stripeEnabled && connectOnboarded && (summary.ownerFeeCaptured > 0 || summary.ownerFeePending > 0) && (
             <div className="mt-4 pt-4 border-t border-rule flex items-center justify-between">
-              <p className="text-xs text-ink/50">
+              <p className="text-xs text-ink/60">
                 {(summary.ownerFeeAwaitingPayout ?? 0) > 0
                   ? `Payouts are connected, but ${formatCurrency(summary.ownerFeeAwaitingPayout ?? 0)} of your collected fees hasn't reached your payout account yet.`
                   : "Payouts are connected -- collected fees go to your payout account automatically."}
@@ -606,10 +620,10 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
           )}
           {(summary.expiringCount ?? 0) > 0 && (
             <div className="mt-4 pt-4 border-t border-rule">
-              <p className="font-mono text-sm tabular-nums text-amber-600">
+              <p className="font-mono text-sm tabular-nums text-amber-700">
                 {summary.expiringCount} payment hold{summary.expiringCount === 1 ? "" : "s"} expire{summary.expiringCount === 1 ? "s" : ""} within 48 hours
               </p>
-              <p className="text-xs text-ink/50 mt-0.5">
+              <p className="text-xs text-ink/60 mt-0.5">
                 Card holds only last about a week. Capture or release these before their deadline, or the money can&apos;t be collected.
               </p>
             </div>
@@ -619,7 +633,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
               <p className="font-mono text-sm tabular-nums text-accent">
                 {summary.expiredCount} hold{summary.expiredCount === 1 ? "" : "s"} expired before collection ({formatCurrency(summary.expiredAmount ?? 0)})
               </p>
-              <p className="text-xs text-ink/50 mt-0.5">
+              <p className="text-xs text-ink/60 mt-0.5">
                 The buyer kept the spot but wasn&apos;t charged, and the seller won&apos;t be paid for it.
               </p>
             </div>
@@ -630,7 +644,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
                 <p className="font-mono text-sm tabular-nums text-accent">
                   {summary.stuckCount} checkout{summary.stuckCount === 1 ? "" : "s"} never completed ({formatCurrency(summary.stuckAmount)})
                 </p>
-                <p className="text-xs text-ink/50 mt-0.5">
+                <p className="text-xs text-ink/60 mt-0.5">
                   Someone started a swap but never paid, or the link broke. Cancel it below to free up the positions.
                 </p>
               </div>
@@ -655,7 +669,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
               onClick={() => setBulkConfirm("cancel-all-unfulfilled")}
               disabled={actionLoading !== null}
             >
-              Release All Not Served ({summary.unfulfilled})
+              Release All Not Served ({releasableCount})
             </Button>
           )}
         </div>
@@ -680,12 +694,12 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-ink text-left">
-                      <th className="px-6 py-3 font-mono text-xs uppercase tracking-widest font-normal text-ink/50">Buyer</th>
-                      <th className="px-6 py-3 font-mono text-xs uppercase tracking-widest font-normal text-ink/50">Seller</th>
-                      <th className="px-6 py-3 font-mono text-xs uppercase tracking-widest font-normal text-ink/50 text-right">Amount</th>
-                      <th className="px-6 py-3 font-mono text-xs uppercase tracking-widest font-normal text-ink/50 text-center">Position</th>
-                      <th className="px-6 py-3 font-mono text-xs uppercase tracking-widest font-normal text-ink/50 text-center">Status</th>
-                      <th className="px-6 py-3 font-mono text-xs uppercase tracking-widest font-normal text-ink/50 text-right">Actions</th>
+                      <th className="px-6 py-3 font-mono text-xs uppercase tracking-widest font-normal text-ink/60">Buyer</th>
+                      <th className="px-6 py-3 font-mono text-xs uppercase tracking-widest font-normal text-ink/60">Seller</th>
+                      <th className="px-6 py-3 font-mono text-xs uppercase tracking-widest font-normal text-ink/60 text-right">Amount</th>
+                      <th className="px-6 py-3 font-mono text-xs uppercase tracking-widest font-normal text-ink/60 text-center">Position</th>
+                      <th className="px-6 py-3 font-mono text-xs uppercase tracking-widest font-normal text-ink/60 text-center">Status</th>
+                      <th className="px-6 py-3 font-mono text-xs uppercase tracking-widest font-normal text-ink/60 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-rule">
@@ -711,7 +725,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
                         <td className="px-6 py-4 text-right font-mono tabular-nums text-ink">
                           {formatCurrency(txn.amount)}
                           {txn.ownerFee > 0 && (
-                            <span className="block text-xs text-ink/50">Your fee {formatCurrency(txn.ownerFee)}</span>
+                            <span className="block text-xs text-ink/60">Your fee {formatCurrency(txn.ownerFee)}</span>
                           )}
                         </td>
                         <td className="px-6 py-4 text-center">
@@ -722,7 +736,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
                           ) : txn.buyerFulfilled ? (
                             <span className="text-green-700">{kind === "RESTAURANT" ? "Seated" : "Served"}</span>
                           ) : (
-                            <span className="text-ink/40">Left</span>
+                            <span className="text-ink/60">Left</span>
                           )}
                         </td>
                         <td className="px-6 py-4 text-center">
@@ -754,10 +768,10 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
                       <div>
                         <p className="font-medium text-ink">
                           {txn.buyerName}
-                          <span className="text-ink/40 mx-1">&larr;</span>
+                          <span className="text-ink/60 mx-1">&larr;</span>
                           <span className="text-ink/60">{txn.sellerName}</span>
                         </p>
-                        <p className="font-mono text-xs tabular-nums text-ink/50 mt-0.5">
+                        <p className="font-mono text-xs tabular-nums text-ink/60 mt-0.5">
                           {txn.buyerPosition !== null
                             ? `Position #${txn.buyerPosition}`
                             : txn.buyerFulfilled
@@ -770,7 +784,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
                           {formatCurrency(txn.amount)}
                         </p>
                         {txn.ownerFee > 0 && (
-                          <p className="font-mono text-xs tabular-nums text-ink/50">Your fee {formatCurrency(txn.ownerFee)}</p>
+                          <p className="font-mono text-xs tabular-nums text-ink/60">Your fee {formatCurrency(txn.ownerFee)}</p>
                         )}
                       </div>
                     </div>

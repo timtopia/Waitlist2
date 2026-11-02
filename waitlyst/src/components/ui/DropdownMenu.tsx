@@ -48,7 +48,7 @@ export function DropdownMenu({ items, separatorBefore = [], label = "More action
           e.preventDefault()
           setOpen(!open)
         }}
-        className="p-2 text-ink/40 hover:text-ink hover:bg-ink/5 transition-colors"
+        className="p-2 text-ink/60 hover:text-ink hover:bg-ink/5 transition-colors"
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}

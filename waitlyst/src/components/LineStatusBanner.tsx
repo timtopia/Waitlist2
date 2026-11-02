@@ -72,7 +72,7 @@ export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount,
 
         const titleClasses = isUnder5Min
           ? "font-mono text-xs uppercase tracking-widest text-accent"
-          : "font-mono text-xs uppercase tracking-widest text-amber-600"
+          : "font-mono text-xs uppercase tracking-widest text-amber-700"
 
         const subtitleClasses = "text-sm text-ink/60 mt-1"
 
@@ -80,7 +80,7 @@ export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount,
           ? "font-mono text-3xl tabular-nums text-accent"
           : "font-mono text-2xl tabular-nums text-ink"
 
-        const labelClasses = "font-mono text-xs uppercase tracking-widest text-ink/40 mt-0.5"
+        const labelClasses = "font-mono text-xs uppercase tracking-widest text-ink/60 mt-0.5"
 
         const prefix = isUnder30Min ? "Opens in..." : "Line Not Yet Open"
 
@@ -129,7 +129,7 @@ export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount,
               <p className="font-mono text-2xl tabular-nums text-ink">
                 {formatTimeLeft(status.closesAt.getTime() - now.getTime())}
               </p>
-              <p className="font-mono text-xs uppercase tracking-widest text-ink/40 mt-0.5">remaining</p>
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/60 mt-0.5">remaining</p>
             </div>
           </div>
         </div>
@@ -155,7 +155,7 @@ export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount,
       {maxCapacity !== null && status.state !== "closed" && (
         <div className="bg-white border border-rule px-4 py-3">
           <div className="flex items-center justify-between mb-2">
-            <p className="font-mono text-xs uppercase tracking-widest text-ink/50">{kind === "RESTAURANT" ? "Guests" : "Spots Filled"}</p>
+            <p className="font-mono text-xs uppercase tracking-widest text-ink/60">{kind === "RESTAURANT" ? "Guests" : "Spots Filled"}</p>
             <p className="font-mono text-sm tabular-nums text-ink">
               {currentCount} / {maxCapacity}
             </p>
@@ -173,7 +173,7 @@ export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount,
             />
           </div>
           {currentCount < maxCapacity && (
-            <p className="text-xs text-ink/40 mt-1.5">
+            <p className="text-xs text-ink/60 mt-1.5">
               {maxCapacity - currentCount} {capacityUnit(kind, maxCapacity - currentCount)} remaining
             </p>
           )}
@@ -183,7 +183,7 @@ export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount,
       {/* Hidden capacity indicator */}
       {status.state !== "closed" && status.state !== "full" && hideCapacity && (
         <div className="bg-white border border-rule px-4 py-3">
-          <p className="font-mono text-xs uppercase tracking-widest text-ink/50">Limited capacity</p>
+          <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Limited capacity</p>
         </div>
       )}
     </div>

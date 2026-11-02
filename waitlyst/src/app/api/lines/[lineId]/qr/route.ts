@@ -1,9 +1,6 @@
 import QRCode from "qrcode"
 import { prisma } from "@/lib/prisma"
-
-function getBaseUrl(): string {
-  return process.env.NEXTAUTH_URL || process.env.AUTH_URL || "http://localhost:3000"
-}
+import { configuredBaseUrl } from "@/lib/stripe"
 
 // Generate a QR code SVG for a line (public, no auth required)
 export async function GET(
@@ -33,7 +30,9 @@ export async function GET(
     const darkColor = hexPattern.test(dark) ? `#${dark}` : "#000000"
     const lightColor = hexPattern.test(light) ? `#${light}` : "#ffffff"
 
-    const lineUrl = `${getBaseUrl()}/lines/${lineId}`
+    // Without a configured URL, use the address this was requested on --
+    // a printed QR pointing at localhost would be useless.
+    const lineUrl = `${configuredBaseUrl() || url.origin}/lines/${lineId}`
 
     const svg = await QRCode.toString(lineUrl, {
       type: "svg",

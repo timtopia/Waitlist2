@@ -108,7 +108,7 @@ export function MemberStatusCard({
   if (maxCapacity !== null) {
     if (pastCapacity) {
       capacityLabel = "You're on the waitlist"
-      capacityColor = "text-amber-600"
+      capacityColor = "text-amber-700"
       capacityDot = "bg-amber-600"
     } else {
       capacityLabel = "Your spot is secured"
@@ -175,7 +175,7 @@ export function MemberStatusCard({
           </div>
 
           <div className="flex-1 min-w-0 space-y-1.5">
-            <p className="font-mono text-xs uppercase tracking-widest text-ink/50">Your place</p>
+            <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Your place</p>
             {/* Only the headline is live: announcing the whole card re-read
                 every button and countdown whenever anything changed */}
             <p role="status" className={`text-xl font-semibold tracking-tight ${accent ? "text-accent" : "text-ink"}`}>
@@ -248,7 +248,7 @@ export function MemberStatusCard({
                   </Button>
                 ))}
                 {response && (
-                  <span className="text-xs text-ink/50">
+                  <span className="text-xs text-ink/60">
                     {response === "RUNNING_LATE" && responseWindowMinutes
                       ? "The host can see this, but your time is still running. Tap On my way when you head over to get more time."
                       : `The host can see this${response === "ON_MY_WAY" && responseWindowMinutes ? ", and you get a little more time" : ""}.`}
@@ -261,7 +261,9 @@ export function MemberStatusCard({
 
         {isPaused && !done && (
           <p className="mt-3 text-sm text-amber-700">
-            The line is paused. You keep your place while it&apos;s paused.
+            {isRestaurant
+              ? "The line is paused. You keep your place, and the host may still call you."
+              : "The line is paused. You keep your place while it's paused."}
           </p>
         )}
 
@@ -273,12 +275,12 @@ export function MemberStatusCard({
                 Alerts on. Keep this tab open.
               </span>
             ) : notificationPermission === "denied" ? (
-              <span className="text-xs text-ink/50">
+              <span className="text-xs text-ink/60">
                 Notifications are blocked for this site. Allow them in your browser settings to get alerted when it&apos;s your turn.
               </span>
             ) : (
               <>
-                <span className="text-xs text-ink/50">Get an alert when it&apos;s your turn, even in another tab.</span>
+                <span className="text-xs text-ink/60">Get an alert when it&apos;s your turn, even in another tab.</span>
                 <button
                   onClick={onEnableNotifications}
                   className="flex-shrink-0 px-3 py-1.5 font-mono text-xs uppercase tracking-widest border border-ink text-ink hover:bg-ink hover:text-paper transition-colors"
@@ -292,7 +294,7 @@ export function MemberStatusCard({
 
         {maxCapacity !== null && !hideCapacity && !done && (
           <div className="mt-3 pt-3 border-t border-rule">
-            <div className="flex items-center justify-between font-mono text-xs uppercase tracking-widest text-ink/40 tabular-nums">
+            <div className="flex items-center justify-between font-mono text-xs uppercase tracking-widest text-ink/60 tabular-nums">
               <span>Position {position} of {totalPositions} in line</span>
               <span>
                 {Math.max(maxCapacity - totalPositions, 0)} spot{maxCapacity - totalPositions !== 1 ? "s" : ""} left

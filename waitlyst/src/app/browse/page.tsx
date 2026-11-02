@@ -116,7 +116,7 @@ export default function BrowsePage() {
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10 border-b border-ink pb-6">
         <div>
-          <p className="font-mono text-xs uppercase tracking-[0.25em] text-ink/50 mb-3">
+          <p className="font-mono text-xs uppercase tracking-[0.25em] text-ink/60 mb-3">
             The board
           </p>
           <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight">Open lines</h1>
@@ -146,7 +146,7 @@ export default function BrowsePage() {
               className={`font-mono text-xs uppercase tracking-widest pb-1 border-b-2 transition-colors ${
                 filter === f
                   ? "border-accent text-ink"
-                  : "border-transparent text-ink/40 hover:text-ink"
+                  : "border-transparent text-ink/60 hover:text-ink"
               }`}
             >
               {f}
@@ -157,7 +157,7 @@ export default function BrowsePage() {
 
       {/* Sort */}
       <div className="flex items-center gap-5 mb-8">
-        <span className="font-mono text-xs uppercase tracking-widest text-ink/40">Sort</span>
+        <span className="font-mono text-xs uppercase tracking-widest text-ink/60">Sort</span>
         {(Object.keys(sortLabels) as SortOption[]).map((s) => (
           <button
             key={s}
@@ -165,7 +165,7 @@ export default function BrowsePage() {
             className={`font-mono text-xs uppercase tracking-widest pb-1 border-b-2 transition-colors ${
               sortBy === s
                 ? "border-accent text-ink"
-                : "border-transparent text-ink/40 hover:text-ink"
+                : "border-transparent text-ink/60 hover:text-ink"
             }`}
           >
             {sortLabels[s]}
@@ -190,7 +190,7 @@ export default function BrowsePage() {
           {lines.length === 0 ? (
             <>
               <p className="text-ink/60 mb-2">No lines on the board yet.</p>
-              <p className="text-sm text-ink/40 mb-6">Be the first to start one.</p>
+              <p className="text-sm text-ink/60 mb-6">Be the first to start one.</p>
               <Link href="/lines/new">
                 <Button>Start a line</Button>
               </Link>
@@ -209,7 +209,7 @@ export default function BrowsePage() {
         </div>
       ) : (
         <>
-          <p className="font-mono text-xs uppercase tracking-widest text-ink/40 mb-3">
+          <p className="font-mono text-xs uppercase tracking-widest text-ink/60 mb-3">
             {filtered.length} {filtered.length === 1 ? "line" : "lines"}
           </p>
           <div className="border border-rule divide-y divide-rule">

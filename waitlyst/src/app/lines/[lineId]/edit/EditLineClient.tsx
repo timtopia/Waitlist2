@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/Button"
@@ -8,6 +8,7 @@ import { Input, Textarea } from "@/components/ui/Input"
 import { Card, CardContent, CardHeader } from "@/components/ui/Card"
 import { useToast } from "@/components/ui/Toast"
 import { ConfirmModal } from "@/components/ui/ConfirmModal"
+import { calcFees } from "@/lib/fees"
 
 interface LineData {
   id: string
@@ -70,7 +71,7 @@ export function EditLineClient({
   )
   const [hideCapacity, setHideCapacity] = useState(line.hideCapacity)
   const [showResaleControls, setShowResaleControls] = useState(
-    !line.allowResale || line.maxAskingPrice != null
+    !line.allowResale || line.maxAskingPrice != null || line.ownerFeePercent > 0
   )
   const [allowResale, setAllowResale] = useState(line.allowResale)
   const [maxAskingPrice, setMaxAskingPrice] = useState(line.maxAskingPrice?.toString() || "")
@@ -82,6 +83,7 @@ export function EditLineClient({
   const [productUrl, setProductUrl] = useState(line.productUrl || "")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const nameRef = useRef<HTMLInputElement>(null)
 
   // Delete confirmation
   const [showDelete, setShowDelete] = useState(false)
@@ -93,6 +95,7 @@ export function EditLineClient({
 
     if (!name.trim()) {
       setError("Name is required")
+      nameRef.current?.focus()
       return
     }
 
@@ -193,6 +196,13 @@ export function EditLineClient({
     }
   }
 
+  const ownerFeeNum = parseFloat(ownerFeePercent) || 0
+  const exampleFees = calcFees(10, ownerFeeNum, platformFeePercent)
+  const feeHint =
+    `Buyers pay this on top of the asking price${platformFeePercent ? `, plus a ${platformFeePercent}% platform fee` : ""}: ` +
+    `a $10 spot costs them $${exampleFees.total.toFixed(2)}` +
+    `${ownerFeeNum > 0 ? ` and you earn $${exampleFees.ownerFee.toFixed(2)}` : ""}.`
+
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
       <ConfirmModal
@@ -227,6 +237,7 @@ export function EditLineClient({
         <CardContent>
           <form onSubmit={handleSave} className="space-y-6">
             <Input
+              ref={nameRef}
               id="name"
               label="Line Name"
               placeholder="e.g., Coffee Shop Queue"
@@ -264,7 +275,7 @@ export function EditLineClient({
               </button>
               <div>
                 <label className="text-sm font-medium text-ink">Public Line</label>
-                <p className="text-xs text-ink/50">
+                <p className="text-xs text-ink/60">
                   {isPublic ? "Anyone can find this line in Browse" : "Only people with the link can join"}
                 </p>
               </div>
@@ -290,7 +301,7 @@ export function EditLineClient({
               </button>
               <div>
                 <label className="text-sm font-medium text-ink">Active</label>
-                <p className="text-xs text-ink/50">
+                <p className="text-xs text-ink/60">
                   {isActive ? "Line is accepting joins" : "Line is paused - no new joins allowed"}
                 </p>
                 {!isActive && enableSchedule && opensAt && new Date(opensAt) > new Date() && (
@@ -316,7 +327,7 @@ export function EditLineClient({
                 onChange={(e) => setMaxCapacity(e.target.value)}
                 className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
               />
-              <p className="text-xs text-ink/50 mt-1">
+              <p className="text-xs text-ink/60 mt-1">
                 {line.capacityUsed > 0
                   ? `Must be at least ${line.capacityUsed} (${isRestaurant ? "guests waiting" : "spots already taken"})`
                   : isRestaurant ? "Total guests across all parties. Leave empty for no limit" : "Leave empty for unlimited spots"}
@@ -333,53 +344,8 @@ export function EditLineClient({
                 </label>
               )}
               {maxCapacity && hideCapacity && (
-                <p className="text-xs text-ink/50 mt-1">
+                <p className="text-xs text-ink/60 mt-1">
                   Members will see &quot;Limited spots available&quot; instead of the exact number
-                </p>
-              )}
-            </div>
-
-            {/* Owner Fee */}
-            <div>
-              <label htmlFor="ownerFee" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
-                Your Fee on Position Swaps (%)
-              </label>
-              <input
-                id="ownerFee"
-                type="number"
-                min="0"
-                max="50"
-                step="0.5"
-                placeholder="0"
-                value={ownerFeePercent}
-                onChange={(e) => setOwnerFeePercent(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
-              />
-              <p className="text-xs text-ink/50 mt-1">
-                Percentage you earn when someone swaps a position.
-                {ownerFeePercent && parseFloat(ownerFeePercent) > 0 && (
-                  <span className="text-accent ml-1">
-                    e.g. on a $10 swap, you earn ${(10 * parseFloat(ownerFeePercent) / 100).toFixed(2)}.
-                  </span>
-                )}
-                <span> A {platformFeePercent}% platform fee also applies to each swap.</span>
-              </p>
-              {parseFloat(ownerFeePercent) > 0 && !allowResale && (
-                <p className="text-xs text-amber-600 mt-1">
-                  Swaps are off, so this fee won&apos;t apply. Turn on swapping in Swap Settings below.
-                </p>
-              )}
-              {parseFloat(ownerFeePercent) > 0 && needsPayoutSetup && (
-                <p className="text-xs text-amber-600 mt-1">
-                  Connect a payout account to receive this fee. Anything you earn before then is held and sent once you connect.{" "}
-                  <Link href="/profile" className="underline underline-offset-4 hover:text-ink">
-                    Set up payouts
-                  </Link>
-                </p>
-              )}
-              {(parseFloat(ownerFeePercent) || 0) !== line.ownerFeePercent && (
-                <p className="text-xs text-amber-600 mt-1">
-                  Changing the fee will update all displayed prices immediately. Purchases already in progress will keep their original fees.
                 </p>
               )}
             </div>
@@ -401,7 +367,7 @@ export function EditLineClient({
                     onChange={(e) => setPurchaseLimit(e.target.value)}
                     className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                   />
-                  <p className="text-xs text-ink/50 mt-1">e.g. 1 per person. Shown on the line page and when someone is called.</p>
+                  <p className="text-xs text-ink/60 mt-1">e.g. 1 per person. Shown on the line page and when someone is called.</p>
                 </div>
               )}
               <div>
@@ -418,7 +384,7 @@ export function EditLineClient({
                   onChange={(e) => setResponseWindow(e.target.value)}
                   className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                 />
-                <p className="text-xs text-ink/50 mt-1">
+                <p className="text-xs text-ink/60 mt-1">
                   Minutes. Anyone who doesn&apos;t show up in time is skipped as a no-show and the next person moves up. Tapping &ldquo;On my way&rdquo; gives them one more window.
                 </p>
               </div>
@@ -444,7 +410,7 @@ export function EditLineClient({
               </button>
               <div>
                 <label className="text-sm font-medium text-ink">Schedule Open/Close Times</label>
-                <p className="text-xs text-ink/50">
+                <p className="text-xs text-ink/60">
                   {enableSchedule
                     ? "Line will only accept joins during the scheduled window"
                     : "No scheduled open/close times"}
@@ -465,7 +431,7 @@ export function EditLineClient({
                     onChange={(e) => setOpensAt(e.target.value)}
                     className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                   />
-                  <p className="text-xs text-ink/50 mt-1">Leave empty to open immediately</p>
+                  <p className="text-xs text-ink/60 mt-1">Leave empty to open immediately</p>
                 </div>
                 <div>
                   <label htmlFor="closesAt" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
@@ -479,7 +445,7 @@ export function EditLineClient({
                     min={opensAt || undefined}
                     className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                   />
-                  <p className="text-xs text-ink/50 mt-1">Leave empty for no end time</p>
+                  <p className="text-xs text-ink/60 mt-1">Leave empty for no end time</p>
                 </div>
               </div>
             )}
@@ -493,7 +459,7 @@ export function EditLineClient({
               >
                 <span>Product Details (optional)</span>
                 <svg
-                  className={`h-4 w-4 text-ink/40 transition-transform ${showProductDetails ? "rotate-180" : ""}`}
+                  className={`h-4 w-4 text-ink/60 transition-transform ${showProductDetails ? "rotate-180" : ""}`}
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -570,7 +536,7 @@ export function EditLineClient({
               >
                 <span>Swap Settings (optional)</span>
                 <svg
-                  className={`h-4 w-4 text-ink/40 transition-transform ${showResaleControls ? "rotate-180" : ""}`}
+                  className={`h-4 w-4 text-ink/60 transition-transform ${showResaleControls ? "rotate-180" : ""}`}
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -601,20 +567,20 @@ export function EditLineClient({
                       <label className="text-sm font-medium text-ink">
                         Allow position swapping
                       </label>
-                      <p className="text-xs text-ink/50">
+                      <p className="text-xs text-ink/60">
                         {allowResale
                           ? "People can swap their positions with the person next to them"
                           : "Swapping is disabled — no one can swap positions"}
                       </p>
                       {allowResale && (
-                        <p className="text-xs text-ink/50 mt-1">
+                        <p className="text-xs text-ink/60 mt-1">
                           {isRestaurant
                             ? "Paid swaps are held until the buyer is seated. Seating them collects the payment; before then you can release it."
                             : "Paid swaps are final: the buyer is charged and the seller is paid out right away, with no refunds later."}
                         </p>
                       )}
                       {line.allowResale && !allowResale && (
-                        <p className="text-xs text-amber-600 mt-1">
+                        <p className="text-xs text-amber-700 mt-1">
                           Saving takes down every spot listed for sale and cancels pending offers.
                         </p>
                       )}
@@ -626,7 +592,7 @@ export function EditLineClient({
                         Max Asking Price (optional)
                       </label>
                       <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink/50">$</span>
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink/60">$</span>
                         <input
                           id="maxAskingPrice"
                           type="number"
@@ -638,13 +604,54 @@ export function EditLineClient({
                           className="w-full pl-7 pr-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                         />
                       </div>
-                      <p className="text-xs text-ink/50 mt-1">
+                      <p className="text-xs text-ink/60 mt-1">
                         Cap the maximum swap price anyone can set for their position. Leave empty for no limit.
                       </p>
                       {line.allowResale && maxAskingPrice && parseFloat(maxAskingPrice) >= 1 &&
                         (line.maxAskingPrice === null || parseFloat(maxAskingPrice) < line.maxAskingPrice) && (
-                        <p className="text-xs text-amber-600 mt-1">
+                        <p className="text-xs text-amber-700 mt-1">
                           Saving takes down listings above this price and cancels offers and checkouts over it.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {/* Owner Fee. Kept visible with swaps off while a fee is still set,
+                      so it can be seen and cleared. */}
+                  {(allowResale || line.ownerFeePercent > 0) && (
+                    <div>
+                      <label htmlFor="ownerFee" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
+                        Your Fee on Position Swaps (%)
+                      </label>
+                      <input
+                        id="ownerFee"
+                        type="number"
+                        min="0"
+                        max="50"
+                        step="0.5"
+                        placeholder="0"
+                        value={ownerFeePercent}
+                        onChange={(e) => setOwnerFeePercent(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
+                      />
+                      <p className="text-xs text-ink/60 mt-1">
+                        {feeHint}
+                      </p>
+                      {parseFloat(ownerFeePercent) > 0 && !allowResale && (
+                        <p className="text-xs text-amber-700 mt-1">
+                          Swaps are off, so this fee won&apos;t apply. Turn swapping on above, or set this to 0.
+                        </p>
+                      )}
+                      {parseFloat(ownerFeePercent) > 0 && needsPayoutSetup && (
+                        <p className="text-xs text-amber-700 mt-1">
+                          Connect a payout account to receive this fee. Anything you earn before then is held and sent once you connect.{" "}
+                          <Link href="/profile" className="underline underline-offset-4 hover:text-ink">
+                            Set up payouts
+                          </Link>
+                        </p>
+                      )}
+                      {(parseFloat(ownerFeePercent) || 0) !== line.ownerFeePercent && (
+                        <p className="text-xs text-amber-700 mt-1">
+                          Changing the fee will update all displayed prices immediately. Purchases already in progress will keep their original fees.
                         </p>
                       )}
                     </div>
@@ -655,7 +662,7 @@ export function EditLineClient({
 
             {error && name.trim() && (
               <div className="bg-white border border-accent p-3">
-                <p className="text-sm text-accent">{error}</p>
+                <p role="alert" className="text-sm text-accent">{error}</p>
               </div>
             )}
 

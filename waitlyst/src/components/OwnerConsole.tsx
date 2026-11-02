@@ -112,6 +112,8 @@ export function OwnerConsole({
   const served = positions.filter((p) => p.fulfilled)
   const upNext = waiting[0] ?? null
   const afterNext = waiting[1] ?? null
+  // Already called out of order: serving the up-next party won't call anyone
+  const canCallAfterNext = !!afterNext && !afterNext.calledAt
   const isServingUpNext = !!upNext && (!!upNext.calledAt || nowServingUserId === upNext.user.id)
   const upNextLocked = !!upNext?.lockedUntil && new Date(upNext.lockedUntil) > new Date()
   // Restaurants seat parties; everyone else serves people
@@ -475,14 +477,14 @@ export function OwnerConsole({
                   {copied ? "Copied!" : "Copy Link"}
                 </Button>
               </div>
-              <p className="text-xs text-ink/50 mt-1.5">
+              <p className="text-xs text-ink/60 mt-1.5">
                 Use Share above for a printable QR code or a website embed.
               </p>
             </div>
             {onDismissCreated && (
               <button
                 onClick={onDismissCreated}
-                className="text-ink/40 hover:text-ink flex-shrink-0"
+                className="text-ink/60 hover:text-ink flex-shrink-0"
                 aria-label="Dismiss"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -497,7 +499,7 @@ export function OwnerConsole({
       <div className="px-4 py-3 flex items-center justify-between gap-3 border-b border-rule">
         <div className="flex items-center gap-3">
           <p className="font-mono text-xs uppercase tracking-[0.2em] text-ink/60">Run your line</p>
-          <span className={`inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest ${isActive ? "text-green-700" : "text-amber-600"}`}>
+          <span className={`inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest ${isActive ? "text-green-700" : "text-amber-700"}`}>
             <span className={`w-1.5 h-1.5 ${isActive ? "bg-green-600" : "bg-amber-500"}`} aria-hidden />
             {isActive ? "Open" : "Paused"}
           </span>
@@ -524,7 +526,7 @@ export function OwnerConsole({
         ) : (
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="min-w-0">
-              <p className="font-mono text-xs uppercase tracking-widest text-ink/50">
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/60">
                 {isServingUpNext ? "Now serving" : "Up next"}
               </p>
               <p className="text-lg font-semibold tracking-tight truncate">
@@ -532,7 +534,7 @@ export function OwnerConsole({
                 {upNext.user.name || "Anonymous"}
               </p>
               {isServingUpNext && upNext.response && (
-                <p className={`text-xs ${upNext.response === "ON_MY_WAY" ? "text-green-700" : "text-amber-600"}`}>
+                <p className={`text-xs ${upNext.response === "ON_MY_WAY" ? "text-green-700" : "text-amber-700"}`}>
                   {upNext.response === "ON_MY_WAY" ? "Says they're on the way" : "Says they're running late"}
                 </p>
               )}
@@ -557,7 +559,7 @@ export function OwnerConsole({
                 <p className="text-xs text-ink/60">Limit {purchaseLimit} per person</p>
               )}
               {upNextLocked && (
-                <p className="text-xs text-amber-600">A swap for this spot is in progress -- wait for it to finish before serving.</p>
+                <p className="text-xs text-amber-700">A swap for this spot is in progress -- wait for it to finish before serving.</p>
               )}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -565,13 +567,17 @@ export function OwnerConsole({
                 <>
                   <Button
                     size="sm"
-                    onClick={() => handleServe(!!afterNext)}
-                    isLoading={busy === "serve-next"}
+                    onClick={() => handleServe(canCallAfterNext)}
+                    isLoading={busy === (canCallAfterNext ? "serve-next" : "serve")}
                     disabled={!!busy || upNextLocked}
                   >
-                    {afterNext ? "Done · Call Next" : markServedLabel}
+                    {!canCallAfterNext
+                      ? markServedLabel
+                      : isRestaurant
+                        ? `Seated · Call ${afterNext.user.name || "Next"} (${afterNext.partySize ?? 1})`
+                        : "Done · Call Next"}
                   </Button>
-                  {afterNext && (
+                  {canCallAfterNext && (
                     <Button
                       size="sm"
                       variant="ghost"
@@ -623,16 +629,16 @@ export function OwnerConsole({
               return (
                 <li key={p.id} className="flex items-center justify-between gap-3 flex-wrap text-sm">
                   <p className="min-w-0 text-ink/80">
-                    <span className="font-mono text-xs uppercase tracking-widest text-ink/50 mr-2">Also called:</span>
+                    <span className="font-mono text-xs uppercase tracking-widest text-ink/60 mr-2">Also called:</span>
                     <span className="font-mono tabular-nums text-accent mr-1">#{p.position}</span>
                     {name}
                     {isRestaurant && ` (party of ${p.partySize ?? 1})`}
                     {p.response && (
-                      <span className={p.response === "ON_MY_WAY" ? "text-green-700" : "text-amber-600"}>
+                      <span className={p.response === "ON_MY_WAY" ? "text-green-700" : "text-amber-700"}>
                         {" · "}{p.response === "ON_MY_WAY" ? "on the way" : "running late"}
                       </span>
                     )}
-                    {left && <span className="text-ink/50">{" · "}{left} left</span>}
+                    {left && <span className="text-ink/60">{" · "}{left} left</span>}
                   </p>
                   <div className="flex items-center gap-2">
                     <Button
@@ -735,7 +741,7 @@ export function OwnerConsole({
           </button>
         )}
 
-        <div className="mt-3 flex items-center gap-3 font-mono text-xs uppercase tracking-widest text-ink/50 tabular-nums">
+        <div className="mt-3 flex items-center gap-3 font-mono text-xs uppercase tracking-widest text-ink/60 tabular-nums">
           <span>{waiting.length} waiting</span>
           <span className="text-ink/20">·</span>
           <span>{served.length} {servedWord}</span>
@@ -760,13 +766,13 @@ export function OwnerConsole({
       {showMoney && (
         <div className="px-4 py-3 border-t border-rule flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <p className="font-mono text-xs uppercase tracking-widest text-ink/50">
+            <p className="font-mono text-xs uppercase tracking-widest text-ink/60">
               {ownerFeePercent > 0 ? `Your fees (${ownerFeePercent}% per swap)` : "Paid swaps"}
             </p>
             <p className="font-mono tabular-nums text-green-700">
               {formatCurrency(earnings?.earned ?? 0)} earned
               {(earnings?.pending ?? 0) > 0 && (
-                <span className="text-amber-600"> + {formatCurrency(earnings?.pending ?? 0)} pending</span>
+                <span className="text-amber-700"> + {formatCurrency(earnings?.pending ?? 0)} pending</span>
               )}
             </p>
           </div>

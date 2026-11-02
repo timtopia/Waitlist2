@@ -16,7 +16,7 @@ export default async function ProfilePage() {
   const session = await auth()
 
   if (!session?.user?.id) {
-    redirect("/")
+    redirect("/api/auth/signin?callbackUrl=%2Fprofile")
   }
 
   const userId = session.user.id
@@ -44,9 +44,12 @@ export default async function ProfilePage() {
     prisma.transaction.findMany({
       where: {
         OR: [{ buyerId: userId }, { sellerId: userId }],
+        // Failed checkouts never moved money; left in, they'd crowd real
+        // sales out of the totals below
+        status: { not: "FAILED" },
       },
       orderBy: { createdAt: "desc" },
-      take: 50,
+      take: 500,
     }),
     // Transactions on lines this user owns (for owner fee earnings)
     ownedLineIds.length > 0
@@ -127,7 +130,7 @@ export default async function ProfilePage() {
       stats={{
         linesCreated: ownedLineIds.length,
         activePositions,
-        totalTransactions: transactions.length,
+        totalTransactions: transactions.filter((t) => t.status === "COMPLETED" || t.status === "REFUNDED").length,
         sellerAvailable,
         sellerAwaitingSetup,
         sellerPendingSettlement,
@@ -145,6 +148,16 @@ export default async function ProfilePage() {
         amount: t.buyerId === userId ? buyerTotal(t) : t.amount,
         lineName: lineNames.get(t.lineId) ?? null,
         status: t.status,
+        // Where the money actually is, not just "completed"
+        statusLabel: t.status === "REFUNDED"
+          ? "Refunded"
+          : t.buyerId === userId
+            ? t.capturedAt || t.settledAt ? "Charged" : "Card on hold"
+            : t.sellerPaidAt
+              ? "Paid"
+              : t.capturedAt
+                ? "Awaiting payout setup"
+                : t.settledAt ? "Paid" : "Buyer's card on hold",
         role: t.buyerId === userId ? "buyer" : "seller",
         createdAt: t.createdAt.toISOString(),
         settledAt: t.settledAt?.toISOString() || null,

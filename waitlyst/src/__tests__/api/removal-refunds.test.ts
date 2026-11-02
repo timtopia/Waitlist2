@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const mockPrisma = {
   line: { findUnique: vi.fn() },
-  linePosition: { findUnique: vi.fn(), findMany: vi.fn() },
+  linePosition: { findUnique: vi.fn(), findMany: vi.fn(), findFirst: vi.fn().mockResolvedValue(null) },
   transaction: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
   queueVisit: { findMany: vi.fn().mockResolvedValue([]) },
   $transaction: vi.fn(),

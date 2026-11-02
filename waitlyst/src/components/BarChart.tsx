@@ -60,11 +60,11 @@ export function BarChart({ title, subtitle, bars, labelHeader, valueHeader, labe
       <div className="flex items-start justify-between gap-3 mb-2">
         <figcaption>
           <p id={titleId} className="text-sm font-semibold text-ink">{title}</p>
-          {subtitle && <p className="text-xs text-ink/50">{subtitle}</p>}
+          {subtitle && <p className="text-xs text-ink/60">{subtitle}</p>}
         </figcaption>
         <button
           onClick={() => setAsTable(!asTable)}
-          className="font-mono text-[10px] uppercase tracking-widest text-ink/50 hover:text-ink flex-shrink-0"
+          className="font-mono text-[10px] uppercase tracking-widest text-ink/60 hover:text-ink flex-shrink-0"
         >
           {asTable ? "Show chart" : "Show table"}
         </button>
@@ -74,7 +74,7 @@ export function BarChart({ title, subtitle, bars, labelHeader, valueHeader, labe
         <div className="max-h-64 overflow-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs text-ink/50">
+              <tr className="text-left text-xs text-ink/60">
                 <th className="font-normal py-1">{labelHeader}</th>
                 <th className="font-normal py-1 text-right">{valueHeader}</th>
               </tr>
