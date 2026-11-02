@@ -122,8 +122,17 @@ export async function GET(
           }
         })
 
+    // The called person's real account id would undo the anonymous positions
+    // above (and follow them from line to line), so the public gets the
+    // same stand-in id as their position.
+    const servingPosition = line.positions.find((p) => p.userId === line.nowServingUserId)
+    const nowServingUserId = viewer !== "public" || !line.nowServingUserId
+      ? line.nowServingUserId
+      : servingPosition ? `anon-${servingPosition.id}` : null
+
     return NextResponse.json({
       ...line,
+      nowServingUserId,
       positions,
       ...capacity,
       platformFeePercent: getPlatformFeePercent(),

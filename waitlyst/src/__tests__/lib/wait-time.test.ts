@@ -28,6 +28,18 @@ describe("estimateMinutesPerPerson", () => {
   })
 })
 
+describe("estimateMinutesPerPerson with a cut-off", () => {
+  it("ignores service before the cut-off, like last night's sitting", () => {
+    // Slow yesterday, two quick seatings today
+    const yesterday = [0, 30, 60].map(at)
+    const today = [24 * 60, 24 * 60 + 4].map(at)
+    expect(estimateMinutesPerPerson([...yesterday, ...today]).minutes).toBe(30)
+    expect(estimateMinutesPerPerson([...yesterday, ...today], at(23 * 60))).toEqual({ minutes: 4, basedOn: 2 })
+    // Nothing tonight yet: no estimate rather than yesterday's
+    expect(estimateMinutesPerPerson(yesterday, at(23 * 60))).toEqual({ minutes: null, basedOn: 0 })
+  })
+})
+
 describe("formatWaitTime", () => {
   it("formats minutes and hours", () => {
     expect(formatWaitTime(0.4)).toBe("<1 min")

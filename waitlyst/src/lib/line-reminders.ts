@@ -37,6 +37,13 @@ export async function sendDueLineReminders(lineId?: string): Promise<number> {
     // Too late to be useful, or they've turned emails off
     if (reminder.line.closesAt && reminder.line.closesAt <= now) continue
     if (!reminder.user.email || !reminder.user.emailNotifications) continue
+    // They were watching and joined the moment it opened: "join now" would
+    // only be noise
+    const joined = await prisma.linePosition.findUnique({
+      where: { lineId_userId: { lineId: reminder.lineId, userId: reminder.userId } },
+      select: { id: true },
+    })
+    if (joined) continue
 
     const { subject, html } = lineOpeningEmail(
       reminder.user.name || "there",
@@ -46,10 +53,13 @@ export async function sendDueLineReminders(lineId?: string): Promise<number> {
     // The reminder is already used up, so a one-off provider hiccup would
     // mean they never hear the line opened: try once more before giving up.
     // (Not released for later runs -- page views re-run this every few
-    // seconds, which would hammer an address that always bounces.)
+    // seconds, which would hammer an address that always bounces.) The
+    // idempotency key keeps a retry after a timeout that actually went
+    // through from landing a second copy.
+    const opts = { idempotencyKey: `line-reminder/${reminder.id}` }
     if (
-      (await sendEmail(reminder.user.email, subject, html)) ||
-      (await sendEmail(reminder.user.email, subject, html))
+      (await sendEmail(reminder.user.email, subject, html, opts)) ||
+      (await sendEmail(reminder.user.email, subject, html, opts))
     ) sent++
   }
   return sent

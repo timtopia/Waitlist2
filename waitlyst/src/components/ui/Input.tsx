@@ -1,4 +1,4 @@
-import { InputHTMLAttributes, forwardRef } from "react"
+import { InputHTMLAttributes, forwardRef, useId } from "react"
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string
@@ -6,8 +6,12 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ className = "", label, error, id, ...props }, ref) => {
-    const errorId = error && id ? `${id}-error` : undefined
+  ({ className = "", label, error, id: idProp, ...props }, ref) => {
+    // A generated id when none is passed, so the label and error message
+    // are still tied to the field for screen readers
+    const generatedId = useId()
+    const id = idProp ?? generatedId
+    const errorId = error ? `${id}-error` : undefined
     return (
       <div className="w-full">
         {label && (
@@ -39,8 +43,12 @@ interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement
 }
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ className = "", label, error, id, ...props }, ref) => {
-    const errorId = error && id ? `${id}-error` : undefined
+  ({ className = "", label, error, id: idProp, ...props }, ref) => {
+    // A generated id when none is passed, so the label and error message
+    // are still tied to the field for screen readers
+    const generatedId = useId()
+    const id = idProp ?? generatedId
+    const errorId = error ? `${id}-error` : undefined
     return (
       <div className="w-full">
         {label && (

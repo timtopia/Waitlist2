@@ -203,8 +203,13 @@ export default function PrivacyPolicyPage() {
               account and associated personal information.
             </li>
             <li>
-              <strong>Correct your data:</strong> Update your information by
-              updating your linked Google account profile.
+              <strong>Correct your data:</strong> Change the name other people
+              see from your{" "}
+              <Link href="/profile" className="text-accent underline underline-offset-4 hover:text-ink">
+                profile
+              </Link>{" "}
+              at any time. Your email address and sign-in come from your Google
+              account.
             </li>
           </ul>
           <p className="text-ink/70 leading-relaxed mt-3">

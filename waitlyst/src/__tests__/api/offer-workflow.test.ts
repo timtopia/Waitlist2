@@ -4,7 +4,7 @@ const mockPrisma = {
   line: { findUnique: vi.fn() },
   linePosition: { findUnique: vi.fn(), findMany: vi.fn() },
   swapOffer: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn(), delete: vi.fn(), upsert: vi.fn() },
-  transaction: { create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn(), count: vi.fn().mockResolvedValue(0) },
+  transaction: { create: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn(), count: vi.fn().mockResolvedValue(0) },
   user: { findUnique: vi.fn() },
   $transaction: vi.fn((fn: (tx: unknown) => unknown) => fn(mockPrisma)),
 }
@@ -19,6 +19,8 @@ const stripeMocks = {
   performPositionSwap: vi.fn().mockResolvedValue(true),
   lockPositionsForTransaction: vi.fn().mockResolvedValue(true),
   abandonPendingTransaction: vi.fn().mockResolvedValue(true),
+  isCheckoutAuthorized: vi.fn().mockResolvedValue(true),
+  recordPaymentIntent: vi.fn().mockResolvedValue(undefined),
 }
 vi.mock("@/lib/stripe", () => stripeMocks)
 vi.mock("@/lib/email", () => ({ sendEmail: vi.fn().mockResolvedValue(undefined) }))
@@ -139,6 +141,24 @@ describe("POST /api/lines/[lineId]/offer", () => {
     expect((await res.json()).error).toMatch(/called up/)
   })
 
+  it("won't send an offer that could never be paid for (production without Stripe)", async () => {
+    const me = freshUser("ben")
+    mockAuth.mockResolvedValue({ user: { id: me } })
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", allowResale: true, maxAskingPrice: null, name: "L", nowServingUserId: null })
+    vi.stubEnv("NODE_ENV", "production")
+    try {
+      const { POST } = await import("@/app/api/lines/[lineId]/offer/route")
+      const res = await POST(
+        new Request("http://localhost/api/lines/line-1/offer", { method: "POST", body: JSON.stringify({ toUserId: "sam", amount: 5 }) }),
+        { params: Promise.resolve({ lineId: "line-1" }) }
+      )
+      expect(res.status).toBe(503)
+      expect(mockPrisma.swapOffer.upsert).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it("stores an expiry on a new offer", async () => {
     const me = freshUser("ben")
     mockAuth.mockResolvedValue({ user: { id: me } })
@@ -244,6 +264,26 @@ describe("GET /api/lines/[lineId]/offer -- off the market", () => {
   })
 })
 
+describe("GET /api/lines/[lineId]/offer -- price cap lowered", () => {
+  it("retires pending offers over the line's current maximum", async () => {
+    const me = freshUser("ben")
+    mockAuth.mockResolvedValue({ user: { id: me } })
+    mockPrisma.swapOffer.findMany.mockResolvedValue([
+      { id: "over", lineId: "line-1", fromUserId: me, toUserId: "sam", amount: 80, status: "PENDING", createdAt: new Date(), expiresAt: inHours(24) },
+    ])
+    mockPrisma.linePosition.findMany.mockResolvedValue([
+      { userId: "sam", position: 1, fulfilled: false, calledAt: null },
+      { userId: me, position: 2, fulfilled: false, calledAt: null },
+    ])
+    mockPrisma.transaction.findMany.mockResolvedValue([])
+    mockPrisma.line.findUnique.mockResolvedValue({ nowServingUserId: null, maxAskingPrice: 50 })
+
+    const { GET } = await import("@/app/api/lines/[lineId]/offer/route")
+    const data = await (await GET(new Request("http://localhost/api/lines/line-1/offer"), { params: Promise.resolve({ lineId: "line-1" }) })).json()
+    expect(data.sent[0].status).toBe("EXPIRED")
+  })
+})
+
 describe("PATCH /api/lines/[lineId]/offer/[offerId] decline", () => {
   const decline = async () => {
     const { PATCH } = await import("@/app/api/lines/[lineId]/offer/[offerId]/route")
@@ -308,6 +348,45 @@ describe("GET /api/lines/[lineId]/offer/[offerId]/checkout", () => {
   })
 })
 
+describe("GET /api/lines/[lineId]/offer/[offerId]/checkout -- already paid", () => {
+  it("finishes the swap and says so, instead of claiming the window closed", async () => {
+    const buyer = freshUser("ben")
+    mockAuth.mockResolvedValue({ user: { id: buyer } })
+    mockPrisma.swapOffer.findUnique.mockResolvedValue({
+      id: "offer-1", lineId: "line-1", fromUserId: buyer, toUserId: "sam", amount: 10, status: "ACCEPTED", transactionId: "txn-1",
+    })
+    mockPrisma.transaction.findFirst.mockResolvedValue({ id: "txn-1", status: "PENDING", stripePaymentId: "cs_1" })
+    mockPrisma.transaction.findUnique.mockResolvedValue({ status: "COMPLETED" })
+    const retrieve = vi.fn().mockResolvedValue({ id: "cs_1", status: "complete", url: null })
+    stripeMocks.getStripe.mockReturnValueOnce({ checkout: { sessions: { retrieve } } } as never)
+
+    const { GET } = await import("@/app/api/lines/[lineId]/offer/[offerId]/checkout/route")
+    const res = await GET(new Request("http://localhost/x"), ctx())
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ paid: true })
+    expect(stripeMocks.performPositionSwap).toHaveBeenCalledWith("txn-1")
+    expect(stripeMocks.abandonPendingTransaction).not.toHaveBeenCalled()
+  })
+
+  it("tells them the hold was released if the queue moved under the payment", async () => {
+    const buyer = freshUser("ben")
+    mockAuth.mockResolvedValue({ user: { id: buyer } })
+    mockPrisma.swapOffer.findUnique.mockResolvedValue({
+      id: "offer-1", lineId: "line-1", fromUserId: buyer, toUserId: "sam", amount: 10, status: "ACCEPTED", transactionId: "txn-1",
+    })
+    mockPrisma.transaction.findFirst.mockResolvedValue({ id: "txn-1", status: "PENDING", stripePaymentId: "cs_1" })
+    mockPrisma.transaction.findUnique.mockResolvedValue({ status: "FAILED" })
+    stripeMocks.performPositionSwap.mockResolvedValueOnce(false)
+    const retrieve = vi.fn().mockResolvedValue({ id: "cs_1", status: "complete", url: null })
+    stripeMocks.getStripe.mockReturnValueOnce({ checkout: { sessions: { retrieve } } } as never)
+
+    const { GET } = await import("@/app/api/lines/[lineId]/offer/[offerId]/checkout/route")
+    const res = await GET(new Request("http://localhost/x"), ctx())
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toMatch(/weren't charged/)
+  })
+})
+
 describe("PATCH /api/lines/[lineId]/offer/[offerId] accept", () => {
   function setupAccept(seller: string, expiresAt = inHours(24)) {
     mockAuth.mockResolvedValue({ user: { id: seller } })
@@ -330,6 +409,18 @@ describe("PATCH /api/lines/[lineId]/offer/[offerId] accept", () => {
     const res = await accept()
     expect(res.status).toBe(410)
     expect(mockPrisma.transaction.create).not.toHaveBeenCalled()
+  })
+
+  it("won't accept an offer over a price cap the organizer lowered after it was sent", async () => {
+    setupAccept(freshUser("sam"))
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", isActive: true, allowResale: true, createdById: "owner", name: "L", ownerFeePercent: 0, maxAskingPrice: 5 })
+    const res = await accept()
+    expect(res.status).toBe(409)
+    expect(mockPrisma.transaction.create).not.toHaveBeenCalled()
+    expect(mockPrisma.swapOffer.updateMany).toHaveBeenCalledWith({
+      where: { id: "offer-1", status: "PENDING" },
+      data: { status: "EXPIRED" },
+    })
   })
 
   it("a double-click accept only starts one swap", async () => {

@@ -194,10 +194,11 @@ describe("PATCH /api/lines/[lineId]/offer/[offerId] (accept) -- conflicting offe
     const data = await response.json()
     expect(data.error).toMatch(/no longer valid/i)
 
-    // The stale offer should be marked DECLINED, not left PENDING to be
-    // retried, and no transaction/position-swap should ever have been created.
-    expect(mockPrisma.swapOffer.update).toHaveBeenCalledWith({
-      where: { id: "offer-carol-to-bob" },
+    // The stale offer should be marked EXPIRED (only if still pending), not
+    // left PENDING to be retried, and no transaction/position-swap should
+    // ever have been created.
+    expect(mockPrisma.swapOffer.updateMany).toHaveBeenCalledWith({
+      where: { id: "offer-carol-to-bob", status: "PENDING" },
       data: { status: "EXPIRED" },
     })
     expect(mockPrisma.transaction.create).not.toHaveBeenCalled()
@@ -368,6 +369,16 @@ describe("POST /api/lines/[lineId]/fulfill", () => {
       where: { id: "line-1", nowServingUserId: "buyer-1" },
       data: { nowServing: null, nowServingUserId: null, nowServingAt: null },
     })
+  })
+
+  it("answers a malformed body with 400 instead of crashing", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
+    const { POST } = await import("@/app/api/lines/[lineId]/fulfill/route")
+    const response = await POST(
+      new Request("http://localhost/api/lines/line-1/fulfill", { method: "POST", body: "{not json" }),
+      { params: Promise.resolve({ lineId: "line-1" }) }
+    )
+    expect(response.status).toBe(400)
   })
 })
 

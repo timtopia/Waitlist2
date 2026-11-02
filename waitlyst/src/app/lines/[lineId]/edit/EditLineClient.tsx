@@ -200,9 +200,18 @@ export function EditLineClient({
         addToast("Line deleted", "success")
         router.push("/dashboard")
       } else {
-        const data = await res.json()
+        const data = await res.json().catch(() => ({}))
+        // A buyer refund failed, so the server kept the line and paused it.
+        // Show that here, or saving this form would quietly resume it.
+        if (res.status === 409) {
+          setIsActive(false)
+          setError(data.error || "The line couldn't be deleted. It's been paused.")
+          router.refresh()
+        }
         addToast(data.error || "Failed to delete line", "error")
       }
+    } catch {
+      addToast("Couldn't reach the server. The line wasn't deleted.", "error")
     } finally {
       setDeleting(false)
       setShowDelete(false)

@@ -16,7 +16,7 @@ export default async function ProfilePage() {
   const session = await auth()
 
   if (!session?.user?.id) {
-    redirect("/api/auth/signin?callbackUrl=%2Fprofile")
+    redirect("/signin?callbackUrl=%2Fprofile")
   }
 
   const userId = session.user.id
@@ -60,8 +60,9 @@ export default async function ProfilePage() {
           },
         })
       : Promise.resolve([]),
+    // Spots you're still holding; served ones stay on record but aren't "active"
     prisma.linePosition.count({
-      where: { userId },
+      where: { userId, fulfilled: false },
     }),
   ])
 

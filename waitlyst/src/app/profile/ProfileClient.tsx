@@ -74,6 +74,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
   const [connectMessage, setConnectMessage] = useState<{ text: string; type: "success" | "info" | "error" } | null>(null)
   const [emailNotifs, setEmailNotifs] = useState(emailNotifications)
   const [emailNotifsLoading, setEmailNotifsLoading] = useState(false)
+  const [emailNotifsError, setEmailNotifsError] = useState<string | null>(null)
   const [visibleCount, setVisibleCount] = useState(5)
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -179,6 +180,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
 
   async function handleToggleEmailNotifs() {
     setEmailNotifsLoading(true)
+    setEmailNotifsError(null)
     try {
       const res = await fetch("/api/user", {
         method: "PATCH",
@@ -187,9 +189,13 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
       })
       if (res.ok) {
         setEmailNotifs(!emailNotifs)
+      } else {
+        // The switch used to just not move, with no hint why
+        const data = await res.json().catch(() => ({}))
+        setEmailNotifsError(data.error || "Couldn't update your email setting. Please try again.")
       }
     } catch {
-      // Silently fail
+      setEmailNotifsError("Couldn't reach the server. Check your connection and try again.")
     } finally {
       setEmailNotifsLoading(false)
     }
@@ -211,6 +217,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
             <button
               onClick={() => setConnectMessage(null)}
               className="ml-4 text-current opacity-50 hover:opacity-75"
+              aria-label="Dismiss"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -250,6 +257,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                         if (e.key === "Escape") handleCancel()
                       }}
                       maxLength={50}
+                      aria-label="Display name"
                       autoFocus
                       className="text-2xl font-semibold tracking-tight bg-white border border-rule px-2 py-1 focus:outline-none focus:border-ink w-full max-w-xs"
                     />
@@ -258,6 +266,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                       disabled={isSaving}
                       className="p-1.5 text-green-700 hover:bg-ink/5 disabled:opacity-50"
                       title="Save"
+                      aria-label="Save name"
                     >
                       {isSaving ? (
                         <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -275,6 +284,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                       disabled={isSaving}
                       className="p-1.5 text-ink/60 hover:bg-ink/5 disabled:opacity-50"
                       title="Cancel"
+                      aria-label="Cancel editing name"
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -282,7 +292,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                     </button>
                   </div>
                   {error && (
-                    <p className="text-xs text-accent mt-1">{error}</p>
+                    <p className="text-xs text-accent mt-1" role="alert">{error}</p>
                   )}
                 </div>
               ) : (
@@ -534,9 +544,37 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
               />
             </button>
           </div>
+          {emailNotifsError && (
+            <p className="text-xs text-accent mt-2" role="alert">{emailNotifsError}</p>
+          )}
         </CardContent>
       </Card>
       )}
+
+      {/* Your data: the privacy policy promises export and deletion on request,
+          so say how from the account page instead of leaving people to hunt */}
+      <Card className="mb-6">
+        <CardContent className="py-5">
+          <h2 className="font-mono text-xs uppercase tracking-widest text-ink/60 mb-3">Your Data</h2>
+          <p className="text-sm text-ink/60">
+            Other people in a line see your first name and last initial; the line&apos;s
+            owner sees your full name and email.{" "}
+            <Link href="/privacy" className="text-accent hover:underline underline-offset-4">
+              Privacy policy
+            </Link>
+          </p>
+          <p className="text-sm text-ink/60 mt-2">
+            Want a copy of your data, or your account deleted?{" "}
+            <a
+              href="mailto:support@waitlyst.app?subject=Waitlyst%20account%20request"
+              className="text-accent hover:underline underline-offset-4"
+            >
+              Email support@waitlyst.app
+            </a>{" "}
+            from the address you sign in with.
+          </p>
+        </CardContent>
+      </Card>
 
       {/* Transaction History */}
       <Card>

@@ -15,6 +15,8 @@ interface LineStatusBannerProps {
   hideCapacity?: boolean
   /** Restaurant lines count capacity in guests rather than spots */
   kind?: "STANDARD" | "RESTAURANT"
+  /** The viewer is already waiting: closing or filling up doesn't affect them */
+  inLine?: boolean
 }
 
 type LineStatus =
@@ -45,7 +47,7 @@ function getLineStatus(
   return { state: "open", closesAt: closesAt ? new Date(closesAt) : null }
 }
 
-export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount, isFull, hideCapacity = false, kind = "STANDARD" }: LineStatusBannerProps) {
+export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount, isFull, hideCapacity = false, kind = "STANDARD", inLine = false }: LineStatusBannerProps) {
   const [now, setNow] = useState(new Date())
 
   useEffect(() => {
@@ -123,6 +125,8 @@ export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount,
                   hour: "numeric",
                   minute: "2-digit",
                 })}
+                {/* A countdown read as "you'll be dropped at zero" */}
+                {inLine && ". You keep your place after it closes."}
               </p>
             </div>
             <div className="text-right">
@@ -138,7 +142,11 @@ export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount,
       {status.state === "closed" && (
         <div className="border border-rule border-l-2 border-l-accent bg-white px-4 py-3">
           <p className="font-mono text-xs uppercase tracking-widest text-accent">Line is Closed</p>
-          <p className="text-sm text-ink/60 mt-1">This line is no longer accepting new joins.</p>
+          <p className="text-sm text-ink/60 mt-1">
+            {inLine
+              ? `No new joins, but you're still in line and keep your place until ${kind === "RESTAURANT" ? "you're seated" : "you're served"}.`
+              : "This line is no longer accepting new joins."}
+          </p>
         </div>
       )}
 
@@ -146,7 +154,10 @@ export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount,
         <div className="border border-rule border-l-2 border-l-accent bg-white px-4 py-3">
           <p className="font-mono text-xs uppercase tracking-widest text-accent">Line is Full</p>
           <p className="text-sm text-ink/60 mt-1">
-            {kind === "RESTAURANT"
+            {inLine
+              // "Check back soon" read to someone already waiting as if they'd lost their place
+              ? "No one else can join right now. You're already in line, so this doesn't affect your place."
+              : kind === "RESTAURANT"
               // "All 40 guests have been taken" read oddly; tell them what to do
               ? "The waitlist is full right now. Places open up as parties are seated, so check back soon or ask the host."
               : maxCapacity === null ? `All ${capacityUnit(kind, 2)} have been taken.` : `All ${maxCapacity} ${capacityUnit(kind, maxCapacity)} have been taken.`}

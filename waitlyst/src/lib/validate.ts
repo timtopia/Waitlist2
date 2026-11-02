@@ -118,3 +118,22 @@ export function parseNote(value: unknown): string | null | { error: string } {
   if (note.length > MAX_NOTE_LENGTH) return { error: `Notes can be at most ${MAX_NOTE_LENGTH} characters` }
   return note
 }
+
+/**
+ * JSON for an inline <script> (JSON-LD). JSON.stringify leaves "<" alone, so
+ * a line named "</script><script>..." would close the tag and run as code on
+ * every visitor's page. Escaping <, > and & keeps it inert and still valid JSON.
+ */
+export function jsonForScript(value: unknown): string {
+  // Each unsafe character becomes its six-character JSON escape (backslash,
+  // "u", four hex digits), so "<" can't close the tag. Built from char codes
+  // rather than escape literals so the pattern can't be mangled into raw
+  // line separators.
+  const backslash = String.fromCharCode(92)
+  const unsafe = new RegExp("[<>&" + String.fromCharCode(0x2028, 0x2029) + "]", "g")
+  return JSON.stringify(value).replace(
+    unsafe,
+    (c) => backslash + "u" + c.charCodeAt(0).toString(16).padStart(4, "0")
+  )
+}
+

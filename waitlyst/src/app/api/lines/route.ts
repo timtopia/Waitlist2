@@ -22,8 +22,14 @@ export async function POST(req: Request) {
     )
   }
 
+  // A malformed body is the caller's mistake, not a server error
+  const body = await req.json().catch(() => null)
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 })
+  }
+
   try {
-    const { name, description, isPublic = true, opensAt, closesAt, maxCapacity, ownerFeePercent = 0, productName, productImage, productPrice, productUrl, allowResale = false, maxAskingPrice, hideCapacity = false, kind = "STANDARD", purchaseLimit = null, responseWindowMinutes = null } = await req.json()
+    const { name, description, isPublic = true, opensAt, closesAt, maxCapacity, ownerFeePercent = 0, productName, productImage, productPrice, productUrl, allowResale = false, maxAskingPrice, hideCapacity = false, kind = "STANDARD", purchaseLimit = null, responseWindowMinutes = null } = body
 
     // Validate name (required, 1-100 chars)
     const nameErr = validateString(name, "Name", { min: 1, max: 100 })
@@ -62,6 +68,14 @@ export async function POST(req: Request) {
 
     if (opensAt && closesAt && new Date(opensAt) >= new Date(closesAt)) {
       return NextResponse.json({ error: "Close time must be after open time" }, { status: 400 })
+    }
+    // A line that has already closed can never be joined. The form checks
+    // this too, but a stale tab (or a clock that's off) gets past it.
+    if (closesAt && new Date(closesAt) <= new Date()) {
+      return NextResponse.json(
+        { error: "The closing time has already passed. Pick a later time, or leave it empty for no end time." },
+        { status: 400 }
+      )
     }
 
     // Validate owner fee percent (0-50)
@@ -204,7 +218,8 @@ export async function GET(req: Request) {
         ? rows.filter((g) => !g.fulfilled).reduce((sum, g) => sum + (g._sum.partySize ?? 0), 0)
         : rows.reduce((sum, g) => sum + g._count, 0) + (clearedIn.get(line.id) ?? 0)
       // Seated parties have left the wait, so restaurants count only who is waiting
-      return { ...line, guestCount: line.kind === "RESTAURANT" ? used : guests, ...capacityView(line, used) }
+      // nowServingUserId is a real account id; the board only needs the name
+      return { ...line, nowServingUserId: null, guestCount: line.kind === "RESTAURANT" ? used : guests, ...capacityView(line, used) }
     })
 
     return NextResponse.json(visible, {

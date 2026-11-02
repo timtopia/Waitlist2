@@ -92,8 +92,10 @@ export function diffMemberStatus(prev: StatusLine, next: StatusLine, userId: str
       if (after.phase === "called") events.push({ kind: "called" })
       else if (after.phase === "served") events.push({ kind: "served" })
       else if (after.phase === "next") events.push({ kind: "next" })
-    } else if (after.phase === "called" && after.calledAt !== before.calledAt) {
-      // "Call again": the host is calling them a second time
+    } else if (after.phase === "called" && after.calledAt !== before.calledAt && !(!prev.isActive && next.isActive)) {
+      // "Call again": the host is calling them a second time. Resuming a
+      // paused line also moves calledAt forward (by the time paused), which
+      // isn't a new call and mustn't re-alert someone already on their way.
       events.push({ kind: "called" })
     }
     // Served people stay in the line until cleared, so seating someone ahead
@@ -129,11 +131,24 @@ export interface MemberAlert {
 const MOVED_ALERT_THRESHOLD = 5
 
 /** What (if anything) to tell the person about an event. */
-export function describeMemberEvent(event: MemberEvent, lineName: string, isRestaurant = false): MemberAlert | null {
+export function describeMemberEvent(
+  event: MemberEvent,
+  lineName: string,
+  isRestaurant = false,
+  /** Minutes a called person has to show up, so the alert can say so */
+  responseWindowMinutes: number | null = null
+): MemberAlert | null {
   const organizer = isRestaurant ? "the host" : "the organizer"
   switch (event.kind) {
-    case "called":
-      return { title: "It's your turn!", body: `${lineName} is ready for you.`, toast: true, tone: "success" }
+    case "called": {
+      // Often read on a lock screen outside: say where to go and by when,
+      // without needing to open the page
+      const within = responseWindowMinutes ? ` within ${responseWindowMinutes} min` : ""
+      const body = isRestaurant
+        ? `${lineName} is ready for you. Head to the host stand${within}.`
+        : `${lineName} is ready for you.${within ? ` Show up${within} to keep your place.` : ""}`
+      return { title: "It's your turn!", body, toast: true, tone: "success" }
+    }
     case "next":
       return { title: "You're next", body: `You're at the front of ${lineName}. Get ready.`, toast: true, tone: "info" }
     case "served":

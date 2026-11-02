@@ -135,6 +135,28 @@ describe("Lines API", () => {
       const data = await response.json()
       expect(data.name).toBe("Test Line")
     })
+
+    it("answers a malformed body with 400, not a server error", async () => {
+      mockAuth.mockResolvedValue({ user: { id: "user-bad-json" } })
+
+      const { POST } = await import("@/app/api/lines/route")
+      const response = await POST(new Request("http://localhost/api/lines", { method: "POST", body: "{oops" }))
+      expect(response.status).toBe(400)
+      expect(mockPrisma.line.create).not.toHaveBeenCalled()
+    })
+
+    it("won't create a line whose closing time has already passed", async () => {
+      mockAuth.mockResolvedValue({ user: { id: "user-past-close" } })
+
+      const { POST } = await import("@/app/api/lines/route")
+      const response = await POST(new Request("http://localhost/api/lines", {
+        method: "POST",
+        body: JSON.stringify({ name: "Drop", closesAt: new Date(Date.now() - 60_000).toISOString() }),
+      }))
+      expect(response.status).toBe(400)
+      expect((await response.json()).error).toMatch(/already passed/)
+      expect(mockPrisma.line.create).not.toHaveBeenCalled()
+    })
   })
 
   describe("GET /api/lines", () => {
@@ -170,6 +192,15 @@ describe("Lines API", () => {
 
       expect(data[0]).toMatchObject({ maxCapacity: null, hasCapacityLimit: true, isFull: true })
       expect(data[1]).toMatchObject({ maxCapacity: 50, hasCapacityLimit: true, isFull: false })
+    })
+
+    it("leaves the called person's account id off the public board", async () => {
+      mockPrisma.line.findMany.mockResolvedValue([
+        { id: "line-1", maxCapacity: null, hideCapacity: false, createdById: "creator-1", nowServing: "Alice", nowServingUserId: "alice", _count: { positions: 1 } },
+      ])
+      const { GET } = await import("@/app/api/lines/route")
+      const data = await (await GET(new Request("http://localhost/api/lines"))).json()
+      expect(data[0]).toMatchObject({ nowServing: "Alice", nowServingUserId: null })
     })
   })
 })
@@ -255,6 +286,34 @@ describe("GET /api/lines/[lineId]", () => {
     const asPublic = await first()
     expect(asPublic[0].user).toEqual({ id: "anon-p1", name: null, image: null, isWalkIn: false })
     expect(asPublic[0].userId).toBe("anon-p1")
+  })
+
+  it("doesn't give the public the called person's real account id", async () => {
+    mockPrisma.line.findUnique.mockResolvedValue({
+      id: "line-1",
+      createdById: "owner-1",
+      maxCapacity: null,
+      hideCapacity: false,
+      nowServing: "Alice",
+      nowServingUserId: "alice",
+      updatedAt: new Date(),
+      createdBy: { id: "owner-1", name: "Creator", image: null },
+      positions: [
+        { id: "p1", userId: "alice", lockedBy: null, partySize: 1, user: { id: "alice", name: "Alice Walker", image: null } },
+      ],
+    })
+    const { GET } = await import("@/app/api/lines/[lineId]/route")
+    const get = async () =>
+      (await GET(new Request("http://localhost/api/lines/line-1"), { params: Promise.resolve({ lineId: "line-1" }) })).json()
+
+    mockAuth.mockResolvedValue(null)
+    const asPublic = await get()
+    // Matches their anonymous position, so the queue still shows who's up
+    expect(asPublic.nowServingUserId).toBe("anon-p1")
+    expect(asPublic.positions[0].user.id).toBe("anon-p1")
+
+    mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
+    expect((await get()).nowServingUserId).toBe("alice")
   })
 
   it("answers 304 without loading positions when the poller's ETag still matches", async () => {

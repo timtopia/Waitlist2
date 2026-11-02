@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
-import { getStripe, abandonPendingTransaction } from "@/lib/stripe"
+import {
+  getStripe,
+  abandonPendingTransaction,
+  isCheckoutAuthorized,
+  recordPaymentIntent,
+  performPositionSwap,
+} from "@/lib/stripe"
 
 /**
  * Lets the BUYER (the person who sent a swap offer) fetch the Stripe
@@ -58,6 +64,29 @@ export async function GET(
     }
 
     const session = await stripe.checkout.sessions.retrieve(transaction.stripePaymentId)
+    if (session.status === "complete") {
+      // They already paid (another tab, or the return page never loaded) and
+      // the webhook hasn't landed yet. Telling them the window closed would
+      // have them think they lost the spot -- or pay again. Finish the swap
+      // the same way the return URL does; it's a no-op if already done.
+      if (await isCheckoutAuthorized(session)) {
+        await recordPaymentIntent(transaction.id, session)
+        await performPositionSwap(transaction.id)
+      }
+      const settled = await prisma.transaction.findUnique({
+        where: { id: transaction.id },
+        select: { status: true },
+      })
+      if (settled?.status === "COMPLETED") {
+        return NextResponse.json({ paid: true, message: "Your payment already went through -- the spot is yours." })
+      }
+      return NextResponse.json(
+        { error: settled?.status === "FAILED"
+          ? "The line changed before your swap could go through, so the hold on your card was released. You weren't charged."
+          : "Your payment is still being confirmed. Refresh in a moment." },
+        { status: 409 }
+      )
+    }
     if (session.status === "expired") {
       // Same cleanup as the checkout.session.expired webhook, in case it
       // hasn't arrived yet: free both spots and reopen the offer.

@@ -9,7 +9,21 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;")
 }
 
+/**
+ * Where to turn emails off: the profile page on the same site the email
+ * links to. Saying "in your profile settings" without a link leaves someone
+ * who's had enough hunting for it -- or reaching for the spam button.
+ */
+function profileUrlFor(ctaUrl: string): string | null {
+  try {
+    return `${new URL(ctaUrl).origin}/profile`
+  } catch {
+    return null
+  }
+}
+
 function wrapTemplate(title: string, body: string, ctaText: string, ctaUrl: string): string {
+  const settingsUrl = profileUrlFor(ctaUrl)
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -44,7 +58,9 @@ function wrapTemplate(title: string, body: string, ctaText: string, ctaUrl: stri
           <!-- Footer -->
           <tr>
             <td style="padding:16px 32px;border-top:1px solid #e5e7eb;">
-              <p style="margin:0;color:#9ca3af;font-size:12px;">You received this email because you have an account on Waitlyst. If you no longer wish to receive these emails, you can turn them off in your profile settings.</p>
+              <p style="margin:0;color:#9ca3af;font-size:12px;">You received this email because you have an account on Waitlyst. ${settingsUrl
+                ? `To stop these emails, turn off email notifications in your <a href="${escapeHtml(settingsUrl)}" style="color:#6b7280;">profile settings</a>.`
+                : "To stop these emails, turn off email notifications in your profile settings."}</p>
             </td>
           </tr>
         </table>

@@ -169,6 +169,56 @@ describe("OwnerConsole", () => {
     expect(screen.queryByText(/left to show up/)).not.toBeInTheDocument()
   })
 
+  it("shows how long ago a party was called, and that the timer is on hold while paused", () => {
+    const calledAt = new Date(Date.now() - 7 * 60_000).toISOString()
+    const walkIn = { ...pos("p1", 1, "Bob"), calledAt, user: { id: "u-p1", name: "Bob", isWalkIn: true } }
+    const { rerender } = render(<OwnerConsole {...baseProps} responseWindowMinutes={10} positions={[walkIn]} />)
+    // A walk-in has no countdown, but the host still needs to know how long they've had
+    expect(screen.getByText("Called 7 min ago")).toBeInTheDocument()
+    rerender(
+      <OwnerConsole {...baseProps} isActive={false} responseWindowMinutes={10} positions={[{ ...pos("p1", 1, "Bob"), calledAt }]} />
+    )
+    expect(screen.getByText(/timer on hold while paused/)).toBeInTheDocument()
+  })
+
+  it("says so when seating worked but calling the next party failed", async () => {
+    fetchMock.mockImplementation((url: string) =>
+      Promise.resolve(
+        url.endsWith("/call-next")
+          ? { ok: false, json: () => Promise.resolve({ error: "Something went wrong" }) }
+          : { ok: true, json: () => Promise.resolve({}) }
+      )
+    )
+    render(
+      <OwnerConsole {...baseProps} nowServingUserId="u-p2" positions={[pos("p2", 1, "Bob"), pos("p3", 2, "Cara")]} />
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Done · Call Next" }))
+    await waitFor(() =>
+      expect(addToastMock).toHaveBeenCalledWith("Bob served, but Cara wasn't called: Something went wrong", "error")
+    )
+  })
+
+  it("tells the host when a called party ran out of time and was skipped", () => {
+    const calledAt = new Date(Date.now() - 11 * 60_000).toISOString()
+    const props = { ...baseProps, responseWindowMinutes: 10 }
+    const { rerender } = render(
+      <OwnerConsole {...props} positions={[{ ...pos("p1", 1, "Bob"), calledAt }, pos("p2", 2, "Cara")]} />
+    )
+    expect(addToastMock).not.toHaveBeenCalled()
+    rerender(<OwnerConsole {...props} positions={[pos("p2", 2, "Cara")]} />)
+    expect(addToastMock).toHaveBeenCalledWith("Bob ran out of time to show up and was skipped as a no-show", "info")
+  })
+
+  it("doesn't call it a timeout when a called party with time left goes", () => {
+    const calledAt = new Date().toISOString()
+    const props = { ...baseProps, responseWindowMinutes: 10 }
+    const { rerender } = render(
+      <OwnerConsole {...props} positions={[{ ...pos("p1", 1, "Bob"), calledAt }, pos("p2", 2, "Cara")]} />
+    )
+    rerender(<OwnerConsole {...props} positions={[pos("p2", 2, "Cara")]} />)
+    expect(addToastMock).not.toHaveBeenCalled()
+  })
+
   it("lists other called parties with seat and no-show actions", async () => {
     respond({ "/fulfill": {}, "/remove-position": {}, "/stats": {} })
     const calledAt = new Date().toISOString()

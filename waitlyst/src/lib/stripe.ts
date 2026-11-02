@@ -359,6 +359,13 @@ export async function performPositionSwap(transactionId: string): Promise<boolea
           where: { lockedBy: transactionId },
           data: { lockedUntil: null, lockedBy: null },
         })
+        // An accepted offer this checkout paid for can't happen now either.
+        // Left ACCEPTED, the buyer saw "accepted" with nothing to pay and no
+        // word that their hold was released.
+        await tx.swapOffer.updateMany({
+          where: { transactionId, status: "ACCEPTED" },
+          data: { status: "EXPIRED" },
+        })
         return "failed" as const
       }
 

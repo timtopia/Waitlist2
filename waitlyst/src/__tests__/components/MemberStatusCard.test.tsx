@@ -28,7 +28,7 @@ describe("MemberStatusCard", () => {
     mockWaitTime(4)
     render(<MemberStatusCard {...baseProps} status={{ phase: "waiting", position: 5, ahead: 3 }} />)
     expect(screen.getByText("3 people ahead of you")).toBeInTheDocument()
-    expect(await screen.findByText("Est. wait: ~12 min")).toBeInTheDocument()
+    expect(await screen.findByText(/^Est\. wait: ~12 min \(around .+\)$/)).toBeInTheDocument()
   })
 
   it("explains a missing estimate instead of guessing", async () => {
@@ -44,7 +44,7 @@ describe("MemberStatusCard", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
     rerender(<MemberStatusCard {...baseProps} status={{ phase: "waiting", position: 4, ahead: 3 }} />)
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
-    expect(await screen.findByText("Est. wait: ~6 min")).toBeInTheDocument()
+    expect(await screen.findByText(/^Est\. wait: ~6 min/)).toBeInTheDocument()
   })
 
   it("makes being called unmistakable", () => {
@@ -78,6 +78,21 @@ describe("MemberStatusCard", () => {
     mockWaitTime(null)
     render(<MemberStatusCard {...baseProps} isPaused status={{ phase: "waiting", position: 3, ahead: 2 }} />)
     expect(screen.getByText(/You keep your place/)).toBeInTheDocument()
+  })
+
+  it("tells a called party on a paused line that their time is on hold", () => {
+    render(
+      <MemberStatusCard
+        {...baseProps}
+        isRestaurant
+        isPaused
+        responseWindowMinutes={10}
+        calledAt={new Date().toISOString()}
+        status={{ phase: "called", position: 1, ahead: 0 }}
+      />
+    )
+    expect(screen.getByText(/your time to show up is on hold/)).toBeInTheDocument()
+    expect(screen.queryByText(/may still call you/)).not.toBeInTheDocument()
   })
 
   it("offers to turn on alerts and reflects the browser permission", () => {

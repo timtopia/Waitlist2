@@ -140,6 +140,20 @@ export async function PATCH(
       )
     }
 
+    // The organizer lowered the price cap after this offer was sent. Retire
+    // it so the buyer can send one within the new limit straight away (no
+    // decline cooldown) instead of the trade going through over the cap.
+    if (line.maxAskingPrice != null && offer.amount > line.maxAskingPrice) {
+      await prisma.swapOffer.updateMany({
+        where: { id: offerId, status: "PENDING" },
+        data: { status: "EXPIRED" },
+      })
+      return NextResponse.json(
+        { error: `This offer is over the line's current maximum of $${line.maxAskingPrice.toFixed(2)}, so it can't be accepted. They can send a new one.` },
+        { status: 409 }
+      )
+    }
+
     // Get both positions
     const buyerPosition = await prisma.linePosition.findUnique({
       where: { lineId_userId: { lineId, userId: offer.fromUserId } },
@@ -162,8 +176,10 @@ export async function PATCH(
     // offer would let the offerer skip over whoever is now in between —
     // mark it DECLINED instead of letting the swap go through.
     if (sellerPosition.position !== buyerPosition.position - 1) {
-      await prisma.swapOffer.update({
-        where: { id: offerId },
+      // Guarded: a withdrawal landing meanwhile stays WITHDRAWN (and keeps
+      // its cooldown) instead of being overwritten.
+      await prisma.swapOffer.updateMany({
+        where: { id: offerId, status: "PENDING" },
         data: { status: "EXPIRED" },
       })
       return NextResponse.json(

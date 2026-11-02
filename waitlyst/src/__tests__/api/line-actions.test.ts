@@ -185,6 +185,7 @@ describe("POST /api/lines/[lineId]/pause", () => {
       createdById: "owner-1",
       isActive: false,
       pausedAt: at("20:00"),
+      nowServingAt: at("19:55"),
     })
     mockPrisma.linePosition.findMany.mockResolvedValue([
       // Called before the pause, said "on my way" before it too
@@ -208,6 +209,11 @@ describe("POST /api/lines/[lineId]/pause", () => {
     expect(mockPrisma.linePosition.update).toHaveBeenCalledWith({
       where: { id: "during" },
       data: { calledAt: now, respondedAt: null },
+    })
+    // The line page's "Called N min ago" moves with the call
+    expect(mockPrisma.line.update).toHaveBeenCalledWith({
+      where: { id: "line-1" },
+      data: { isActive: true, pausedAt: null, nowServingAt: at("20:25") },
     })
   })
 })
@@ -518,6 +524,41 @@ describe("PATCH /api/lines/[lineId]/settings", () => {
     )
     expect(response.status).toBe(400)
     expect((await response.json()).error).toMatch(/close after it opens/)
+  })
+
+  it("rejects moving the closing time into the past", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdById: "owner-1", opensAt: null, closesAt: null })
+
+    const { PATCH } = await import("@/app/api/lines/[lineId]/settings/route")
+    const response = await PATCH(
+      new Request("http://localhost/api/lines/line-1/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ closesAt: new Date(Date.now() - 60 * 60_000).toISOString() }),
+      }),
+      { params: Promise.resolve({ lineId: "line-1" }) }
+    )
+    expect(response.status).toBe(400)
+    expect((await response.json()).error).toMatch(/already passed/)
+    expect(mockPrisma.line.update).not.toHaveBeenCalled()
+  })
+
+  it("still saves a line that already closed when its close time is sent back unchanged", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
+    // Stored with seconds; the edit form sends it back to the minute
+    const closed = new Date("2026-01-02T18:30:42Z")
+    mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdById: "owner-1", opensAt: null, closesAt: closed })
+    mockPrisma.line.update.mockResolvedValue({ id: "line-1", allowResale: true })
+
+    const { PATCH } = await import("@/app/api/lines/[lineId]/settings/route")
+    const response = await PATCH(
+      new Request("http://localhost/api/lines/line-1/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ closesAt: "2026-01-02T18:30:00.000Z", description: "Sold out, thanks!" }),
+      }),
+      { params: Promise.resolve({ lineId: "line-1" }) }
+    )
+    expect(response.status).toBe(200)
   })
 
   it("rejects a time-to-show-up outside 1 to 60 minutes", async () => {

@@ -149,7 +149,13 @@ export function useLineUpdates(
     window.addEventListener("offline", handleOffline)
 
     // Initial baseline after a short delay, then start polling
-    const startTimeout = setTimeout(startPolling, 2000)
+    // A page opened in a background tab (say, from an email link) waits for
+    // its first view instead: started now, polling would idle until the next
+    // tick and the page could show a stale turn for up to a full interval
+    // after they switch to it.
+    const startTimeout = setTimeout(() => {
+      if (pollWhenHidden || document.visibilityState === "visible") startPolling()
+    }, 2000)
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange)

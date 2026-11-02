@@ -3,7 +3,7 @@ import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { getStripe } from "@/lib/stripe"
 import { rateLimit } from "@/lib/rate-limit"
-import { validateString, validateBoolean } from "@/lib/validate"
+import { validateBoolean } from "@/lib/validate"
 import { getPlatformFeePercent } from "@/lib/fees"
 
 const userUpdateLimiter = rateLimit({ interval: 60_000, limit: 10 })
@@ -56,9 +56,18 @@ export async function PATCH(req: Request) {
     )
   }
 
+  // A malformed body is the caller's mistake, not a server error
+  let body: Record<string, unknown>
   try {
-    const body = await req.json()
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: "Request body must be valid JSON" }, { status: 400 })
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "Request body must be a JSON object" }, { status: 400 })
+  }
 
+  try {
     const data: Record<string, unknown> = {}
 
     // Handle name update (1-50 chars)

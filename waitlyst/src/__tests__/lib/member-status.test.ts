@@ -141,6 +141,14 @@ describe("diffMemberStatus", () => {
     expect(diffMemberStatus(prev, makeLine([{ id: "me", called: true }]), "me")).toEqual([])
   })
 
+  it("doesn't re-alert a called party when a paused line resumes", () => {
+    // Resuming moves calledAt forward by the time paused; that isn't a new call
+    const prev = makeLine([{ id: "me", called: true }], { isActive: false })
+    const next = makeLine([{ id: "me", called: true }])
+    next.positions[0].calledAt = "2026-10-30T19:05:00Z"
+    expect(diffMemberStatus(prev, next, "me")).toEqual([{ kind: "resumed" }])
+  })
+
   it("tells a skipped no-show why they're out", () => {
     expect(describeMemberEvent({ kind: "removed", wasServed: false, wasCalled: true }, "Bakery")?.body)
       .toContain("didn't show up in time")
@@ -170,6 +178,15 @@ describe("diffMemberStatus", () => {
 describe("describeMemberEvent", () => {
   it("toasts for the moments that need action", () => {
     expect(describeMemberEvent({ kind: "called" }, "Bakery")).toMatchObject({ title: "It's your turn!", toast: true })
+  })
+
+  it("says where to go and by when on a called alert", () => {
+    expect(describeMemberEvent({ kind: "called" }, "Bistro", true, 10)?.body)
+      .toBe("Bistro is ready for you. Head to the host stand within 10 min.")
+    expect(describeMemberEvent({ kind: "called" }, "Bistro", true)?.body).toBe("Bistro is ready for you. Head to the host stand.")
+    expect(describeMemberEvent({ kind: "called" }, "Bakery", false, 5)?.body)
+      .toBe("Bakery is ready for you. Show up within 5 min to keep your place.")
+    expect(describeMemberEvent({ kind: "called" }, "Bakery")?.body).toBe("Bakery is ready for you.")
     expect(describeMemberEvent({ kind: "removed", wasServed: false, wasCalled: false }, "Bakery")).toMatchObject({ toast: true, tone: "warning" })
   })
 

@@ -136,6 +136,44 @@ export function OwnerConsole({
     return timeLeft(callDeadline(p.calledAt, responseWindowMinutes, p.respondedAt, p.graceMinutes), clock)
   }
 
+  /** "called 6 min ago": how long a party has had to get to the stand */
+  function calledAgo(p: ConsolePosition): string | null {
+    if (!p.calledAt) return null
+    const minutes = Math.floor((clock - new Date(p.calledAt).getTime()) / 60_000)
+    return minutes < 1 ? "called just now" : `called ${minutes} min ago`
+  }
+
+  /** Their show-up timer exists but is frozen because the line is paused */
+  function timerOnHold(p: ConsolePosition): boolean {
+    return !!p.calledAt && !!responseWindowMinutes && !p.user.isWalkIn && !isActive
+  }
+
+  // A called party whose time ran out is skipped by the server on the next
+  // poll and just vanishes from the console. Say so, so the host isn't left
+  // wondering where the party they called went.
+  const removedByHost = useRef(new Set<string>())
+  const lastCalled = useRef<ConsolePosition[]>([])
+  useEffect(() => {
+    const now = Date.now()
+    const present = new Set(positions.map((p) => p.id))
+    const skipped = isActive && responseWindowMinutes
+      ? lastCalled.current.filter((p) => {
+          if (present.has(p.id) || removedByHost.current.has(p.id)) return false
+          const deadline = callDeadline(p.calledAt, responseWindowMinutes, p.respondedAt, p.graceMinutes)
+          // A little slack for the tablet's clock running behind the server's
+          return !!deadline && deadline.getTime() <= now + 60_000
+        })
+      : []
+    if (skipped.length > 0) {
+      const names = skipped.map((p) => p.user.name || "A party").join(", ")
+      addToast(
+        `${names} ran out of time to show up and ${skipped.length === 1 ? "was" : "were"} skipped as a no-show`,
+        "info"
+      )
+    }
+    lastCalled.current = positions.filter((p) => !p.fulfilled && p.calledAt && !p.user.isWalkIn)
+  }, [positions, isActive, responseWindowMinutes, addToast])
+
   const fetchEarnings = useCallback(async () => {
     try {
       const res = await fetch(`/api/lines/${lineId}/stats`)
@@ -208,10 +246,21 @@ export function OwnerConsole({
         addToast(`${name} ${servedWord} -- ${afterNext.user.name || "the next party"} was already called`, "success")
       } else if (callNext && afterNext) {
         const called = await post("call-next", { positionId: afterNext.id })
-        addToast(
-          called.ok ? `${name} ${servedWord} -- called ${called.data.calledUser}` : `${name} ${servedWord}`,
-          called.ok ? "success" : "info"
-        )
+        if (!called.ok) {
+          // The seat went through but nobody was called: the host must know
+          // the next party is still waiting on a call
+          addToast(
+            `${name} ${servedWord}, but ${afterNext.user.name || "the next party"} wasn't called: ${called.data.error || "try calling them again"}`,
+            "error"
+          )
+        } else {
+          addToast(
+            called.data.isWalkIn
+              ? `${name} ${servedWord} -- ${called.data.calledUser} is a walk-in, call them out at the stand`
+              : `${name} ${servedWord} -- called ${called.data.calledUser}`,
+            "success"
+          )
+        }
       } else {
         addToast(`${name} marked as ${servedWord}`, "success")
       }
@@ -226,6 +275,7 @@ export function OwnerConsole({
     const target = noShowTarget
     if (!target) return
     setNoShowTarget(null)
+    removedByHost.current.add(target.id)
     setBusy(target.id === upNext?.id ? "no-show" : `no-show-${target.id}`)
     try {
       const { ok, data } = await post("remove-position", { positionId: target.id, action: "payout", noShow: true })
@@ -324,6 +374,7 @@ export function OwnerConsole({
         return
       }
       if (positions.length > 0) {
+        for (const p of positions) removedByHost.current.add(p.id)
         const { ok, data } = await post("batch-remove", { positionIds: positions.map((p) => p.id), action })
         if (!ok) {
           addToast(data.error || "The line is paused, but clearing it failed", "error")
@@ -556,19 +607,28 @@ export function OwnerConsole({
                 </p>
               )}
               {(() => {
+                const ago = calledAgo(upNext)
+                if (!ago) return null
                 const left = showUpTimeLeft(upNext)
-                if (!left) return null
+                // Capitalised on its own; walk-ins and no-limit lines show just this
+                const agoText = ago.charAt(0).toUpperCase() + ago.slice(1)
                 return (
                   <p className="text-xs text-ink/60">
-                    {left} left to show up{" "}
-                    <button
-                      onClick={() => handleGiveMoreTime(upNext)}
-                      disabled={!!busy}
-                      aria-label={`Give ${upNext.user.name || "this party"} 5 more minutes`}
-                      className="font-mono uppercase tracking-widest text-accent hover:underline underline-offset-4 disabled:opacity-50"
-                    >
-                      +5 min
-                    </button>
+                    {agoText}
+                    {timerOnHold(upNext) && " · timer on hold while paused"}
+                    {left && (
+                      <>
+                        {" · "}{left} left to show up{" "}
+                        <button
+                          onClick={() => handleGiveMoreTime(upNext)}
+                          disabled={!!busy}
+                          aria-label={`Give ${upNext.user.name || "this party"} 5 more minutes`}
+                          className="font-mono uppercase tracking-widest text-accent hover:underline underline-offset-4 disabled:opacity-50"
+                        >
+                          +5 min
+                        </button>
+                      </>
+                    )}
                   </p>
                 )
               })()}
@@ -655,7 +715,11 @@ export function OwnerConsole({
                         {" · "}{p.response === "ON_MY_WAY" ? "on the way" : "running late"}
                       </span>
                     )}
-                    {left && <span className="text-ink/60">{" · "}{left} left</span>}
+                    <span className="text-ink/60">
+                      {" · "}{calledAgo(p)}
+                      {left && <>{" · "}{left} left</>}
+                      {timerOnHold(p) && " · timer on hold"}
+                    </span>
                   </p>
                   <div className="flex items-center gap-2">
                     <Button

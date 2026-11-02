@@ -12,7 +12,10 @@ export async function PATCH(
   if (result instanceof NextResponse) return result
 
   const { lineId } = await params
-  const body = await req.json() // price: null to remove from sale
+  const body = await req.json().catch(() => null) // price: null to remove from sale
+  if (!body || typeof body !== "object") {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 })
+  }
   const price = typeof body?.price === "number" ? Math.round(body.price * 100) / 100 : body?.price
 
   // Validate price if provided

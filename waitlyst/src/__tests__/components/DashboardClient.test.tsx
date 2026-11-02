@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, onTestFinished } from "vitest"
 import { render, screen, fireEvent, waitFor } from "@testing-library/react"
 import { DashboardClient } from "@/app/dashboard/DashboardClient"
+import { useToast } from "@/components/ui/Toast"
 
 // Mock fetch
 global.fetch = vi.fn()
@@ -169,6 +170,22 @@ describe("DashboardClient", () => {
     fireEvent.click(screen.getByText("Copy Link"))
 
     expect(mockWriteText).toHaveBeenCalled()
+  })
+
+  it("doesn't claim the link was copied when the clipboard is blocked", async () => {
+    const addToast = vi.fn()
+    vi.mocked(useToast).mockReturnValue({ addToast } as unknown as ReturnType<typeof useToast>)
+    onTestFinished(() => { vi.mocked(useToast).mockReset() })
+    mockWriteText.mockRejectedValueOnce(new Error("NotAllowedError"))
+    render(<DashboardClient createdLines={mockCreatedLines} positions={[]} />)
+
+    openMenuForLine1()
+    fireEvent.click(screen.getByText("Copy Link"))
+
+    await waitFor(() => {
+      expect(addToast).toHaveBeenCalledWith(expect.stringContaining("Couldn't copy automatically"), "error")
+    })
+    expect(addToast).not.toHaveBeenCalledWith("Link copied to clipboard!", "success")
   })
 
   describe("Stats Modal", () => {

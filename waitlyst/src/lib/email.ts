@@ -43,6 +43,15 @@ export function htmlToText(html: string): string {
     .trim()
 }
 
+export interface SendEmailOptions {
+  /**
+   * Same key, same email: Resend drops a repeat within 24 hours. Lets a
+   * retry after an ambiguous failure (a timeout after Resend accepted it)
+   * go out safely without the person getting it twice.
+   */
+  idempotencyKey?: string
+}
+
 /**
  * Send an email via Resend. Fire-and-forget — never throws.
  * Returns true if sent, false if skipped or errored.
@@ -50,7 +59,8 @@ export function htmlToText(html: string): string {
 export async function sendEmail(
   to: string,
   subject: string,
-  html: string
+  html: string,
+  { idempotencyKey }: SendEmailOptions = {}
 ): Promise<boolean> {
   if (!resend || !emailEnabled()) {
     return false
@@ -59,13 +69,16 @@ export async function sendEmail(
   try {
     // The client reports API errors (unverified domain, bad address) in the
     // result rather than throwing
-    const { error } = await resend.emails.send({
+    const payload = {
       from: process.env.EMAIL_FROM!,
       to,
       subject,
       html,
       text: htmlToText(html),
-    })
+    }
+    const { error } = idempotencyKey
+      ? await resend.emails.send(payload, { idempotencyKey })
+      : await resend.emails.send(payload)
     if (error) {
       console.error("Resend refused email:", error)
       return false
