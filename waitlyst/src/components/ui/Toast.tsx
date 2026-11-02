@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, useCallback, ReactNode } from "react"
+import { createContext, useContext, useState, useCallback, useRef, ReactNode } from "react"
 
 type ToastType = "success" | "error" | "info" | "warning"
 
@@ -24,19 +24,32 @@ export function useToast() {
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])
+  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+
+  const removeToast = useCallback((id: string) => {
+    clearTimeout(timers.current.get(id))
+    timers.current.delete(id)
+    setToasts((prev) => prev.filter((t) => t.id !== id))
+  }, [])
+
+  /** Errors need reading and acting on, so they stay up longer */
+  const startTimer = useCallback((id: string, type: ToastType) => {
+    clearTimeout(timers.current.get(id))
+    timers.current.set(id, setTimeout(() => removeToast(id), type === "error" ? 9000 : 5000))
+  }, [removeToast])
+
+  // Hovering or focusing a toast holds it, so slow readers and people
+  // panning a zoomed screen don't lose it mid-sentence
+  const holdToast = useCallback((id: string) => {
+    clearTimeout(timers.current.get(id))
+    timers.current.delete(id)
+  }, [])
 
   const addToast = useCallback((message: string, type: ToastType = "info") => {
     const id = crypto.randomUUID()
     setToasts((prev) => [...prev, { id, message, type }])
-    // Errors need reading and acting on, so they stay up longer
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id))
-    }, type === "error" ? 9000 : 5000)
-  }, [])
-
-  const removeToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id))
-  }, [])
+    startTimer(id, type)
+  }, [startTimer])
 
   const icons: Record<ToastType, string> = {
     success: "M5 13l4 4L19 7",
@@ -56,6 +69,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     return (
       <div
         key={toast.id}
+        onMouseEnter={() => holdToast(toast.id)}
+        onMouseLeave={() => startTimer(toast.id, toast.type)}
+        onFocus={() => holdToast(toast.id)}
+        onBlur={() => startTimer(toast.id, toast.type)}
         className={`pointer-events-auto flex items-center gap-3 px-4 py-3 text-white text-sm font-medium animate-slide-in-right ${styles[toast.type]}`}
       >
         <svg className="w-5 h-5 flex-shrink-0" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">

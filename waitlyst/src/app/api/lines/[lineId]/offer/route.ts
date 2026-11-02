@@ -180,6 +180,14 @@ export async function POST(
         { status: 429 }
       )
     }
+    // Mid-accept (claimed, checkout not attached yet): resetting it to PENDING
+    // now would leave a live checkout at the old price that no one can pay
+    if (existingOffer?.status === "ACCEPTED" && !existingOffer.transactionId) {
+      return NextResponse.json(
+        { error: "They're accepting your offer right now. Refresh in a moment." },
+        { status: 409 }
+      )
+    }
     if (existingOffer?.status === "ACCEPTED" && existingOffer.transactionId) {
       const awaitingPayment = await prisma.transaction.findFirst({
         where: { id: existingOffer.transactionId, status: "PENDING" },

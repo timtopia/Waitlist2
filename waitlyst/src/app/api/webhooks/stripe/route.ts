@@ -111,11 +111,16 @@ export async function POST(req: Request) {
 
         if (transactionId) {
           try {
+            const fromOffer = !!session.metadata?.offerId
             await abandonPendingTransaction(transactionId, {
               offerId: session.metadata?.offerId ?? null,
               expireSession: false,
-              // Nobody paid before the window closed
-              byBuyer: true,
+              // A checkout the buyer started and didn't pay counts against
+              // them. One the seller started by accepting an offer doesn't:
+              // the buyer may simply have been away. That offer is closed
+              // rather than reopened.
+              byBuyer: !fromOffer,
+              ...(fromOffer && { offerOutcome: "expire" as const }),
             })
           } catch (error) {
             console.error(`Webhook: Failed to clean up expired session for transaction ${transactionId}:`, error)

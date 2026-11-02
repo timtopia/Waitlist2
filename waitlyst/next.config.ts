@@ -5,6 +5,23 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.resolve(__dirname),
   },
+  // Stop other sites from framing the app (clickjacking on owner/guest
+  // actions). Only the public embed widget may be framed anywhere.
+  async headers() {
+    return [
+      {
+        source: "/((?!lines/[^/]+/embed).*)",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+        ],
+      },
+      {
+        source: "/lines/:lineId/embed",
+        headers: [{ key: "Content-Security-Policy", value: "frame-ancestors *" }],
+      },
+    ];
+  },
   images: {
     remotePatterns: [
       {

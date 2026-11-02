@@ -167,6 +167,9 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
     transactionId: string
   ) {
     setActionLoading(transactionId)
+    // Restored if the request fails: a re-fetch can fail too when offline,
+    // which used to leave "Captured" showing for money that wasn't
+    const snapshot = data
 
     const target = data?.transactions.find((t) => t.id === transactionId)
     const wasStuck = target?.status === "PENDING"
@@ -228,14 +231,15 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
           "success"
         )
       } else {
-        const err = await res.json()
+        const err = await res.json().catch(() => ({}))
         addToast(err.error || "Action failed", "error")
         // Revert optimistic update
+        setData(snapshot)
         await fetchData()
       }
     } catch {
-      addToast("Action failed", "error")
-      await fetchData()
+      addToast("No connection -- nothing was changed. Try again.", "error")
+      setData(snapshot)
     } finally {
       setActionLoading(null)
     }
@@ -244,6 +248,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
   async function handleBulkAction(action: "capture-all" | "cancel-all-unfulfilled") {
     setBulkConfirm(null)
     setActionLoading(action)
+    const snapshot = data
 
     // Optimistic update
     setData((prev) => {
@@ -307,13 +312,14 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
         // Refresh to get accurate server state
         await fetchData()
       } else {
-        const err = await res.json()
+        const err = await res.json().catch(() => ({}))
         addToast(err.error || "Bulk action failed", "error")
+        setData(snapshot)
         await fetchData()
       }
     } catch {
-      addToast("Bulk action failed", "error")
-      await fetchData()
+      addToast("No connection -- nothing was changed. Try again.", "error")
+      setData(snapshot)
     } finally {
       setActionLoading(null)
     }
@@ -484,7 +490,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
       <ConfirmModal
         open={bulkConfirm === "capture-all"}
         title="Capture All Payments"
-        message={`This will capture payment for all ${completedUnsettled.length} pending transaction(s), including unfulfilled buyers. Total: ${formatCurrency(summary.pendingAmount)}.`}
+        message={`This will collect all ${completedUnsettled.length} payment(s) still on hold, including buyers you haven't ${isDrop ? "served" : "seated"} yet. Total: ${formatCurrency(summary.pendingAmount)}.`}
         confirmLabel="Capture All"
         variant="primary"
         isLoading={actionLoading === "capture-all"}

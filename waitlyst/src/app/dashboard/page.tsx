@@ -65,6 +65,8 @@ export default async function DashboardPage() {
         ...line,
         createdAt: line.createdAt.toISOString(),
         updatedAt: line.updatedAt.toISOString(),
+        opensAt: line.opensAt?.toISOString() ?? null,
+        closesAt: line.closesAt?.toISOString() ?? null,
         frontPerson: line.positions[0]
           ? { ...line.positions[0], calledAt: line.positions[0].calledAt?.toISOString() ?? null }
           : null,

@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/Card"
 import { useToast } from "@/components/ui/Toast"
 import { ConfirmModal } from "@/components/ui/ConfirmModal"
 import { calcFees } from "@/lib/fees"
+import { ImageUrlPreview } from "@/components/ImageUrlPreview"
 
 interface LineData {
   id: string
@@ -516,6 +517,7 @@ export function EditLineClient({
                       onChange={(e) => setProductImage(e.target.value)}
                       className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                     />
+                    <ImageUrlPreview url={productImage} />
                   </div>
                   <div>
                     <label htmlFor="productPrice" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
@@ -666,8 +668,9 @@ export function EditLineClient({
                       {parseFloat(ownerFeePercent) > 0 && needsPayoutSetup && (
                         <p className="text-xs text-amber-700 mt-1">
                           Connect a payout account to receive this fee. Anything you earn before then is held and sent once you connect.{" "}
-                          <Link href="/profile" className="underline underline-offset-4 hover:text-ink">
-                            Set up payouts
+                          {/* New tab: following it here would throw away unsaved edits */}
+                          <Link href="/profile" target="_blank" rel="noopener" className="underline underline-offset-4 hover:text-ink">
+                            Set up payouts (opens in a new tab)
                           </Link>
                         </p>
                       )}

@@ -948,8 +948,8 @@ describe("Position Transactions API", () => {
     })
     mockPrisma.transaction.findMany
       .mockResolvedValueOnce([
-        { id: "txn-1", amount: 50, status: "COMPLETED", buyerId: "user-1" },
-        { id: "txn-2", amount: 30, status: "COMPLETED", buyerId: "user-1" },
+        { id: "txn-1", amount: 50, ownerFee: 5, platformFee: 5, status: "COMPLETED", buyerId: "user-1" },
+        { id: "txn-2", amount: 30, ownerFee: 0, platformFee: 0, status: "COMPLETED", buyerId: "user-1" },
       ])
       .mockResolvedValueOnce([
         { id: "txn-3", amount: 20, status: "COMPLETED", buyerId: "buyer-1", sellerId: "user-1" },
@@ -965,9 +965,10 @@ describe("Position Transactions API", () => {
     expect(response.status).toBe(200)
 
     const data = await response.json()
-    expect(data.totalPaid).toBe(80)
+    // What they actually paid, fees included
+    expect(data.totalPaid).toBe(90)
     expect(data.totalReceived).toBe(20)
-    expect(data.netAmount).toBe(-60)
+    expect(data.netAmount).toBe(-70)
     expect(data.asBuyer.length).toBe(2)
     expect(data.asSeller.length).toBe(1)
     expect(data.downstreamBuyers.length).toBe(1)

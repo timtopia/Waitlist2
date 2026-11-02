@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
+import { lineCreateLimiter } from "@/lib/rate-limit"
 
 export async function POST(
   req: Request,
@@ -11,6 +12,14 @@ export async function POST(
   const result = await requireLineOwner(lineId)
   if (result instanceof NextResponse) return result
 
+  // Same limit as creating a line, or duplicate-and-resume could flood Browse
+  if (!lineCreateLimiter().check(result.userId).success) {
+    return NextResponse.json(
+      { error: "Too many new lines at once. Please try again in a minute." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    )
+  }
+
   try {
     const source = result.line
     // Copy every setting the owner chose, so a copy behaves like the original
@@ -20,7 +29,8 @@ export async function POST(
     // shows up in Browse.
     const newLine = await prisma.line.create({
       data: {
-        name: `${source.name} (Copy)`,
+        // Stay within the 100-character name limit, even for a copy of a copy
+        name: `${source.name.slice(0, 93)} (Copy)`,
         description: source.description,
         createdById: result.userId,
         isPublic: source.isPublic,

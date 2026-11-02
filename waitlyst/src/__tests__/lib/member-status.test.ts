@@ -157,8 +157,23 @@ describe("diffMemberStatus", () => {
   it("tells a seller their spot sold when they move back a place", () => {
     const prev = makeLine([{ id: "a" }, { id: "me" }, { id: "buyer" }])
     const next = makeLine([{ id: "a" }, { id: "buyer" }, { id: "me" }])
-    expect(diffMemberStatus(prev, next, "me")).toEqual([{ kind: "sold", to: 3 }])
-    expect(describeMemberEvent({ kind: "sold", to: 3 }, "Drop")).toMatchObject({ title: "Your spot sold", toast: true })
+    expect(diffMemberStatus(prev, next, "me")).toEqual([{ kind: "sold", to: 3, ahead: 2 }])
+    expect(describeMemberEvent({ kind: "sold", to: 3, ahead: 2 }, "Drop")).toMatchObject({ title: "Your spot sold", toast: true })
+  })
+
+  it("counts only unserved people ahead in the sold alert", () => {
+    expect(describeMemberEvent({ kind: "sold", to: 7, ahead: 3 }, "Diner", true)?.body).toContain("#4")
+  })
+
+  it("tells a called guest when the host gives them more time", () => {
+    const prev = makeLine([{ id: "me", called: true }])
+    const next = makeLine([{ id: "me", called: true }])
+    next.positions[0].graceMinutes = 5
+    expect(diffMemberStatus(prev, next, "me")).toEqual([{ kind: "grace", minutes: 5 }])
+    expect(describeMemberEvent({ kind: "grace", minutes: 5 }, "Diner", true)).toMatchObject({
+      title: "More time to show up",
+      toast: true,
+    })
   })
 
   it("reports pause and resume", () => {

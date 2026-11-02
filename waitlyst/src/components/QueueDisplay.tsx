@@ -13,6 +13,7 @@ import { calcFees } from "@/lib/fees"
 import { OFFER_COOLDOWN_MS } from "@/lib/offers"
 import { formatWaitTime } from "@/lib/wait-time"
 import { MAX_PARTY_SIZE } from "@/lib/capacity"
+import { useNotifications } from "@/hooks/useNotifications"
 
 interface Position {
   id: string
@@ -199,6 +200,14 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
   // scrolled elsewhere (and the accepted one has a payment clock), so toast
   // those changes too. The first load just seeds the map.
   const prevSentStatuses = useRef<Map<string, SwapOffer["status"]> | null>(null)
+  // The seller hears when an accepted offer falls through, too
+  const prevReceivedStatuses = useRef<Map<string, SwapOffer["status"]> | null>(null)
+  const { sendNotification } = useNotifications()
+  /** Offers expire and payment windows close: reach people in other tabs too */
+  const offerAlert = useCallback((message: string, type: "info" | "success" | "warning") => {
+    sendNotification("Swap update", { body: message, tag: `waitlyst-${lineId}-offer` })
+    if (document.visibilityState === "visible") addToast(message, type)
+  }, [sendNotification, addToast, lineId])
   const fetchOffers = useCallback(async () => {
     if (!session?.user?.id) return
     try {
@@ -213,9 +222,9 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
           for (const o of pending) {
             const prev = seen.get(o.id)
             if (prev === undefined) {
-              addToast(`New swap offer: ${formatCurrency(o.amount)}. See your spot in the line below.`, "info")
+              offerAlert(`New swap offer: ${formatCurrency(o.amount)}. See your spot in the line below.`, "info")
             } else if (o.amount > prev) {
-              addToast(`Offer raised to ${formatCurrency(o.amount)}. See your spot in the line below.`, "info")
+              offerAlert(`Offer raised to ${formatCurrency(o.amount)}. See your spot in the line below.`, "info")
             }
           }
         }
@@ -227,24 +236,54 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
         const prevSent = prevSentStatuses.current
         if (prevSent) {
           for (const o of sent) {
-            if (prevSent.get(o.id) !== "PENDING") continue
-            if (o.status === "ACCEPTED" && o.awaitingPayment) {
-              addToast(`Your ${formatCurrency(o.amount)} offer was accepted. Pay within 30 min to take their spot.`, "success")
+            const was = prevSent.get(o.id)
+            if (!was || was === o.status) continue
+            const amount = formatCurrency(o.amount)
+            if (was === "PENDING" && o.status === "ACCEPTED" && o.awaitingPayment) {
+              offerAlert(`Your ${amount} offer was accepted. Pay within 30 min to take their spot.`, "success")
             } else if (o.status === "DECLINED") {
-              addToast(`Your ${formatCurrency(o.amount)} offer was declined.`, "info")
+              offerAlert(`Your ${amount} offer was declined.`, "info")
+            } else if (o.status === "EXPIRED") {
+              // Expired offers used to just vanish when the person ahead changed
+              offerAlert(
+                was === "ACCEPTED"
+                  ? `Your ${amount} swap was called off -- it wasn't paid in time or couldn't go through. You weren't charged.`
+                  : `Your ${amount} offer expired -- the spot ahead of you changed or no one answered in time.`,
+                "info"
+              )
+            } else if (was === "ACCEPTED" && o.status === "PENDING") {
+              offerAlert(`The payment window for your ${amount} offer closed. You weren't charged.`, "info")
             }
+            // ACCEPTED -> EXPIRED (window lapsed) is covered by the EXPIRED case
           }
         }
         prevSentStatuses.current = new Map(sent.map((o) => [o.id, o.status]))
+
+        const received = data.received as SwapOffer[]
+        const prevReceived = prevReceivedStatuses.current
+        if (prevReceived) {
+          for (const o of received) {
+            if (prevReceived.get(o.id) !== "ACCEPTED") continue
+            if (o.status === "PENDING" || o.status === "EXPIRED") {
+              offerAlert(`They didn't pay for the ${formatCurrency(o.amount)} swap in time, so it's off. You keep your spot.`, "info")
+            } else if (o.status === "WITHDRAWN") {
+              offerAlert(`They backed out of the ${formatCurrency(o.amount)} swap. You keep your spot.`, "info")
+            }
+          }
+        }
+        prevReceivedStatuses.current = new Map(received.map((o) => [o.id, o.status]))
       }
     } catch {
       // Silently fail
     }
-  }, [lineId, session?.user?.id, addToast])
+  }, [lineId, session?.user?.id, offerAlert])
 
+  // Seated parties stay listed until cleared, so seating doesn't change the
+  // length: watch the served count too or the estimate never catches up
+  const servedCount = positions.filter((p) => p.fulfilled).length
   useEffect(() => {
     fetchWaitTime()
-  }, [fetchWaitTime, positions.length])
+  }, [fetchWaitTime, positions.length, servedCount])
 
   useEffect(() => {
     fetchOffers()
@@ -258,7 +297,10 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
   useEffect(() => {
     if (!viewerInLine) return
     const interval = setInterval(() => {
-      if (document.visibilityState === "visible") fetchOffers()
+      // With notifications on, a hidden tab still checks: an offer or a
+      // 30-minute payment window shouldn't wait for them to come back
+      const notifying = "Notification" in window && Notification.permission === "granted"
+      if (document.visibilityState === "visible" || notifying) fetchOffers()
     }, 10000)
     return () => clearInterval(interval)
   }, [fetchOffers, viewerInLine])
@@ -841,7 +883,10 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                 <div className="bg-paper border border-rule p-3">
                   <p className="text-sm text-ink/60">
                     <span className="font-medium text-ink">Paid:</span> <span className="font-mono tabular-nums">{formatCurrency(removalModal.transactionInfo.totalPaid)}</span>
-                    <span className="text-ink/60 ml-1">({removalModal.transactionInfo.asBuyer.length} purchases)</span>
+                    <span className="text-ink/60 ml-1">({(() => {
+                      const n = removalModal.transactionInfo.asBuyer.filter((t) => t.status === "COMPLETED").length
+                      return `${n} purchase${n === 1 ? "" : "s"}, incl. fees`
+                    })()})</span>
                   </p>
                   <p className="text-sm text-ink/60">
                     <span className="font-medium text-ink">Received:</span> <span className="font-mono tabular-nums">{formatCurrency(removalModal.transactionInfo.totalReceived)}</span>
@@ -1165,7 +1210,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
             </div>
           )}
 
-          <div className="border border-rule divide-y divide-rule">
+          <div className="border border-rule divide-y divide-rule" role="list" aria-label="People in line">
           {positions.map((pos) => {
             const isCurrentUser = pos.user.id === session?.user?.id
             const isLocked = pos.lockedUntil && new Date(pos.lockedUntil) > new Date()
@@ -1189,6 +1234,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
             return (
               <div
                 key={pos.id}
+                role="listitem"
                 id={isCurrentUser ? "my-spot" : undefined}
                 onClick={canSelect ? () => toggleSelection(pos.id) : undefined}
                 className={`flex flex-col px-4 py-3 scroll-mt-20 ${leftBorder} ${
@@ -1326,7 +1372,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                               value={pos.partySize ?? 1}
                               onChange={(e) => handlePartySize(Number(e.target.value), isCurrentUser ? undefined : pos.id)}
                               disabled={loadingAction === (isCurrentUser ? "party-size" : `party-size-${pos.id}`)}
-                              className="border border-rule bg-white px-1 py-0.5 text-ink"
+                              className="border border-rule bg-white px-2 py-0.5 min-h-11 sm:min-h-0 text-ink"
                               aria-label={isCurrentUser ? "Your party size" : `Party size for ${pos.user.name || "this party"}`}
                             >
                               {Array.from({ length: MAX_PARTY_SIZE }, (_, i) => i + 1).map((n) => (
@@ -1360,7 +1406,7 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                             value={pos.quotedMinutes ?? ""}
                             onChange={(e) => handleQuote(pos.id, e.target.value ? Number(e.target.value) : null)}
                             disabled={loadingAction === `quote-${pos.id}`}
-                            className="border border-rule bg-white px-1 py-0.5 text-ink"
+                            className="border border-rule bg-white px-2 py-0.5 min-h-11 sm:min-h-0 text-ink"
                             aria-label={`Quoted wait for ${pos.user.name || "this party"}`}
                           >
                             <option value="">--</option>
@@ -1476,6 +1522,10 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                       {isPaused ? (
                         <p className="text-xs text-ink/60 mt-2">
                           Swaps are paused. You can answer this when the line resumes.
+                        </p>
+                      ) : isLocked ? (
+                        <p className="text-xs text-ink/60 mt-2">
+                          A swap for your spot is in progress right now. You can answer this once it finishes.
                         </p>
                       ) : allowResale && !offMarket(pos) && (
                         <div className="flex items-center gap-2 mt-2">
@@ -1815,6 +1865,10 @@ export function QueueDisplay({ lineId, positions, onRefresh, isCreator = false, 
                         {parseFloat(offerAmount) >= 1 && (
                           <span className="w-full text-xs text-ink/60">
                             They receive {formatCurrency(parseFloat(offerAmount))}; you&apos;d pay {formatCurrency(buyerTotal(parseFloat(offerAmount)))} incl. fees if they accept.
+                            {" "}If they do, both spots are held and you have 30 min to pay.
+                            {stripeEnabled && (isRestaurant
+                              ? " Your card is held, not charged, until you're seated."
+                              : " Once paid, the purchase is final.")}
                           </span>
                         )}
                         {pos.askingPrice != null && parseFloat(offerAmount) >= pos.askingPrice && (
@@ -1903,7 +1957,7 @@ function NoteField({
           ;(e.target as HTMLInputElement).blur()
         }
       }}
-      className="mt-1 w-full max-w-xs border border-rule bg-white px-2 py-1 text-xs text-ink placeholder:text-ink/30 focus:outline-none focus:border-ink disabled:opacity-50"
+      className="mt-1 w-full max-w-xs border border-rule bg-white px-2 py-1 text-xs text-ink placeholder:text-ink/60 focus:outline-none focus:border-ink disabled:opacity-50"
     />
   )
 }

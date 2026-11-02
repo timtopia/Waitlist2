@@ -12,9 +12,19 @@ describe("BarChart", () => {
   it("names every bar for keyboard and screen-reader users and shows a tooltip on focus", () => {
     render(<BarChart title="Busiest hours" bars={bars} labelHeader="Hour" valueHeader="Joins" />)
 
-    const bar = screen.getByRole("button", { name: "11a: 7 joins" })
+    const bar = screen.getByRole("img", { name: "11a: 7 joins" })
     fireEvent.focus(bar)
     expect(screen.getByRole("status")).toHaveTextContent("11a · 7 joins")
+  })
+
+  it("is one Tab stop, with arrow keys moving between bars", () => {
+    render(<BarChart title="Busiest hours" bars={bars} labelHeader="Hour" valueHeader="Joins" />)
+
+    const focusable = screen.getAllByRole("img").filter((el) => el.getAttribute("tabindex") === "0")
+    expect(focusable).toHaveLength(1)
+    fireEvent.keyDown(focusable[0], { key: "ArrowRight" })
+    const now = screen.getAllByRole("img").filter((el) => el.getAttribute("tabindex") === "0")
+    expect(now[0]).not.toBe(focusable[0])
   })
 
   it("switches to a table of the same numbers", () => {

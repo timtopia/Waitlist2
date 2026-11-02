@@ -120,6 +120,20 @@ export function parseNote(value: unknown): string | null | { error: string } {
 }
 
 /**
+ * A display name shown to other people (in the line, "Now serving", embeds).
+ * Control, zero-width and bidi-override characters are stripped so a name
+ * can't hide text or flip what's around it, and runs of whitespace collapse.
+ * Returns the cleaned name, or an error to show.
+ */
+export function cleanDisplayName(value: unknown, label = "Name"): string | { error: string } {
+  if (typeof value !== "string") return { error: `${label} must be text` }
+  const name = value.replace(/[\p{Cc}\p{Cf}]/gu, "").replace(/\s+/g, " ").trim()
+  if (name.length === 0 || name.length > 50) return { error: `${label} must be between 1 and 50 characters` }
+  if (!/[\p{L}\p{N}]/u.test(name)) return { error: `${label} needs at least one letter or number` }
+  return name
+}
+
+/**
  * JSON for an inline <script> (JSON-LD). JSON.stringify leaves "<" alone, so
  * a line named "</script><script>..." would close the tag and run as code on
  * every visitor's page. Escaping <, > and & keeps it inert and still valid JSON.

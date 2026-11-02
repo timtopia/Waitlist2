@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { getStripe } from "@/lib/stripe"
 import { rateLimit } from "@/lib/rate-limit"
+import { cleanDisplayName } from "@/lib/validate"
 import { validateBoolean } from "@/lib/validate"
 import { getPlatformFeePercent } from "@/lib/fees"
 
@@ -72,12 +73,9 @@ export async function PATCH(req: Request) {
 
     // Handle name update (1-50 chars)
     if (body.name !== undefined) {
-      const name = typeof body.name === "string" ? body.name.trim() : ""
-      if (name.length === 0 || name.length > 50) {
-        return NextResponse.json(
-          { error: "Name must be between 1 and 50 characters" },
-          { status: 400 }
-        )
+      const name = cleanDisplayName(body.name)
+      if (typeof name !== "string") {
+        return NextResponse.json({ error: name.error }, { status: 400 })
       }
       data.name = name
     }

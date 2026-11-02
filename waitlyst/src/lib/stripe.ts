@@ -244,7 +244,17 @@ export async function expireCheckoutSession(sessionId: string | null | undefined
  */
 export async function abandonPendingTransaction(
   transactionId: string,
-  opts: { offerId?: string | null; expireSession?: boolean; byBuyer?: boolean } = {}
+  opts: {
+    offerId?: string | null
+    expireSession?: boolean
+    byBuyer?: boolean
+    /**
+     * "expire" closes the offer instead of reopening it: an accepted offer
+     * whose payment window lapsed shouldn't be accepted again and again,
+     * locking the buyer's spot each time
+     */
+    offerOutcome?: "reopen" | "expire"
+  } = {}
 ): Promise<boolean> {
   const transaction = await prisma.transaction.findUnique({ where: { id: transactionId } })
   if (!transaction) return false
@@ -264,9 +274,12 @@ export async function abandonPendingTransaction(
   if (!abandoned) return false
 
   if (opts.offerId !== null) {
+    const offerData = opts.offerOutcome === "expire"
+      ? { status: "EXPIRED" as const, transactionId: null }
+      : { status: "PENDING" as const, transactionId: null }
     const reopened = await prisma.swapOffer.updateMany({
       where: { transactionId, status: "ACCEPTED" },
-      data: { status: "PENDING", transactionId: null },
+      data: offerData,
     })
     // Checkouts started before offers recorded their transaction only carry
     // the offer id in the Stripe session metadata.
@@ -283,7 +296,7 @@ export async function abandonPendingTransaction(
     if (reopened.count === 0 && offerId) {
       await prisma.swapOffer.updateMany({
         where: { id: offerId, status: "ACCEPTED" },
-        data: { status: "PENDING", transactionId: null },
+        data: offerData,
       })
     }
   }

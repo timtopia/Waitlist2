@@ -41,11 +41,15 @@ function buildDescription(line: PageLine, cleared: number) {
   let statusText = ""
   const now = new Date()
   if (line.opensAt && now < new Date(line.opensAt)) {
-    statusText = `Opens ${new Date(line.opensAt).toLocaleDateString(undefined, {
+    // Rendered on the server, whose clock is usually UTC: name the zone, or
+    // a 6 PM Pacific opening previews as "2 AM" with no hint why
+    statusText = `Opens ${new Date(line.opensAt).toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
       hour: "numeric",
       minute: "2-digit",
+      timeZone: "UTC",
+      timeZoneName: "short",
     })}`
   } else if (line.closesAt && now > new Date(line.closesAt)) {
     statusText = "Closed"

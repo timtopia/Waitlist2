@@ -14,6 +14,8 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
   const [showQr, setShowQr] = useState(false)
   const [showEmbed, setShowEmbed] = useState(false)
   const [embedCopied, setEmbedCopied] = useState(false)
+  // Clipboard can be blocked (permissions, insecure context): never claim a copy that didn't happen
+  const [copyFailed, setCopyFailed] = useState(false)
   const [qrSvg, setQrSvg] = useState<string | null>(null)
   const [qrLoading, setQrLoading] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -66,14 +68,25 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
   const embedCode = `<iframe src="${embedUrl}" title="${embedTitle}" width="350" height="450" frameborder="0" style="border:1px solid #d8d4ca;"></iframe>`
   const directLink = `<a href="${url}">Join the line on Waitlyst</a>`
 
-  function handleCopy() {
-    navigator.clipboard.writeText(url)
+  async function copyText(text: string): Promise<boolean> {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopyFailed(false)
+      return true
+    } catch {
+      setCopyFailed(true)
+      return false
+    }
+  }
+
+  async function handleCopy() {
+    if (!(await copyText(url))) return
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
 
-  function handleCopyEmbed() {
-    navigator.clipboard.writeText(embedCode)
+  async function handleCopyEmbed() {
+    if (!(await copyText(embedCode))) return
     setEmbedCopied(true)
     setTimeout(() => setEmbedCopied(false), 2000)
   }
@@ -100,6 +113,8 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
         const svg = await res.text()
         setQrSvg(svg)
       }
+    } catch {
+      // Offline: the QR panel stays empty and can be reopened
     } finally {
       setQrLoading(false)
     }
@@ -221,6 +236,11 @@ export function ShareLine({ lineId, lineName }: ShareLineProps) {
             <p className="sr-only" aria-live="polite">
               {copied ? "Link copied to clipboard" : embedCopied ? "Embed code copied to clipboard" : ""}
             </p>
+            {copyFailed && (
+              <p className="text-xs text-accent mb-3" role="alert">
+                Couldn&apos;t copy automatically. Select the text and copy it yourself.
+              </p>
+            )}
 
             {/* Share buttons */}
             <div className="flex items-center gap-2 mb-3">

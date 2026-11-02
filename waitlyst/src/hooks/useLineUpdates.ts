@@ -65,10 +65,19 @@ export function useLineUpdates(
     // Visibility and "online" also trigger polls; never run two at once, or a
     // slow older response could land after a newer one.
     let inFlight = false
+    // Back off after errors and honor Retry-After: at a venue where every
+    // guest shares one IP, polling at full speed through a rate limit keeps
+    // everyone limited and nobody sees their turn
+    let skipUntil = 0
+    let failures = 0
+    const backOff = () => {
+      failures += 1
+      if (failures >= 2) skipUntil = Date.now() + Math.min(60_000, intervalMs * 2 ** (failures - 1))
+    }
 
     const poll = async () => {
       if (document.visibilityState === "hidden" && !pollWhenHidden) return
-      if (inFlight) return
+      if (inFlight || Date.now() < skipUntil) return
       inFlight = true
 
       try {
@@ -81,10 +90,19 @@ export function useLineUpdates(
         // A server error or a rate limit says nothing about the line; what's
         // shown is out of date, and someone relying on it to see their turn
         // coming shouldn't be told otherwise
-        if (res.status >= 500 || res.status === 429) {
+        if (res.status === 429) {
           setStale(true)
+          const retryAfter = Number(res.headers.get("Retry-After"))
+          skipUntil = Date.now() + (Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 60_000)
           return
         }
+        if (res.status >= 500) {
+          setStale(true)
+          backOff()
+          return
+        }
+        failures = 0
+        skipUntil = 0
         setStale(false)
         if (res.status === 304) return
         // The line was there and now isn't: the organizer deleted it. Say so
@@ -111,6 +129,7 @@ export function useLineUpdates(
         }
       } catch {
         setStale(true)
+        backOff()
       } finally {
         inFlight = false
       }
@@ -141,7 +160,10 @@ export function useLineUpdates(
     }
 
     // Catch up the moment the connection returns, not at the next tick
-    const handleOnline = () => poll()
+    const handleOnline = () => {
+      skipUntil = 0
+      poll()
+    }
     const handleOffline = () => setStale(true)
 
     document.addEventListener("visibilitychange", handleVisibilityChange)

@@ -3,18 +3,17 @@ import { sendDueLineReminders } from "@/lib/line-reminders"
 import { runAfterResponse } from "@/lib/after-response"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
-import { rateLimit } from "@/lib/rate-limit"
+import { rateLimit, lineCreateLimiter } from "@/lib/rate-limit"
 import { capacityView } from "@/lib/capacity"
 import { validateString, validateNumber, validateUrl, validateImageUrl } from "@/lib/validate"
 
-const createLimiter = rateLimit({ interval: 60_000, limit: 5 })
 const browseLimiter = rateLimit({ interval: 60_000, limit: 30 })
 
 export async function POST(req: Request) {
   const result = await requireAuth()
   if (result instanceof NextResponse) return result
 
-  const { success: allowed } = createLimiter.check(result.userId)
+  const { success: allowed } = lineCreateLimiter().check(result.userId)
   if (!allowed) {
     return NextResponse.json(
       { error: "Too many requests. Please try again later." },

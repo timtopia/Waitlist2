@@ -263,7 +263,10 @@ export function MemberStatusCard({
                 {response && (
                   <span className="text-xs text-ink/60">
                     {response === "RUNNING_LATE" && responseWindowMinutes
-                      ? "The host can see this, but your time is still running. Tap On my way when you head over to get more time."
+                      ? respondedAt
+                        // "On my way" only extends a call once: don't promise more
+                        ? "The host can see this, but your time is still running and you've already had your extra time. Ask the host if you need longer."
+                        : "The host can see this, but your time is still running. Tap On my way when you head over to get more time."
                       : `The host can see this${response === "ON_MY_WAY" && responseWindowMinutes ? ", and you get a little more time" : ""}.`}
                   </span>
                 )}

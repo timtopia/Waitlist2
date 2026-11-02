@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma"
 import { sendEmail } from "@/lib/email"
 import { positionCalledEmail, youreNextEmail } from "@/lib/email-templates"
 import { abandonPendingTransaction, getBaseUrl } from "@/lib/stripe"
+import { hostActionLimiter } from "@/lib/rate-limit"
 
 export async function POST(
   req: Request,
@@ -15,6 +16,14 @@ export async function POST(
 
   const result = await requireLineOwner(lineId)
   if (result instanceof NextResponse) return result
+
+  // Every call can email a guest: a busy host never needs 30 a minute
+  if (!hostActionLimiter().check(`call:${result.userId}`).success) {
+    return NextResponse.json(
+      { error: "Too many calls at once. Please wait a moment." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    )
+  }
 
   // A restaurant host seats whichever party fits the free table, so they may
   // name who to call. Everywhere else it's strictly the front of the line.
@@ -105,11 +114,16 @@ export async function POST(
     const lineUrl = `${getBaseUrl()}/lines/${lineId}`
     const isRestaurant = result.line.kind === "RESTAURANT"
     const calledUser = frontPosition.user
-    if (calledUser?.email && calledUser.emailNotifications) {
+    // "Call again" re-emails, but not more than once every couple of minutes,
+    // so repeated taps (or a script) can't flood someone's inbox
+    const recentlyEmailed =
+      !!frontPosition.calledAt && calledAt.getTime() - frontPosition.calledAt.getTime() < 2 * 60_000
+    if (calledUser?.email && calledUser.emailNotifications && !recentlyEmailed) {
       const { subject, html } = positionCalledEmail(userName, line.name, lineUrl, {
         isRestaurant: line.kind === "RESTAURANT",
-        // Walk-ins aren't skipped as no-shows, so they have no deadline
-        windowMinutes: calledUser.isWalkIn ? null : line.responseWindowMinutes,
+        // Walk-ins aren't skipped as no-shows, and a paused line holds the
+        // show-up clock, so neither gets a deadline
+        windowMinutes: calledUser.isWalkIn || !line.isActive ? null : line.responseWindowMinutes,
       })
       runAfterResponse(() => sendEmail(calledUser.email!, subject, html))
     }
