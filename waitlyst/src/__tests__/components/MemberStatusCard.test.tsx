@@ -35,7 +35,7 @@ describe("MemberStatusCard", () => {
     mockWaitTime(null)
     render(<MemberStatusCard {...baseProps} status={{ phase: "waiting", position: 2, ahead: 1 }} />)
     expect(screen.getByText("1 person ahead of you")).toBeInTheDocument()
-    expect(await screen.findByText(/once the organizer starts serving/)).toBeInTheDocument()
+    expect(await screen.findByText(/after the organizer has served a couple of people/)).toBeInTheDocument()
   })
 
   it("refetches the estimate as the line moves", async () => {
@@ -124,7 +124,7 @@ describe("MemberStatusCard", () => {
 
   it("tells a called restaurant party to give party size changes to the host", () => {
     render(<MemberStatusCard {...baseProps} isRestaurant status={{ phase: "called", position: 1, ahead: 0 }} />)
-    expect(screen.getByText("Party size changed? Tell the host at the stand. Add a note or leave")).toBeInTheDocument()
+    expect(screen.getByText("Party size changed? Tell the host at the stand. Add a note or leave.")).toBeInTheDocument()
   })
 
   it("marks the chosen response as pressed and locks both while one is sending", async () => {

@@ -14,7 +14,7 @@ interface Props {
 export default async function AnalyticsPage({ params }: Props) {
   const session = await auth()
   const { lineId } = await params
-  if (!session?.user?.id) redirect(`/api/auth/signin?callbackUrl=${encodeURIComponent(`/lines/${lineId}/analytics`)}`)
+  if (!session?.user?.id) redirect(`/signin?callbackUrl=${encodeURIComponent(`/lines/${lineId}/analytics`)}`)
 
   const line = await prisma.line.findUnique({
     where: { id: lineId },

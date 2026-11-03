@@ -367,7 +367,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
       ].filter(Boolean)
       return (
         <span className="inline-flex flex-col items-center">
-          <span className="font-mono text-xs uppercase tracking-widest text-green-700">Captured</span>
+          <span className="font-mono text-xs uppercase tracking-widest text-green-700">{isDrop ? "Collected" : "Captured"}</span>
           {waitingOn.length > 0 && (
             <span className="text-xs text-ink/60 mt-0.5" title="Sent automatically once they set up payouts">
               Holding {waitingOn.join(" and ")} until payout setup
@@ -511,15 +511,15 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
       />
       <ConfirmModal
         open={cancelConfirm !== null}
-        title={cancelConfirm?.status === "PENDING" ? "Cancel Checkout" : "Release Payment Hold"}
+        title={cancelConfirm?.status === "PENDING" ? "Cancel Checkout" : isDrop ? "Cancel This Payment" : "Release Payment Hold"}
         message={
           cancelConfirm?.status === "PENDING"
             ? `Cancel ${cancelConfirm.buyerName}'s unfinished checkout for ${formatCurrency(cancelConfirm.amount)} (started ${formatDeadline(cancelConfirm.createdAt)})? If they're still on the payment page, their payment will fail and both spots unlock.`
             : cancelConfirm
-              ? `Release the hold on ${cancelConfirm.buyerName}'s card for ${formatCurrency(cancelConfirm.amount)}? They won't be charged, ${cancelConfirm.sellerName} won't be paid for the spot${cancelConfirm.ownerFee > 0 ? `, and you give up your ${formatCurrency(cancelConfirm.ownerFee)} fee` : ""}. This can't be undone.`
+              ? `${isDrop ? `Cancel ${cancelConfirm.buyerName}'s uncollected payment of` : `Release the hold on ${cancelConfirm.buyerName}'s card for`} ${formatCurrency(cancelConfirm.amount)}? They won't be charged, ${cancelConfirm.sellerName} won't be paid for the spot${cancelConfirm.ownerFee > 0 ? `, and you give up your ${formatCurrency(cancelConfirm.ownerFee)} fee` : ""}. This can't be undone.`
               : ""
         }
-        confirmLabel={cancelConfirm?.status === "PENDING" ? "Cancel Checkout" : "Release Hold"}
+        confirmLabel={cancelConfirm?.status === "PENDING" ? "Cancel Checkout" : isDrop ? "Cancel Payment" : "Release Hold"}
         variant="danger"
         onConfirm={() => {
           const target = cancelConfirm
@@ -574,7 +574,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
           <CardContent className="py-4 flex items-center justify-between gap-4 flex-wrap">
             <div>
               <p className="font-medium text-ink">
-                You&apos;ve earned {formatCurrency(summary.ownerFeeCaptured + summary.ownerFeePending)} in fees from this line, but have no payout account connected.
+                You&apos;ve earned {formatCurrency(summary.ownerFeeCaptured)} in fees from this line{summary.ownerFeePending > 0 && ` (plus ${formatCurrency(summary.ownerFeePending)} ${isDrop ? "not yet collected" : "still on hold"})`}, but have no payout account connected.
               </p>
               <p className="text-sm text-ink/60 mt-0.5">
                 Connect one now so this (and future) earnings actually reach you.
@@ -633,7 +633,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
               <p className="font-mono text-lg tabular-nums text-green-700">
                 {formatCurrency(summary.capturedAmount)}
               </p>
-              <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Captured</p>
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/60">{isDrop ? "Collected" : "Captured"}</p>
             </div>
             <div className="text-center">
               <p className="font-mono text-lg tabular-nums text-amber-700">

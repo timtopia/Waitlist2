@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useCallback, useState } from "react"
+import { timeoutSignal } from "@/lib/timeout-signal"
 
 export type LineUpdateEvent = {
   type: "join" | "leave" | "price-change" | "swap" | "connected" | "delete" | "lock" | "poll-update"
@@ -15,9 +16,7 @@ const POLL_INTERVAL_MS = 30000 // 30 seconds (reduced from 5s to save DB compute
 const POLL_TIMEOUT_MS = 10_000
 
 function pollSignal(): AbortSignal | undefined {
-  return typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function"
-    ? AbortSignal.timeout(POLL_TIMEOUT_MS)
-    : undefined
+  return timeoutSignal(POLL_TIMEOUT_MS)
 }
 
 export interface LineUpdateOptions {

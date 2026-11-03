@@ -1027,7 +1027,7 @@ describe("QueueDisplay", () => {
       )
       render(<QueueDisplay lineId="line-1" positions={positions} onRefresh={mockOnRefresh} isCreator={true} isRestaurant={true} />)
 
-      fireEvent.click(screen.getAllByRole("button", { name: "Call again" })[0])
+      fireEvent.click(screen.getAllByRole("button", { name: /^Call again/ })[0])
       expect(screen.getByText(`Call Alice again? Their "Running late" reply and extra time will be cleared.`)).toBeInTheDocument()
       expect(fetch).not.toHaveBeenCalledWith("/api/lines/line-1/call-next", expect.anything())
     })

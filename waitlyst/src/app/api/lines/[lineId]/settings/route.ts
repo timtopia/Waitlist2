@@ -133,10 +133,12 @@ export async function PATCH(
       const fee: number = updates.ownerFeePercent
       // Offer fees are worked out when the offer is accepted, so raising the
       // fee would make buyers pay more than they agreed to. Wait until open
-      // offers are settled.
+      // offers are settled. Accepted offers already have their fee fixed on
+      // the transaction (and stay ACCEPTED after the swap), so only live
+      // pending offers count -- counting ACCEPTED blocked raises forever.
       if (fee > result.line.ownerFeePercent) {
         const openOffers = await prisma.swapOffer.count({
-          where: { lineId, status: { in: ["PENDING", "ACCEPTED"] } },
+          where: { lineId, status: "PENDING", expiresAt: { gt: new Date() } },
         })
         if (openOffers > 0) {
           return NextResponse.json(

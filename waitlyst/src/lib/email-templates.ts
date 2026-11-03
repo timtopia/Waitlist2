@@ -129,11 +129,16 @@ export function removedFromLineEmail(
   /** Why: removed by the host, called but didn't show, or the line closed */
   reason: "removed" | "missed" | "closed" = "removed",
   charged = false,
-  isRestaurant = false
+  isRestaurant = false,
+  /** What was given back, and whether a refund the host chose didn't go through */
+  money: { refundedAmount?: number; refundFailed?: boolean } = {}
 ): { subject: string; html: string } {
   const safeName = escapeHtml(userName)
   const safeLine = escapeHtml(lineName)
   const organizer = isRestaurant ? "host" : "organizer"
+  const refundedText = money.refundedAmount
+    ? money.refundedAmount.toLocaleString("en-US", { style: "currency", currency: "USD" })
+    : null
   // A line closing for the night isn't a mistake to contact anyone about
   const mistake = reason === "closed" ? "" : ` If you think this was a mistake, contact the ${organizer}.`
   const subject = `You're no longer in ${lineName}`
@@ -144,8 +149,10 @@ export function removedFromLineEmail(
       : reason === "closed"
         ? `<strong>${safeLine}</strong> has closed its line for now, so you're no longer in it. Sorry for the wait.`
         : `The ${organizer} of <strong>${safeLine}</strong> removed you from the line.`}</p>
-    <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">${refunded
-      ? "A payment of yours that was on hold for this line has been released or refunded."
+    <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">${money.refundFailed
+      ? `The ${organizer} chose to refund your payment, but it couldn't be processed yet, so your money hasn't been returned. The ${organizer} will follow up.`
+      : refunded
+      ? `Your ${refundedText ? `${refundedText} ` : ""}payment for this line has been returned to you. A hold on your card is released right away; a completed charge is refunded and can take a few days to appear.`
       : charged
         ? `You've been charged for the spot you bought -- the person you bought it from gave up their place, so it isn't refunded.${mistake}`
         : mistake.trim()}</p>
@@ -269,17 +276,43 @@ export function lineDeletedEmail(
   userName: string,
   lineName: string,
   hadPurchase: boolean,
-  browseUrl: string
+  browseUrl: string,
+  isRestaurant = false
 ): { subject: string; html: string } {
   const safeName = escapeHtml(userName)
   const safeLine = escapeHtml(lineName)
-  const subject = `${lineName} has been closed`
+  // "Deleted", not "closed": closing for the night reads almost the same,
+  // and a guest needs to know this line isn't coming back
+  const subject = `${lineName} has been deleted`
   const body = `
-    <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">This line has closed, ${safeName}</h2>
-    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">The organizer deleted <strong>${safeLine}</strong>, so your place in it is gone.</p>
+    <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">This line has been deleted, ${safeName}</h2>
+    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">The ${isRestaurant ? "host" : "organizer"} deleted <strong>${safeLine}</strong>, so your place in it is gone and it won't reopen.</p>
     ${hadPurchase
       ? `<p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Any payment you made to move up in this line has been returned to you. A hold on your card is released right away; a completed charge is refunded and can take a few days to appear.</p>`
       : ""}
   `
   return { subject, html: wrapTemplate(subject, body, "Browse Other Lines", browseUrl) }
+}
+
+/**
+ * The seller was told "you're paid once it's collected"; when the buyer is
+ * refunded instead, that payout never comes and they'd otherwise never know.
+ */
+export function saleReversedEmail(
+  userName: string,
+  lineName: string,
+  amount: number,
+  lineUrl: string,
+  isRestaurant = false
+): { subject: string; html: string } {
+  const safeName = escapeHtml(userName)
+  const safeLine = escapeHtml(lineName)
+  const formattedAmount = amount.toLocaleString("en-US", { style: "currency", currency: "USD" })
+  const subject = `The ${formattedAmount} sale of your spot in ${lineName} was cancelled`
+  const body = `
+    <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">A sale was cancelled, ${safeName}</h2>
+    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">The ${isRestaurant ? "host" : "organizer"} of <strong>${safeLine}</strong> refunded the buyer of your spot, so the <strong>${formattedAmount}</strong> sale won't be paid out.</p>
+    <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Your place in line isn't affected by this.</p>
+  `
+  return { subject, html: wrapTemplate(subject, body, "View Line", lineUrl) }
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { capacityUnit } from "@/lib/capacity"
+import { timeoutSignal } from "@/lib/timeout-signal"
 
 interface EmbedWidgetClientProps {
   lineId: string
@@ -133,7 +134,7 @@ export function EmbedWidgetClient({
     async function refresh() {
       if (document.visibilityState !== "visible" || Date.now() < pausedUntil) return
       try {
-        const res = await fetch(`/api/lines/${lineId}`, { signal: AbortSignal.timeout(10_000) })
+        const res = await fetch(`/api/lines/${lineId}`, { signal: timeoutSignal(10_000) })
         if (res.status === 404) {
           setGone(true)
           return
@@ -168,9 +169,13 @@ export function EmbedWidgetClient({
     // Coming back to a backgrounded tab shouldn't wait a full interval
     const onVisible = () => { if (document.visibilityState === "visible") void refresh() }
     document.addEventListener("visibilitychange", onVisible)
+    // Back online: a back-off set during the outage shouldn't hold it stale
+    const onOnline = () => { pausedUntil = 0; void refresh() }
+    window.addEventListener("online", onOnline)
     return () => {
       clearInterval(interval)
       document.removeEventListener("visibilitychange", onVisible)
+      window.removeEventListener("online", onOnline)
     }
   }, [lineId])
 

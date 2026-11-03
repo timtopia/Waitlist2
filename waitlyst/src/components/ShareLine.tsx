@@ -195,7 +195,19 @@ export function ShareLine({ lineId, lineName, canEmbed = false }: ShareLineProps
   const emailUrl = `mailto:?subject=${encodeURIComponent(`Join ${lineName} on Waitlyst`)}&body=${encodeURIComponent(`Hey! Check out this line on Waitlyst:\n\n${lineName}\n${url}`)}`
 
   return (
-    <div className="relative">
+    <div className="relative"
+      // Tabbing past the panel used to leave it drawn over whatever got focus.
+      // Only a focus move to something else closes it: a tap on the panel's
+      // plain text (relatedTarget null) must not.
+      onBlur={(e) => {
+        const to = e.relatedTarget as Node | null
+        if (open && to && !e.currentTarget.contains(to)) {
+          setOpen(false)
+          setShowQr(false)
+          setShowEmbed(false)
+        }
+      }}
+    >
       <Button
         ref={triggerRef}
         size="sm"

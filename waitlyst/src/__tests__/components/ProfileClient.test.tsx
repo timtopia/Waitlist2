@@ -240,7 +240,7 @@ describe("ProfileClient", () => {
     )
 
     expect(
-      screen.getByText(`Recent Transactions (${mockStats.totalTransactions} total)`)
+      screen.getByText(`Transactions (${mockStats.totalTransactions})`)
     ).toBeInTheDocument()
 
     // Buyer transaction shows negative amount

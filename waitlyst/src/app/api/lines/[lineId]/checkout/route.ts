@@ -157,13 +157,13 @@ export async function POST(
     const now = new Date()
     if (buyerPosition.lockedUntil && now < buyerPosition.lockedUntil) {
       return NextResponse.json(
-        { error: "Your position is currently involved in another transaction. Please wait." },
+        { error: "You're already in the middle of a payment. Finish or cancel it first." },
         { status: 409 }
       )
     }
     if (targetPosition.lockedUntil && now < targetPosition.lockedUntil) {
       return NextResponse.json(
-        { error: "This position is currently involved in another transaction. Please wait." },
+        { error: "Someone's paying for this spot right now. Try again in a few minutes." },
         { status: 409 }
       )
     }
@@ -224,7 +224,7 @@ export async function POST(
       } catch (error) {
         if (error instanceof Error && error.message === "POSITIONS_LOCKED") {
           return NextResponse.json(
-            { error: "This position is currently involved in another transaction. Please wait." },
+            { error: "Someone's paying for this spot right now. Try again in a few minutes." },
             { status: 409 }
           )
         }
@@ -277,8 +277,13 @@ export async function POST(
               price_data: {
                 currency: "usd",
                 product_data: {
-                  name: `Position #${targetPosition.position} in ${targetPosition.line.name}`,
-                  description: `Buy position #${targetPosition.position} from ${shortName(targetPosition.user.name) || "someone"}`,
+                  // Seated parties stay listed on restaurant lines, so the raw
+                  // number overcounts: the receipt would show a different spot
+                  // from the one the app showed
+                  name: targetPosition.line.kind === "RESTAURANT"
+                    ? `A spot in line at ${targetPosition.line.name}`
+                    : `Spot #${targetPosition.position} in ${targetPosition.line.name}`,
+                  description: `Buy ${targetPosition.line.kind === "RESTAURANT" ? "the spot ahead of you" : `spot #${targetPosition.position}`} from ${shortName(targetPosition.user.name) || "someone"}`,
                 },
                 unit_amount: Math.round(fees.totalPrice * 100), // Stripe uses cents — total includes fees
               },

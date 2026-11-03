@@ -221,6 +221,9 @@ export async function DELETE(
       // Offers aren't tied to the line by a foreign key, so clear them here.
       await tx.swapOffer.deleteMany({ where: { lineId } })
       await tx.line.delete({ where: { id: lineId } })
+      // Walk-in names were typed in by the host for this line only; once
+      // their spot and visit history are gone, nothing should keep them
+      await tx.user.deleteMany({ where: { isWalkIn: true, positions: { none: {} }, queueVisits: { none: {} } } })
     })
 
     const buyers = new Set(transactionsToRefund.map((t) => t.buyerId))
@@ -230,15 +233,18 @@ export async function DELETE(
       // A party already seated (or served) lost nothing -- "your place is
       // gone" would only alarm them -- unless a payment of theirs was refunded
       if (fulfilled && !buyers.has(user.id)) continue
-      const { subject, html } = lineDeletedEmail(user.name || "there", result.line.name, buyers.has(user.id), browseUrl)
+      const { subject, html } = lineDeletedEmail(user.name || "there", result.line.name, buyers.has(user.id), browseUrl, result.line.kind === "RESTAURANT")
       runAfterResponse(() => sendEmail(user.email!, subject, html))
     }
 
     return NextResponse.json({ success: true, refundedCount, refundFailedCount })
   } catch (error) {
     console.error("Delete line error:", error)
-    const message = error instanceof Error ? error.message : "Something went wrong. Please try again."
-    const status = message === "Line not found" ? 404 : message === "Not authorized" ? 403 : 500
-    return NextResponse.json({ error: message }, { status })
+    // Only known messages go back as-is: a raw database or Stripe error
+    // would land in the owner's toast
+    const raw = error instanceof Error ? error.message : ""
+    if (raw === "Line not found") return NextResponse.json({ error: raw }, { status: 404 })
+    if (raw === "Not authorized") return NextResponse.json({ error: raw }, { status: 403 })
+    return NextResponse.json({ error: "Couldn't delete this line. Try again in a moment." }, { status: 500 })
   }
 }

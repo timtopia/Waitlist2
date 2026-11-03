@@ -155,7 +155,7 @@ describe("POST /api/lines/[lineId]/call-next", () => {
     const res = await POST(new Request("http://localhost/api/lines/line-1/call-next", { method: "POST" }), params)
 
     expect(res.status).toBe(200)
-    expect(abandonPendingTransaction).toHaveBeenCalledWith("txn-buying-ann")
+    expect(abandonPendingTransaction).toHaveBeenCalledWith("txn-buying-ann", { offerOutcome: "expire" })
   })
 
   it("says everyone has been served when only served people remain", async () => {

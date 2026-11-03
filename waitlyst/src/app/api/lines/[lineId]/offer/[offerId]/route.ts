@@ -207,7 +207,7 @@ export async function PATCH(
     }
     if (sellerPosition.lockedUntil && now < sellerPosition.lockedUntil) {
       return NextResponse.json(
-        { error: "Your position is currently involved in another transaction" },
+        { error: "You're already in the middle of a payment. Finish or cancel it first." },
         { status: 409 }
       )
     }
@@ -325,8 +325,12 @@ export async function PATCH(
               price_data: {
                 currency: "usd",
                 product_data: {
-                  name: `Position #${sellerPosition.position} in ${sellerPosition.line.name}`,
-                  description: `Swap offer accepted — buy position #${sellerPosition.position} from ${shortName(sellerPosition.user.name) || "someone"}`,
+                  // Restaurant lines keep seated parties listed, so the raw
+                  // number wouldn't match the spot the app showed
+                  name: sellerPosition.line.kind === "RESTAURANT"
+                    ? `A spot in line at ${sellerPosition.line.name}`
+                    : `Spot #${sellerPosition.position} in ${sellerPosition.line.name}`,
+                  description: `Swap offer accepted — buy ${sellerPosition.line.kind === "RESTAURANT" ? "the spot ahead of you" : `spot #${sellerPosition.position}`} from ${shortName(sellerPosition.user.name) || "someone"}`,
                 },
                 unit_amount: Math.round(fees.totalPrice * 100),
               },
@@ -509,6 +513,15 @@ export async function DELETE(
       data: { status: "WITHDRAWN", transactionId: null, createdAt: new Date() },
     })
     if (withdrawn.count === 0) {
+      // The payment window may have closed while they pressed Back Out: the
+      // swap is already off, so there's nothing for them to refresh toward
+      const now = await prisma.swapOffer.findUnique({ where: { id: offerId }, select: { status: true } })
+      if (now?.status === "EXPIRED") {
+        return NextResponse.json(
+          { error: "The payment window already closed, so the swap is off. You weren't charged." },
+          { status: 409 }
+        )
+      }
       return NextResponse.json(
         { error: "They just answered your offer. Refresh to see what they said." },
         { status: 409 }

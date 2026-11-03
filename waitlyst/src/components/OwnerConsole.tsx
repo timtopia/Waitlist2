@@ -36,7 +36,7 @@ interface OwnerConsoleProps {
   hasPayoutSetup: boolean
   justCreated?: boolean
   onDismissCreated?: () => void
-  onChanged: () => void
+  onChanged: () => void | Promise<void>
   isRestaurant?: boolean
   /** Paid swaps are on, so there can be payments to review even with no owner fee */
   allowResale?: boolean
@@ -50,6 +50,8 @@ interface OwnerConsoleProps {
 interface Earnings {
   earned: number
   pending: number
+  /** Settled paid swaps on this line */
+  swaps: number
 }
 
 interface Pace {
@@ -185,7 +187,7 @@ export function OwnerConsole({
       const res = await fetch(`/api/lines/${lineId}/stats`)
       if (res.ok) {
         const data = await res.json()
-        setEarnings({ earned: data.ownerFeeEarned ?? 0, pending: data.ownerFeePending ?? 0 })
+        setEarnings({ earned: data.ownerFeeEarned ?? 0, pending: data.ownerFeePending ?? 0, swaps: data.completedCount ?? 0 })
         if (data.service) {
           // The console is for right now: a typical wait over all time would
           // let a slow Tuesday drag down tonight's number
@@ -197,11 +199,28 @@ export function OwnerConsole({
     }
   }, [lineId])
 
-  // A swap changes the order but not the counts, and it's what earns a fee
+  // A swap changes the order but not the counts, and it's what earns a fee.
+  // Stats are the heaviest owner query: a 2,000-person drop changes the
+  // order on every join, so refetch at most every 30s unless someone was
+  // served -- and every minute regardless, so "seated in the last hour"
+  // doesn't freeze during a lull.
   const order = positions.map((p) => p.user.id).join(",")
+  const lastEarningsFetch = useRef(0)
+  const lastServedCount = useRef(-1)
   useEffect(() => {
+    const servedChanged = served.length !== lastServedCount.current
+    if (!servedChanged && Date.now() - lastEarningsFetch.current < 30_000) return
+    lastServedCount.current = served.length
+    lastEarningsFetch.current = Date.now()
     fetchEarnings()
-  }, [fetchEarnings, positions.length, served.length, order])
+  }, [fetchEarnings, served.length, order])
+  useEffect(() => {
+    const id = setInterval(() => {
+      lastEarningsFetch.current = Date.now()
+      fetchEarnings()
+    }, 60_000)
+    return () => clearInterval(id)
+  }, [fetchEarnings])
 
   async function post(path: string, body?: unknown, method = "POST") {
     let res: Response
@@ -247,7 +266,7 @@ export function OwnerConsole({
       } else {
         addToast(data.error || "Failed to call next person", "error")
       }
-      onChanged()
+      await onChanged()
     } finally {
       setBusy(null)
     }
@@ -289,8 +308,8 @@ export function OwnerConsole({
         addToast(`${name} marked as ${servedWord}`, "success")
       }
     } finally {
+      await onChanged()
       setBusy(null)
-      onChanged()
     }
   }
 
@@ -306,8 +325,8 @@ export function OwnerConsole({
       if (ok) addToast(`Marked ${target.user.name || "them"} as a no-show`, "success")
       else addToast(data.error || "Couldn't mark as a no-show", "error")
     } finally {
+      await onChanged()
       setBusy(null)
-      onChanged()
     }
   }
 
@@ -316,11 +335,11 @@ export function OwnerConsole({
     setBusy(`grace-${p.id}`)
     try {
       const { ok, data } = await post("grace", { positionId: p.id })
-      if (ok) addToast("Gave them 5 more minutes", "success")
+      if (ok) addToast(`Gave them 5 more minutes${data.graceMinutes > 5 ? ` (${data.graceMinutes} extra in all)` : ""}`, "success")
       else addToast(data.error || "Couldn't give more time", "error")
     } finally {
+      await onChanged()
       setBusy(null)
-      onChanged()
     }
   }
 
@@ -337,8 +356,8 @@ export function OwnerConsole({
         addToast(data.error || `Failed to mark as ${servedWord}`, "error")
       }
     } finally {
+      await onChanged()
       setBusy(null)
-      onChanged()
     }
   }
 
@@ -358,7 +377,7 @@ export function OwnerConsole({
       } else {
         addToast(data.error || "Failed to update line", "error")
       }
-      onChanged()
+      await onChanged()
     } finally {
       setBusy(null)
     }
@@ -382,7 +401,7 @@ export function OwnerConsole({
       } else {
         addToast(data.error || `Failed to clear ${servedWord} ${isRestaurant ? "parties" : "people"}`, "error")
       }
-      onChanged()
+      await onChanged()
     } finally {
       setBusy(null)
     }
@@ -439,8 +458,8 @@ export function OwnerConsole({
         addToast(`Closed for now: the line is paused.${announcementNote}`, announcementCleared ? "success" : "info")
       }
     } finally {
+      await onChanged()
       setBusy(null)
-      onChanged()
     }
   }
 
@@ -468,7 +487,7 @@ export function OwnerConsole({
       } else {
         addToast(data.error || "Failed to add the walk-in", "error")
       }
-      onChanged()
+      await onChanged()
     } finally {
       setBusy(null)
     }
@@ -507,7 +526,8 @@ export function OwnerConsole({
   const hasEarnings = !!earnings && (earnings.earned > 0 || earnings.pending > 0)
   // Restaurant holds need the settlement page even when the owner takes no fee
   const showMoney = ownerFeePercent > 0 || hasEarnings || allowResale
-  const needsPayoutSetup = stripeEnabled && !hasPayoutSetup && showMoney
+  // At 0% there is nothing to pay out unless a fee was earned before a change
+  const needsPayoutSetup = stripeEnabled && !hasPayoutSetup && showMoney && (ownerFeePercent > 0 || hasEarnings)
 
   return (
     <div className="mb-6 bg-white border border-ink" data-testid="owner-console">
@@ -535,7 +555,7 @@ export function OwnerConsole({
       <ConfirmModal
         open={!!noShowTarget}
         title="Mark as a no-show?"
-        message={`Remove ${noShowTarget?.user.name || "this party"}${isRestaurant && noShowTarget ? ` (party of ${noShowTarget.partySize ?? 1})` : ""} from the line as a no-show? Everyone behind them moves up.`}
+        message={`Remove ${noShowTarget?.user.name || "this party"}${isRestaurant && noShowTarget ? ` (party of ${noShowTarget.partySize ?? 1})` : ""} from the line as a no-show? Everyone behind them moves up.${heldPayments ? " Any swap payment of theirs on hold is collected." : ""}`}
         confirmLabel="No-show"
         variant="danger"
         isLoading={!!noShowTarget && busy?.startsWith("no-show") === true}
@@ -757,7 +777,8 @@ export function OwnerConsole({
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => setSeatUncalledConfirm(true)}
+                    // A walk-in is already standing at the stand: no call to skip
+                    onClick={() => (upNext.user.isWalkIn ? handleServe(false) : setSeatUncalledConfirm(true))}
                     isLoading={busy === "serve"}
                     disabled={!!busy || upNextLocked}
                   >
@@ -936,7 +957,9 @@ export function OwnerConsole({
               {ownerFeePercent > 0 ? `Your fees (${ownerFeePercent}% per swap)` : "Paid swaps"}
             </p>
             <p className="font-mono tabular-nums text-green-700">
-              {formatCurrency(earnings?.earned ?? 0)} earned
+              {ownerFeePercent === 0 && !hasEarnings
+                ? `${earnings?.swaps ?? 0} completed ${(earnings?.swaps ?? 0) === 1 ? "swap" : "swaps"} · no fee`
+                : `${formatCurrency(earnings?.earned ?? 0)} earned`}
               {(earnings?.pending ?? 0) > 0 && (
                 <span className="text-amber-700"> + {formatCurrency(earnings?.pending ?? 0)} pending</span>
               )}

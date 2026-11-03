@@ -181,7 +181,7 @@ export default function BrowsePage() {
               key={f}
               onClick={() => setFilter(f)}
               aria-pressed={filter === f}
-              className={`font-mono text-xs uppercase tracking-widest pb-1 border-b-2 transition-colors ${
+              className={`min-h-11 sm:min-h-0 font-mono text-xs uppercase tracking-widest pb-1 border-b-2 transition-colors ${
                 filter === f
                   ? "border-accent text-ink"
                   : "border-transparent text-ink/60 hover:text-ink"
@@ -201,7 +201,7 @@ export default function BrowsePage() {
             key={s}
             onClick={() => setSortBy(s)}
             aria-pressed={sortBy === s}
-            className={`font-mono text-xs uppercase tracking-widest pb-1 border-b-2 transition-colors ${
+            className={`min-h-11 sm:min-h-0 font-mono text-xs uppercase tracking-widest pb-1 border-b-2 transition-colors ${
               sortBy === s
                 ? "border-accent text-ink"
                 : "border-transparent text-ink/60 hover:text-ink"
@@ -212,9 +212,14 @@ export default function BrowsePage() {
         ))}
       </div>
 
+      {/* Always mounted, so a search or filter change is spoken */}
+      <p className="sr-only" aria-live="polite">
+        {loading || loadError ? "" : filtered.length === 0 ? (lines.length === 0 ? "No lines" : "No lines match") : `${filtered.length} ${filtered.length === 1 ? "line" : "lines"}`}
+      </p>
       {/* Results */}
       {loading ? (
-        <div className="border border-rule divide-y divide-rule">
+        <div className="border border-rule divide-y divide-rule" role="status">
+          <span className="sr-only">Loading lines...</span>
           {[1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="h-20 bg-white animate-pulse" />
           ))}

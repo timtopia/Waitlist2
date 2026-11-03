@@ -20,7 +20,7 @@ import { useWakeLock } from "@/hooks/useWakeLock"
 import { alertTurn, primeChime } from "@/lib/attention"
 import { MemberStatusCard, NotificationState } from "@/components/MemberStatusCard"
 import { OwnerConsole } from "@/components/OwnerConsole"
-import { timeAgo } from "@/lib/format"
+import { formatCurrency, timeAgo } from "@/lib/format"
 import { MAX_PARTY_SIZE, capacityUnit, guestCount } from "@/lib/capacity"
 import { getMemberStatus, diffMemberStatus, describeMemberEvent, memberTabTitle } from "@/lib/member-status"
 
@@ -311,9 +311,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
 
   // After the viewer's own action (join, buy, list, swap), refresh the
   // activity feed too -- otherwise it lags until the next background poll.
-  const refreshAll = useCallback(() => {
-    fetchLine()
-    fetchActivity()
+  const refreshAll = useCallback(async () => {
+    await Promise.all([fetchLine(), fetchActivity()])
   }, [fetchLine, fetchActivity])
 
   /**
@@ -550,6 +549,14 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         return true
       }
       const data = await res.json().catch(() => ({}))
+      if (data.error === "Already in this line") {
+        // A retry after a dropped reply (the first tap did go through), or
+        // joined from another tab: they're in, which is what they wanted
+        addToast("You're already in this line", "info")
+        setJoinNote("")
+        refreshAll()
+        return true
+      }
       addToast(data.error || "Failed to join line", "error")
       // Joined from another tab, or the line filled/paused since: show the
       // real state so the size picker and buttons match it
@@ -735,7 +742,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-8">
-        <div className="animate-pulse">
+        <div className="animate-pulse" role="status">
+          <span className="sr-only">Loading line...</span>
           <div className="h-8 bg-ink/10 w-1/3 mb-4"></div>
           <div className="h-4 bg-ink/10 w-2/3 mb-8"></div>
           <div className="space-y-3">
@@ -807,7 +815,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
               )}
               {line.productPrice != null && (
                 <p className="text-base text-ink/60 mb-2">
-                  Retail: <span className="font-mono tabular-nums text-ink">${line.productPrice.toFixed(2)}</span>
+                  Retail: <span className="font-mono tabular-nums text-ink">{formatCurrency(line.productPrice)}</span>
                 </p>
               )}
               {line.productUrl && (
@@ -1004,7 +1012,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
               {line.allowResale ? (
                 <>
                   You can buy the spot of the person directly ahead of you if they list it
-                  {line.maxAskingPrice !== null && <> (for up to ${line.maxAskingPrice.toFixed(2)})</>}.
+                  {line.maxAskingPrice !== null && <> (for up to {formatCurrency(line.maxAskingPrice)})</>}.
                   Buyers pay the asking price
                   {line.ownerFeePercent > 0 && <> + {line.ownerFeePercent}% to the line owner</>}
                   {line.platformFeePercent > 0 && <> + a {line.platformFeePercent}% Waitlyst fee</>}.{" "}
@@ -1060,6 +1068,11 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         </div>
       )}
 
+      {/* Polling changes these silently; say them to screen readers. Text
+          only (not the "N min ago" stamps), so ticking clocks don't chatter. */}
+      <p className="sr-only" aria-live="polite">{line.announcement ? `Announcement: ${line.announcement}` : ""}</p>
+      <p className="sr-only" aria-live="polite">{line.nowServing ? `Now serving: ${line.nowServing}` : ""}</p>
+
       {/* Announcement Banner */}
       {line.announcement && !showAnnouncementEditor && (
         <div className="mb-6">
@@ -1077,10 +1090,11 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                     setAnnouncementDraft(line.announcement || "")
                     setShowAnnouncementEditor(true)
                   }}
-                  className="text-ink/60 hover:text-ink flex-shrink-0"
+                  className="text-ink/60 hover:text-ink flex-shrink-0 p-2.5 -m-2.5"
                   title="Edit announcement"
+                  aria-label="Edit announcement"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg aria-hidden="true" className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                   </svg>
                 </button>
@@ -1099,6 +1113,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             </label>
             <textarea
               id="announcement-draft"
+              // Opened from the menu or the pencil: put the cursor where they'll type
+              autoFocus
               value={announcementDraft}
               onChange={(e) => setAnnouncementDraft(e.target.value)}
               maxLength={280}
@@ -1115,7 +1131,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                   <button
                     onClick={handleClearAnnouncement}
                     disabled={savingAnnouncement}
-                    className="px-3 py-1.5 text-xs text-accent hover:bg-accent/5 transition-colors disabled:opacity-50"
+                    className="px-3 py-1.5 min-h-11 sm:min-h-0 text-xs text-accent hover:bg-accent/5 transition-colors disabled:opacity-50"
                   >
                     Clear
                   </button>
@@ -1126,14 +1142,14 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                     setAnnouncementDraft("")
                   }}
                   disabled={savingAnnouncement}
-                  className="px-3 py-1.5 text-xs text-ink/60 hover:bg-ink/5 transition-colors disabled:opacity-50"
+                  className="px-3 py-1.5 min-h-11 sm:min-h-0 text-xs text-ink/60 hover:bg-ink/5 transition-colors disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSaveAnnouncement}
                   disabled={savingAnnouncement || announcementDraft.trim().length === 0}
-                  className="px-3 py-1.5 text-xs font-medium text-paper bg-ink hover:bg-accent transition-colors disabled:opacity-50"
+                  className="px-3 py-1.5 min-h-11 sm:min-h-0 text-xs font-medium text-paper bg-ink hover:bg-accent transition-colors disabled:opacity-50"
                 >
                   {savingAnnouncement ? "Saving..." : "Save"}
                 </button>
@@ -1315,6 +1331,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             lineId={line.id}
             positions={line.positions}
             roomLeft={line.maxCapacity != null ? Math.max(0, line.maxCapacity - line.capacityUsed) : null}
+            hasCapacityLimit={line.hasCapacityLimit}
             onRefresh={refreshAll}
             isCreator={isCreator}
             feeInfo={feeInfo}

@@ -374,7 +374,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="w-1.5 h-1.5 bg-accent flex-shrink-0" aria-hidden />
-                      <span className="text-sm text-ink/60">Waiting on payout setup</span>
+                      <span className="text-sm text-ink/60">{connectOnboarded ? "Payout retrying" : "Waiting on payout setup"}</span>
                     </div>
                     <span className="font-mono text-sm tabular-nums text-accent">
                       {formatCurrency(stats.sellerAwaitingSetup ?? 0)}
@@ -429,7 +429,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="w-1.5 h-1.5 bg-accent flex-shrink-0" aria-hidden />
-                      <span className="text-sm text-ink/60">Waiting on payout setup</span>
+                      <span className="text-sm text-ink/60">{connectOnboarded ? "Payout retrying" : "Waiting on payout setup"}</span>
                     </div>
                     <span className="font-mono text-sm tabular-nums text-accent">
                       {formatCurrency(stats.ownerAwaitingSetup ?? 0)}
@@ -461,7 +461,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
               </div>
               {(stats.ownerPendingSettlement > 0 || stats.ownerPendingPayment > 0) && (
                 <p className="text-xs text-ink/60 mt-3 pt-2 border-t border-rule">
-                  {stats.ownerPendingSettlement > 0 && "Fees are collected when each buyer is served. "}
+                  {stats.ownerPendingSettlement > 0 && "Held fees are collected when the buyer is seated (restaurants), or are payments that couldn't be collected yet (drops). "}
                   {stats.ownerPendingPayment > 0 && "Pending payments are transactions in progress."}
                 </p>
               )}
@@ -579,7 +579,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
       <Card>
         <CardHeader>
           <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-ink/60">
-            Recent Transactions ({stats.totalTransactions} total)
+            Transactions ({stats.totalTransactions})
           </h2>
         </CardHeader>
         <CardContent>

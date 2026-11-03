@@ -41,11 +41,17 @@ export interface MemberStatus {
 export function getMemberPhase(input: {
   fulfilled: boolean
   ahead: number
+  /**
+   * Unserved people ahead who haven't been called yet. Once everyone ahead
+   * has been called they're at the stand, and this party is next -- the
+   * "you're next" email goes out then, so the card must agree.
+   */
+  aheadUncalled?: number
   calledAt: string | Date | null | undefined
 }): MemberPhase {
   if (input.fulfilled) return "served"
   if (input.calledAt) return "called"
-  if (input.ahead === 0) return "next"
+  if ((input.aheadUncalled ?? input.ahead) === 0) return "next"
   return "waiting"
 }
 
@@ -53,9 +59,11 @@ export function getMemberStatus(line: StatusLine, userId: string | undefined): M
   if (!userId) return null
   const mine = line.positions.find((p) => p.user.id === userId)
   if (!mine) return null
-  const ahead = line.positions.filter((p) => p.position < mine.position && !p.fulfilled).length
+  const unservedAhead = line.positions.filter((p) => p.position < mine.position && !p.fulfilled)
+  const ahead = unservedAhead.length
+  const aheadUncalled = unservedAhead.filter((p) => !p.calledAt).length
   return {
-    phase: getMemberPhase({ fulfilled: mine.fulfilled, ahead, calledAt: mine.calledAt }),
+    phase: getMemberPhase({ fulfilled: mine.fulfilled, ahead, aheadUncalled, calledAt: mine.calledAt }),
     position: mine.position,
     ahead,
     calledAt: mine.calledAt ? String(mine.calledAt) : null,
@@ -165,7 +173,7 @@ export function describeMemberEvent(
       return { title: "It's your turn!", body, toast: true, tone: "success" }
     }
     case "next":
-      return { title: "You're next", body: `You're at the front of ${lineName}. Get ready.`, toast: true, tone: "info" }
+      return { title: "You're next", body: `You're up next in ${lineName}. Get ready.`, toast: true, tone: "info" }
     case "served":
       return isRestaurant
         ? { title: "You've been seated", body: `The host seated you at ${lineName}.`, toast: true, tone: "success" }

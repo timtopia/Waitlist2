@@ -320,7 +320,7 @@ describe("DashboardClient", () => {
       expect(screen.queryByText("Pending Settlement")).not.toBeInTheDocument()
     })
 
-    it("shows net revenue in stats modal", async () => {
+    it("shows settled volume once, without a duplicate net card", async () => {
       ;(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({
@@ -341,8 +341,9 @@ describe("DashboardClient", () => {
       fireEvent.click(screen.getByText("View Stats"))
 
       await waitFor(() => {
-        expect(screen.getByText("$100.00")).toBeInTheDocument()
-        expect(screen.getByText("Net Swap Volume (Settled)")).toBeInTheDocument()
+        expect(screen.getByText("$150.00")).toBeInTheDocument()
+        // "Net" was always the same number as "Settled"
+        expect(screen.queryByText("Net Swap Volume (Settled)")).not.toBeInTheDocument()
       })
     })
 
@@ -375,7 +376,7 @@ describe("DashboardClient", () => {
       })
     })
 
-    it("shows total transactions count", async () => {
+    it("counts paid swaps, not abandoned checkouts", async () => {
       ;(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({
@@ -396,7 +397,8 @@ describe("DashboardClient", () => {
       fireEvent.click(screen.getByText("View Stats"))
 
       await waitFor(() => {
-        expect(screen.getByText("Total transactions: 10")).toBeInTheDocument()
+        // 5 settled + 0 pending + 2 refunded; the 10 included failed checkouts
+        expect(screen.getByText("Paid swaps: 7")).toBeInTheDocument()
       })
     })
 
