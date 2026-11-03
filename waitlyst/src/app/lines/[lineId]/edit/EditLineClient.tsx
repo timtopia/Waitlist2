@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react"
 import Link from "next/link"
+import { buttonClasses } from "@/components/ui/buttonStyles"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/Button"
 import { Input, Textarea } from "@/components/ui/Input"
@@ -84,6 +85,17 @@ export function EditLineClient({
   const [productUrl, setProductUrl] = useState(line.productUrl || "")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Which field the error is about, so it's marked, described and focused
+  const [errorField, setErrorField] = useState<string | null>(null)
+  const failField = (id: string, message: string) => {
+    setError(message)
+    setErrorField(id)
+    requestAnimationFrame(() => document.getElementById(id)?.focus())
+  }
+  const fieldA11y = (id: string, hintId?: string) => ({
+    "aria-invalid": errorField === id || undefined,
+    "aria-describedby": [hintId, errorField === id ? "form-error" : null].filter(Boolean).join(" ") || undefined,
+  })
   const nameRef = useRef<HTMLInputElement>(null)
 
   // Delete confirmation
@@ -93,6 +105,7 @@ export function EditLineClient({
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    setErrorField(null)
 
     if (!name.trim()) {
       setError("Name is required")
@@ -101,19 +114,19 @@ export function EditLineClient({
     }
 
     // parseInt quietly turned "150.5" into 150 and "2.5" minutes into 2
-    for (const [value, label] of [
-      [maxCapacity, "Capacity"],
-      [purchaseLimit, "Purchase limit"],
-      [responseWindow, "Time to show up"],
+    for (const [value, label, id] of [
+      [maxCapacity, "Capacity", "maxCapacity"],
+      [purchaseLimit, "Limit per customer", "purchaseLimit"],
+      [responseWindow, "Time to show up", "responseWindow"],
     ] as const) {
       if (value && !Number.isInteger(Number(value))) {
-        setError(`${label} must be a whole number`)
+        failField(id, `${label} must be a whole number`)
         return
       }
     }
 
     if (maxCapacity && Number(maxCapacity) < line.capacityUsed) {
-      setError(`Capacity cannot be less than the ${line.capacityUsed} ${isRestaurant ? "guests waiting" : "spots already taken"}`)
+      failField("maxCapacity", `Capacity cannot be less than the ${line.capacityUsed} ${isRestaurant ? "guests waiting" : "spots already taken"}`)
       return
     }
 
@@ -121,12 +134,12 @@ export function EditLineClient({
     // can still be edited without being forced to reschedule.
     if (enableSchedule && closesAt && closesAt !== toLocalDatetime(line.closesAt)) {
       if (new Date(closesAt) <= new Date()) {
-        setError("The closing time has already passed. Pick a later time, or leave it empty for no end time.")
+        failField("closesAt", "The closing time has already passed. Pick a later time, or leave it empty for no end time.")
         return
       }
     }
     if (enableSchedule && opensAt && closesAt && new Date(closesAt) <= new Date(opensAt)) {
-      setError("The line must close after it opens.")
+      failField("closesAt", "The line must close after it opens.")
       return
     }
 
@@ -365,6 +378,7 @@ export function EditLineClient({
               </label>
               <input
                 id="maxCapacity"
+                {...fieldA11y("maxCapacity", "maxCapacity-hint")}
                 type="number"
                 min={line.capacityUsed || 1}
                 placeholder="Unlimited"
@@ -372,7 +386,7 @@ export function EditLineClient({
                 onChange={(e) => setMaxCapacity(e.target.value)}
                 className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
               />
-              <p className="text-xs text-ink/60 mt-1">
+              <p id="maxCapacity-hint" className="text-xs text-ink/60 mt-1">
                 {line.capacityUsed > 0
                   ? `Must be at least ${line.capacityUsed} (${isRestaurant ? "guests waiting" : "spots already taken"})`
                   : isRestaurant ? "Total guests across all parties. Leave empty for no limit" : "Leave empty for unlimited spots"}
@@ -404,6 +418,7 @@ export function EditLineClient({
                   </label>
                   <input
                     id="purchaseLimit"
+                    {...fieldA11y("purchaseLimit", "purchaseLimit-hint")}
                     type="number"
                     min="1"
                     max="99"
@@ -412,7 +427,7 @@ export function EditLineClient({
                     onChange={(e) => setPurchaseLimit(e.target.value)}
                     className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                   />
-                  <p className="text-xs text-ink/60 mt-1">e.g. 1 per person. Shown on the line page and when someone is called.</p>
+                  <p id="purchaseLimit-hint" className="text-xs text-ink/60 mt-1">e.g. 1 per person. Shown on the line page and when someone is called.</p>
                 </div>
               )}
               <div>
@@ -421,6 +436,7 @@ export function EditLineClient({
                 </label>
                 <input
                   id="responseWindow"
+                  {...fieldA11y("responseWindow", "responseWindow-hint")}
                   type="number"
                   min="1"
                   max="60"
@@ -429,7 +445,7 @@ export function EditLineClient({
                   onChange={(e) => setResponseWindow(e.target.value)}
                   className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                 />
-                <p className="text-xs text-ink/60 mt-1">
+                <p id="responseWindow-hint" className="text-xs text-ink/60 mt-1">
                   Minutes. Anyone who doesn&apos;t show up in time is skipped as a no-show and the next person moves up. Tapping &ldquo;On my way&rdquo; gives them one more window.
                 </p>
               </div>
@@ -480,7 +496,7 @@ export function EditLineClient({
                   </label>
                   <input
                     id="opensAt"
-                    aria-describedby="opensAt-hint"
+                    {...fieldA11y("opensAt", "opensAt-hint")}
                     type="datetime-local"
                     value={opensAt}
                     onChange={(e) => setOpensAt(e.target.value)}
@@ -496,7 +512,7 @@ export function EditLineClient({
                   </label>
                   <input
                     id="closesAt"
-                    aria-describedby="closesAt-hint"
+                    {...fieldA11y("closesAt", "closesAt-hint")}
                     type="datetime-local"
                     value={closesAt}
                     onChange={(e) => setClosesAt(e.target.value)}
@@ -630,14 +646,14 @@ export function EditLineClient({
                       </label>
                       <p id="sw-allow-position-swapping-hint" className="text-xs text-ink/60">
                         {allowResale
-                          ? "People can swap their positions with the person next to them"
+                          ? "People can sell their spot to the person right behind them, for a price they set"
                           : "Swapping is disabled — no one can swap positions"}
                       </p>
                       {allowResale && (
                         <p className="text-xs text-ink/60 mt-1">
                           {isRestaurant
                             ? "Paid swaps are held until the buyer is seated. Seating them collects the payment; before then you can release it."
-                            : "Paid swaps are final: the buyer is charged and the seller is paid out right away, with no refunds later."}
+                            : "Paid swaps are final: the buyer is charged and the seller is paid as soon as they have a payout account connected. No refunds later."}
                         </p>
                       )}
                       {line.allowResale && !allowResale && (
@@ -690,7 +706,7 @@ export function EditLineClient({
                         type="number"
                         min="0"
                         max="50"
-                        step="0.5"
+                        step="any"
                         placeholder="0"
                         value={ownerFeePercent}
                         onChange={(e) => setOwnerFeePercent(e.target.value)}
@@ -726,18 +742,18 @@ export function EditLineClient({
 
             {error && name.trim() && (
               <div className="bg-white border border-accent p-3">
-                <p role="alert" className="text-sm text-accent">{error}</p>
+                <p id="form-error" role="alert" className="text-sm text-accent">{error}</p>
               </div>
             )}
 
             <div className="flex justify-end space-x-3 pt-2">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => router.back()}
+              {/* Opened from a bookmark or the sign-in redirect, "back" leaves the site */}
+              <Link
+                href={`/lines/${line.id}`}
+                className={buttonClasses({ variant: "secondary" })}
               >
                 Cancel
-              </Button>
+              </Link>
               <Button type="submit" isLoading={saving}>
                 Save Changes
               </Button>

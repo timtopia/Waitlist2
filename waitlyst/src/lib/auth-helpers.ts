@@ -8,7 +8,7 @@ import { prisma } from "@/lib/prisma"
 export async function requireAuth(): Promise<{ userId: string } | NextResponse> {
   const session = await auth()
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    return NextResponse.json({ error: "Your session expired. Sign in again to continue." }, { status: 401 })
   }
   return { userId: session.user.id }
 }
@@ -25,7 +25,7 @@ export async function requireLineOwner(lineId: string): Promise<{ userId: string
     return NextResponse.json({ error: "Line not found" }, { status: 404 })
   }
   if (line.createdById !== authResult.userId) {
-    return NextResponse.json({ error: "Not authorized" }, { status: 403 })
+    return NextResponse.json({ error: "Only the line's organizer can do that." }, { status: 403 })
   }
   return { userId: authResult.userId, line }
 }

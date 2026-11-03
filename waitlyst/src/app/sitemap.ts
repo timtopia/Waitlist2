@@ -32,7 +32,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ]
 
   const lines = await prisma.line.findMany({
-    where: { isPublic: true, isActive: true },
+    // A closed line is a dead end for someone arriving from search
+    where: { isPublic: true, isActive: true, OR: [{ closesAt: null }, { closesAt: { gt: new Date() } }] },
     select: { id: true, updatedAt: true },
   })
 

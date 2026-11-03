@@ -114,7 +114,7 @@ export async function POST(req: Request) {
 
     // Validate max asking price (optional, positive number)
     for (const [value, label, max] of [
-      [purchaseLimit, "Purchase limit", 99],
+      [purchaseLimit, "Limit per customer", 99],
       [responseWindowMinutes, "Time to show up", 60],
     ] as const) {
       if (value !== null && (!Number.isInteger(value) || value < 1 || value > max)) {

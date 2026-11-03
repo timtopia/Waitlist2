@@ -792,7 +792,7 @@ describe("POST /api/lines/[lineId]/remove-front", () => {
     const response = await POST(req, { params: Promise.resolve({ lineId: "line-1" }) })
     expect(response.status).toBe(403)
     const data = await response.json()
-    expect(data.error).toContain("Not authorized")
+    expect(data.error).toContain("organizer")
   })
 
   it("should return 404 if line not found", async () => {

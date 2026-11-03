@@ -82,6 +82,8 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
   const searchParams = useSearchParams()
   const [data, setData] = useState<SettlementData | null>(null)
   const [loading, setLoading] = useState(true)
+  // Why the last load failed: a deleted line shouldn't offer "Try again"
+  const [loadStatus, setLoadStatus] = useState<number | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [bulkConfirm, setBulkConfirm] = useState<"capture-all" | "cancel-all-unfulfilled" | null>(null)
   // Releasing a hold or killing a checkout can't be undone, so ask first
@@ -146,13 +148,16 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
   const fetchData = useCallback(async () => {
     try {
       const res = await fetch(`/api/lines/${lineId}/settlement`)
-      if (res.ok) {
-        const json = await res.json()
+      const json = res.ok ? await res.json().catch(() => null) : null
+      if (json) {
         setData(json)
+        setLoadStatus(null)
       } else {
+        setLoadStatus(res.status === 404 ? 404 : res.status || 500)
         addToast("Failed to load settlement data", "error")
       }
     } catch {
+      setLoadStatus(0)
       addToast("Failed to load settlement data", "error")
     } finally {
       setLoading(false)
@@ -419,6 +424,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
           variant="danger"
           onClick={() => setCancelConfirm(txn)}
           isLoading={isLoading}
+          aria-label={`Cancel ${txn.buyerName}'s stuck checkout`}
         >
           Cancel Stuck Checkout
         </Button>
@@ -435,6 +441,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
           variant="primary"
           onClick={() => handleAction("capture", txn.id)}
           isLoading={isLoading}
+          aria-label={`${isDrop ? "Collect" : "Capture"} ${txn.buyerName}'s payment`}
         >
           {isDrop ? "Collect" : "Capture"}
         </Button>
@@ -448,6 +455,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
           variant="primary"
           onClick={() => handleAction("capture", txn.id)}
           isLoading={isLoading}
+          aria-label={`${isDrop ? "Collect" : "Capture"} ${txn.buyerName}'s payment`}
         >
           {isDrop ? "Collect" : "Capture (Honor)"}
         </Button>
@@ -457,6 +465,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
             variant="secondary"
             onClick={() => setCancelConfirm(txn)}
             isLoading={isLoading}
+            aria-label={`Release ${txn.buyerName}'s ${isDrop ? "payment" : "card hold"}`}
           >
             {isDrop ? "Release" : "Cancel (Release)"}
           </Button>
@@ -480,8 +489,19 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
   if (!data) {
     return (
       <div className="max-w-5xl mx-auto px-4 py-8 text-center">
-        <p className="text-ink/60">Failed to load settlement data.</p>
-        <Link href="/dashboard" className={buttonClasses({ variant: "secondary", className: "mt-4" })}>Back to Dashboard</Link>
+        <p className="text-ink/60" role="alert">
+          {loadStatus === 404
+            ? "This line was deleted."
+            : loadStatus === 0
+              ? "No connection. Couldn't load settlement data."
+              : "Couldn't load settlement data."}
+        </p>
+        <div className="mt-4 flex justify-center gap-2">
+          {loadStatus !== 404 && (
+            <Button onClick={() => { setLoading(true); fetchData() }}>Try again</Button>
+          )}
+          <Link href="/dashboard" className={buttonClasses({ variant: "secondary" })}>Back to Dashboard</Link>
+        </div>
       </div>
     )
   }

@@ -3,7 +3,7 @@ import { countCapacityUsed } from "@/lib/capacity-server"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { rateLimit } from "@/lib/rate-limit"
-import { lockLine } from "@/lib/queue-exit"
+import { exitQueue, lockLine } from "@/lib/queue-exit"
 import { parsePartySize, roomLeftMessage } from "@/lib/capacity"
 import { parseNote } from "@/lib/validate"
 
@@ -65,7 +65,14 @@ export async function POST(
         where: { lineId_userId: { lineId, userId: result.userId } },
       })
       if (existing) {
-        throw new JoinRefusedError("Already in this line")
+        // At a restaurant a seated party's row lingers until the host clears
+        // it; coming back next week shouldn't hit "Already in this line".
+        // (Drops keep served spots: they count toward stock and limits.)
+        if (line.kind === "RESTAURANT" && existing.fulfilled) {
+          await exitQueue(tx, existing, "LEFT")
+        } else {
+          throw new JoinRefusedError("Already in this line")
+        }
       }
 
       const partySize = parsePartySize(line.kind, body?.partySize)

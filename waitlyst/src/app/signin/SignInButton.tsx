@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { signIn } from "next-auth/react"
 import { Button } from "@/components/ui/Button"
 import { useInAppBrowser } from "@/hooks/useInAppBrowser"
@@ -9,6 +9,14 @@ export function SignInButton({ callbackUrl }: { callbackUrl: string }) {
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
   const inAppBrowser = useInAppBrowser()
+
+  // Back from Google restores this page from the back/forward cache with the
+  // spinner still going; reset it so they can try again
+  useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => { if (e.persisted) setLoading(false) }
+    window.addEventListener("pageshow", onShow)
+    return () => window.removeEventListener("pageshow", onShow)
+  }, [])
 
   if (inAppBrowser) {
     return (

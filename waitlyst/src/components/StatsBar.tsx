@@ -17,8 +17,8 @@ export function StatsBar({ activeLines, peopleInQueues, swapsCompleted }: StatsB
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-rule">
           <AnimatedStat value={activeLines} label="Active lines" />
-          <AnimatedStat value={peopleInQueues} label="People in queues" />
-          <AnimatedStat value={swapsCompleted} label="Trades completed" />
+          <AnimatedStat value={peopleInQueues} label="People waiting" />
+          <AnimatedStat value={swapsCompleted} label="Swaps completed" />
         </div>
       </div>
     </section>

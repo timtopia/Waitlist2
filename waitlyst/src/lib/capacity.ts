@@ -38,8 +38,14 @@ export function capacityView(
  * the number would give the limit away.
  */
 export function roomLeftMessage(line: { hideCapacity: boolean; kind: LineKind }, left: number): string {
-  if (line.hideCapacity) return "Your party doesn't fit in this line right now. Try a smaller party."
-  return `There's only room for ${left} more ${capacityUnit(line.kind, left)} in this line`
+  // A party can't shrink to fit; at a restaurant the host can still seat them
+  const next = line.kind === "RESTAURANT" ? " Ask the host at the stand." : ""
+  if (line.hideCapacity) {
+    return line.kind === "RESTAURANT"
+      ? `Your party doesn't fit in this line right now.${next}`
+      : "Your party doesn't fit in this line right now. Try a smaller party."
+  }
+  return `There's only room for ${left} more ${capacityUnit(line.kind, left)} in this line.${next}`
 }
 
 /**

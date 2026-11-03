@@ -43,6 +43,18 @@ export async function POST(
     return NextResponse.json({ error: "This line is already open" }, { status: 400 })
   }
 
+  // The reminder would be skipped at send time; say so now instead
+  const user = await prisma.user.findUnique({
+    where: { id: result.userId },
+    select: { emailNotifications: true },
+  })
+  if (user && user.emailNotifications === false) {
+    return NextResponse.json(
+      { error: "Turn on email notifications in your profile to get this reminder" },
+      { status: 409 }
+    )
+  }
+
   await prisma.lineReminder.upsert({
     where: { lineId_userId: { lineId, userId: result.userId } },
     create: { lineId, userId: result.userId },

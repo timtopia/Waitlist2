@@ -128,12 +128,22 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   // Set when the viewer leaves from this tab, so the next poll isn't
   // reported as "you're no longer in line".
   const leftHereRef = useRef(false)
+  // Back from the Google sign-in page (back/forward cache) shouldn't leave
+  // Join or Remind me spinning
+  useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => {
+      if (e.persisted) { setJoining(false); setRemindBusy(false) }
+    }
+    window.addEventListener("pageshow", onShow)
+    return () => window.removeEventListener("pageshow", onShow)
+  }, [])
   const [, setScheduleTick] = useState(0)
   const [deleting, setDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showAnnouncementEditor, setShowAnnouncementEditor] = useState(false)
   const [announcementDraft, setAnnouncementDraft] = useState("")
   const [savingAnnouncement, setSavingAnnouncement] = useState(false)
+  const [duplicating, setDuplicating] = useState(false)
   const [activities, setActivities] = useState<ActivityItem[]>([])
   const [activitiesLoading, setActivitiesLoading] = useState(true)
   const [showAllActivity, setShowAllActivity] = useState(false)
@@ -162,7 +172,10 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   // Handle payment status from Stripe redirect
   useEffect(() => {
     const paymentStatus = searchParams.get("payment")
-    if (paymentStatus === "cancelled") {
+    if (paymentStatus === "called_off") {
+      addToast("That swap was already called off (the spot ahead changed). You weren't charged, and it doesn't count against you.", "info")
+      router.replace(`/lines/${lineId}`, { scroll: false })
+    } else if (paymentStatus === "cancelled") {
       addToast("Payment was cancelled. No charges were made. Cancelling several purchases within a few hours pauses buying here for a while.", "info")
       router.replace(`/lines/${lineId}`, { scroll: false })
     } else if (paymentStatus === "offer_withdrawn") {
@@ -265,7 +278,12 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         setError(null)
         setCanRetry(false)
       } else if (res.status === 404) {
-        setError("Line not found")
+        // Deleted while they were watching it: say so, not just "not found"
+        setError(
+          lineRef.current
+            ? "The organizer deleted this line. Any payment on hold for a swap is being refunded."
+            : "Line not found"
+        )
         setCanRetry(false)
       } else if (!lineRef.current) {
         // A refresh that fails while the line is on screen keeps it there;
@@ -439,7 +457,6 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   // Near the front: keep the screen on so the page keeps checking, and get
   // the chime ready (it needs a tap first) for when they're called.
   const awaitingTurn = !!memberStatus && memberStatus.phase !== "served" && (nearFront || memberStatus.phase === "called")
-  useWakeLock(awaitingTurn)
   const inLine = !!memberStatus
   useEffect(() => {
     if (!inLine) return
@@ -451,6 +468,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   // Paused (isActive false) still counts: called parties keep replying and
   // the host keeps calling and seating.
   const hostingLive = !!line && line.createdBy.id === session?.user?.id
+  // A tablet left at the host stand shouldn't lock and stop updating mid-service
+  useWakeLock(awaitingTurn || (hostingLive && line?.kind === "RESTAURANT"))
   // Restaurant hosts call parties out of order, so anyone still waiting may be
   // called next and the show-up window is short
   const restaurantWaiting = line?.kind === "RESTAURANT" && !!memberStatus && memberStatus.phase !== "served"
@@ -554,6 +573,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       } catch {
         // Storage blocked: they can still add it after joining
       }
+      // Fetching the sign-in link can take a moment on a slow phone
+      setJoining(true)
       signIn("google", { callbackUrl: `/lines/${lineId}?join=1${party}` })
       return false
     }
@@ -726,6 +747,24 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     } finally {
       setDeleting(false)
       setShowDeleteConfirm(false)
+    }
+  }
+
+  async function handleDuplicate() {
+    setDuplicating(true)
+    try {
+      const res = await fetch(`/api/lines/${lineId}/duplicate`, { method: "POST" })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && data.id) {
+        addToast("Line duplicated. It starts paused -- resume it when it's ready.", "success")
+        router.push(`/lines/${data.id}/edit`)
+      } else {
+        addToast(data.error || "Failed to duplicate line", "error")
+      }
+    } catch {
+      addToast(NO_CONNECTION, "error")
+    } finally {
+      setDuplicating(false)
     }
   }
 
@@ -961,7 +1000,11 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                 line.emailEnabled ? (
                   <Button
                     variant="secondary"
-                    onClick={() => signIn("google", { callbackUrl: `/lines/${lineId}?remind=1` })}
+                    onClick={() => {
+                      setRemindBusy(true)
+                      signIn("google", { callbackUrl: `/lines/${lineId}?remind=1` })
+                    }}
+                    isLoading={remindBusy}
                   >
                     Sign in to get an email when it opens
                   </Button>
@@ -1002,9 +1045,11 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                       ...(line.allowResale || line.ownerFeePercent > 0
                         ? [{ label: "Export swaps CSV", onClick: () => downloadFile(`/api/lines/${lineId}/export?type=swaps`) }]
                         : []),
+                      // Setting up the next drop shouldn't need a trip to the dashboard
+                      { label: duplicating ? "Duplicating..." : "Duplicate", onClick: handleDuplicate, disabled: duplicating },
                       { label: "Delete Line", onClick: () => setShowDeleteConfirm(true), variant: "danger" },
                     ]}
-                    separatorBefore={[line.allowResale || line.ownerFeePercent > 0 ? 3 : 2]}
+                    separatorBefore={[line.allowResale || line.ownerFeePercent > 0 ? 4 : 3]}
                   />
                 </>
               )}
@@ -1293,7 +1338,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                     ? `You were called but didn't show up in time, so your place went to the next ${isRestaurant ? "party" : "person"} -- or the ${isRestaurant ? "host" : "organizer"} removed you.`
                     : `You left from another device, or the ${isRestaurant ? "host" : "organizer"} removed you.`}
               </p>
-              {canJoin && (
+              {/* A seated diner doesn't need one stray tap away from rejoining */}
+              {canJoin && !departure.wasServed && (
                 <Button
                   size="sm"
                   variant="secondary"
@@ -1390,7 +1436,12 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             nowServingUserId={line.nowServingUserId}
             isRestaurant={isRestaurant}
             emailEnabled={line.emailEnabled}
-            onLeft={() => { leftHereRef.current = true }}
+            onLeft={() => {
+              leftHereRef.current = true
+              // Joining again from this tab keeps the same party and note, not the default of 2
+              if (userPosition?.partySize) setPartySize(userPosition.partySize)
+              setJoinNote(userPosition?.note ?? "")
+            }}
             responseWindowMinutes={line.responseWindowMinutes}
           />
         </CardContent>

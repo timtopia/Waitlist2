@@ -22,13 +22,15 @@ export async function GET(
   const transactionId = url.searchParams.get("transaction_id")
   const baseUrl = getBaseUrl()
   let offerWithdrawn = false
+  // Already FAILED before they backed out (the spot ahead changed): no strike was counted
+  let calledOff = false
 
   if (transactionId) {
     try {
       const session = await auth()
       const transaction = await prisma.transaction.findUnique({
         where: { id: transactionId },
-        select: { buyerId: true, lineId: true },
+        select: { buyerId: true, lineId: true, status: true, abandonedByBuyer: true },
       })
       if (
         session?.user?.id &&
@@ -44,6 +46,7 @@ export async function GET(
           byBuyer: true,
           ...(offer ? { offerId: null } : {}),
         })
+        if (!abandoned && transaction.status === "FAILED" && !transaction.abandonedByBuyer) calledOff = true
         if (abandoned && offer) {
           const { count } = await prisma.swapOffer.updateMany({
             where: { id: offer.id, status: "ACCEPTED" },
@@ -59,5 +62,5 @@ export async function GET(
     }
   }
 
-  return NextResponse.redirect(`${baseUrl}/lines/${lineId}?payment=${offerWithdrawn ? "offer_withdrawn" : "cancelled"}`)
+  return NextResponse.redirect(`${baseUrl}/lines/${lineId}?payment=${calledOff ? "called_off" : offerWithdrawn ? "offer_withdrawn" : "cancelled"}`)
 }

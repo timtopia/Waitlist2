@@ -148,6 +148,10 @@ export function OwnerConsole({
   const heldPayments = allowResale && isRestaurant
   // Parties called out of order, or still called behind the one up next
   const alsoCalled = waiting.slice(1).filter((p) => p.calledAt)
+  // Restaurant rows are numbered among parties still waiting (seated rows show a check),
+  // so the console quotes the same number the list does
+  const placeOf = (p: (typeof positions)[number]) =>
+    isRestaurant ? waiting.indexOf(p) + 1 : p.position
 
   /** Time left for a called party to show up, as QueueDisplay counts it */
   function showUpTimeLeft(p: ConsolePosition): string | null {
@@ -494,7 +498,7 @@ export function OwnerConsole({
         // Who's ahead is what the host quotes at the stand, not the raw #
         const ahead = waiting.length
         addToast(
-          `Added ${walkInName.trim()} at #${data.position} -- ${ahead === 0 ? "next up" : `${ahead} ${isRestaurant ? (ahead === 1 ? "party" : "parties") : ahead === 1 ? "person" : "people"} ahead`}`,
+          `Added ${walkInName.trim()} at #${isRestaurant ? ahead + 1 : data.position} -- ${ahead === 0 ? "next up" : `${ahead} ${isRestaurant ? (ahead === 1 ? "party" : "parties") : ahead === 1 ? "person" : "people"} ahead`}`,
           "success"
         )
         setWalkInName("")
@@ -654,10 +658,10 @@ export function OwnerConsole({
             {onDismissCreated && (
               <button
                 onClick={onDismissCreated}
-                className="text-ink/60 hover:text-ink flex-shrink-0"
+                className="text-ink/60 hover:text-ink flex-shrink-0 p-2.5 -m-2.5 inline-flex"
                 aria-label="Dismiss"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg aria-hidden="true" className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
@@ -702,7 +706,7 @@ export function OwnerConsole({
                 {isServingUpNext ? "Now serving" : "Up next"}
               </p>
               <p className="text-lg font-semibold tracking-tight truncate">
-                <span className="font-mono tabular-nums text-accent mr-2">#{upNext.position}</span>
+                <span className="font-mono tabular-nums text-accent mr-2">#{placeOf(upNext)}</span>
                 {upNext.user.name || "Anonymous"}
               </p>
               {/* What the host needs to match a table: size, how long they've waited, requests */}
@@ -823,7 +827,7 @@ export function OwnerConsole({
                 <li key={p.id} className="flex items-center justify-between gap-3 flex-wrap text-sm">
                   <p className="min-w-0 text-ink/80">
                     <span className="font-mono text-xs uppercase tracking-widest text-ink/60 mr-2">Also called:</span>
-                    <span className="font-mono tabular-nums text-accent mr-1">#{p.position}</span>
+                    <span className="font-mono tabular-nums text-accent mr-1">#{placeOf(p)}</span>
                     {name}
                     {isRestaurant && ` (party of ${p.partySize ?? 1})`}
                     {p.response && (

@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/Input"
 import { ConfirmModal } from "@/components/ui/ConfirmModal"
 import { DropdownMenu, DropdownMenuItem } from "@/components/ui/DropdownMenu"
 import { useToast } from "@/components/ui/Toast"
-import { timeAgo, formatCurrency } from "@/lib/format"
+import { timeAgo, formatCurrency, formatDateTime } from "@/lib/format"
 import { formatWaitTime } from "@/lib/wait-time"
 import type { MemberPhase } from "@/lib/member-status"
 
@@ -127,6 +127,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [statsModal, setStatsModal] = useState<StatsModal | null>(null)
   const statsDialogRef = useDialog(!!statsModal, () => setStatsModal(null))
+  const statsTitleRef = useRef<HTMLHeadingElement>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ lineId: string; lineName: string } | null>(null)
   const [removeConfirm, setRemoveConfirm] = useState<{ lineId: string; positionId: string; name: string } | null>(null)
   const [onboardingDismissed, setOnboardingDismissed] = useState(false)
@@ -207,6 +208,9 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
     result = [...result].sort((a, b) => {
       const calledFirst = Number(b.phase === "called") - Number(a.phase === "called")
       if (calledFirst !== 0) return calledFirst
+      // Last week's ✓ shouldn't sit above a line they're waiting in now
+      const servedLast = Number(a.phase === "served") - Number(b.phase === "served")
+      if (servedLast !== 0) return servedLast
       if (positionsSort === "newest") return new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime()
       if (positionsSort === "oldest") return new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime()
       return b.line._count.positions - a.line._count.positions // most-members
@@ -393,6 +397,10 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
       if (res.ok) {
         setLines(lines.filter(l => l.id !== lineId))
         addToast("Line deleted", "success")
+      } else if (res.status === 404) {
+        // Deleted on another device: drop the stale card instead of failing every retry
+        setLines((prev) => prev.filter((l) => l.id !== lineId))
+        addToast("That line was already deleted.", "info")
       } else {
         // A refund failed: the server kept the line but paused it
         if (res.status === 409) {
@@ -574,14 +582,16 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
       {/* Stats Modal */}
       {statsModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div ref={statsDialogRef} className="bg-white border border-ink p-6 max-w-md w-full mx-4" role="dialog" aria-modal="true" aria-label={`${statsModal.lineName} stats`}>
-            <h3 className="text-lg font-semibold tracking-tight mb-4">
+          <div ref={statsDialogRef} className="bg-white border border-ink p-6 max-w-md w-full mx-4" role="dialog" aria-modal="true" aria-labelledby="stats-title">
+            <h3 id="stats-title" ref={statsTitleRef} tabIndex={-1} className="text-lg font-semibold tracking-tight mb-4 focus:outline-none">
               {statsModal.lineName} - Line Stats
             </h3>
 
+            {/* One always-mounted region, so loading, retrying and the result are announced */}
+            <div aria-live="polite">
             {statsModal.loading ? (
-              <div className="text-center py-4">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent mx-auto"></div>
+              <div className="text-center py-4" role="status">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent mx-auto" aria-hidden="true"></div>
                 <p className="text-sm text-ink/60 mt-2">Loading stats...</p>
               </div>
             ) : statsModal.stats ? (
@@ -678,13 +688,18 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
             ) : statsModal.failed ? (
               <div className="text-sm text-ink/60" role="alert">
                 <p>Couldn&apos;t load stats. Check your connection and try again.</p>
-                <Button size="sm" variant="secondary" className="mt-2" onClick={() => openStatsModal(statsModal.lineId, statsModal.lineName)}>
+                <Button size="sm" variant="secondary" className="mt-2" onClick={() => {
+                  // The button unmounts while it reloads; keep focus inside the dialog
+                  statsTitleRef.current?.focus()
+                  openStatsModal(statsModal.lineId, statsModal.lineName)
+                }}>
                   Try again
                 </Button>
               </div>
             ) : (
               <p className="text-sm text-ink/60">No transaction data available.</p>
             )}
+            </div>
 
             <div className="mt-4 flex gap-2">
               <Button
@@ -809,7 +824,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                     <div className="text-right">
                       <p className="font-mono text-lg tabular-nums">
                         {pos.phase === "served"
-                          ? <span aria-label={pos.line.kind === "RESTAURANT" ? "Seated" : "Served"}>✓</span>
+                          ? <span role="img" aria-label={pos.line.kind === "RESTAURANT" ? "Seated" : "Served"}>✓</span>
                           : `#${pos.ahead + 1}`}
                       </p>
                       {pos.askingPrice !== null && (
@@ -921,7 +936,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                           ) : line.opensAt && new Date(line.opensAt) > new Date() ? (
                             <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-ink/60 flex-shrink-0">
                               <span className="w-1.5 h-1.5 bg-ink/40" aria-hidden />
-                              Opens {new Date(line.opensAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                              Opens {formatDateTime(line.opensAt, { withZone: true })}
                             </span>
                           ) : null}
                         </div>
@@ -984,7 +999,16 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                           )}
                         </div>
                       )}
-                      {!line.isActive && (
+                      {!line.isActive && isClosedBySchedule(line) ? (
+                        // Resuming wouldn't let anyone join past the closing time
+                        <Link
+                          href={`/lines/${line.id}/edit`}
+                          className={buttonClasses({ variant: "secondary", size: "sm" })}
+                          title="This line is past its closing time"
+                        >
+                          Change hours
+                        </Link>
+                      ) : !line.isActive && (
                         <Button
                           size="sm"
                           variant="secondary"

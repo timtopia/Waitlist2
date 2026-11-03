@@ -14,6 +14,9 @@ export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const accountMenuRef = useRef<HTMLDivElement>(null)
   const accountButtonRef = useRef<HTMLButtonElement>(null)
+  const hamburgerRef = useRef<HTMLButtonElement>(null)
+  // On /signin a second sign-in button would nest the callback and lose the line it names
+  const onSignInPage = pathname === "/signin"
   // The sign-in page explains Google sign-in and the terms, then comes back here
   const signInHref = `/signin?callbackUrl=${encodeURIComponent(pathname || "/")}`
   const router = useRouter()
@@ -57,7 +60,10 @@ export function Header() {
   useEffect(() => {
     if (!mobileMenuOpen) return
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMobileMenuOpen(false)
+      if (event.key === "Escape") {
+        setMobileMenuOpen(false)
+        hamburgerRef.current?.focus()
+      }
     }
     document.addEventListener("keydown", onKeyDown)
     return () => document.removeEventListener("keydown", onKeyDown)
@@ -179,7 +185,7 @@ export function Header() {
                   )}
                 </div>
               </>
-            ) : (
+            ) : onSignInPage ? null : (
               <span className="hidden md:inline-flex">
                 <Link href={signInHref} onClick={goToSignIn} className={buttonClasses({ size: "sm" })}>
                   Sign in with Google
@@ -189,6 +195,7 @@ export function Header() {
 
             {/* Mobile hamburger button */}
             <button
+              ref={hamburgerRef}
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="md:hidden flex items-center justify-center w-11 h-11 text-ink/60 hover:text-ink hover:bg-ink/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-ink"
               aria-label="Toggle menu"
@@ -196,11 +203,11 @@ export function Header() {
               aria-controls="mobile-menu"
             >
               {mobileMenuOpen ? (
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg aria-hidden="true" className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               ) : (
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg aria-hidden="true" className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               )}
@@ -279,12 +286,12 @@ export function Header() {
                     setMobileMenuOpen(false)
                     handleSignOut()
                   }}
-                  className="px-3 py-2 text-sm font-medium text-ink/60 hover:text-ink hover:bg-ink/5"
+                  className="px-3 py-2 min-h-11 text-sm font-medium text-ink/60 hover:text-ink hover:bg-ink/5"
                 >
                   Sign out
                 </button>
               </div>
-            ) : (
+            ) : onSignInPage ? null : (
               <Link href={signInHref} onClick={(e) => { setMobileMenuOpen(false); goToSignIn(e) }} className={buttonClasses({ className: "w-full" })}>
                 Sign in with Google
               </Link>

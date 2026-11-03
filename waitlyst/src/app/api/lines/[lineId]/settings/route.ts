@@ -58,7 +58,15 @@ export async function PATCH(
         // keeps "email me when it opens" working; a null opensAt looks like a
         // line that never had a schedule, so nobody was emailed.
         const stored = result.line[field]
-        allowedUpdates[field] = field === "opensAt" && stored && stored > new Date() ? new Date() : null
+        if (field === "opensAt" && stored && stored <= new Date()) {
+          // Already past (say it was paused through its opening): keep the
+          // date while "email me when it opens" reminders are still unsent,
+          // or they'd never match and never go out
+          const pending = await prisma.lineReminder.count({ where: { lineId, sentAt: null } })
+          allowedUpdates[field] = pending > 0 ? stored : null
+          continue
+        }
+        allowedUpdates[field] = field === "opensAt" && stored ? new Date() : null
         continue
       }
       const date = new Date(updates[field])
@@ -225,7 +233,7 @@ export async function PATCH(
     // Per-customer purchase limit (drops) and the time a called person has
     // to show up. null turns either off.
     for (const [field, label, max] of [
-      ["purchaseLimit", "Purchase limit", 99],
+      ["purchaseLimit", "Limit per customer", 99],
       ["responseWindowMinutes", "Time to show up", 60],
     ] as const) {
       if (updates[field] === undefined) continue
