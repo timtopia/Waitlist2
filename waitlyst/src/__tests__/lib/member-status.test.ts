@@ -47,7 +47,9 @@ describe("getMemberStatus", () => {
   it("is 'called' when the viewer's own spot has been called", () => {
     const line = makeLine([{ id: "me", called: true }, { id: "b" }], { nowServingUserId: "me" })
     expect(getMemberStatus(line, "me")?.phase).toBe("called")
-    expect(getMemberStatus(line, "b")?.phase).toBe("waiting")
+    // Everyone ahead of b is at the stand: b is next, matching the
+    // "you're next" email call-next sends
+    expect(getMemberStatus(line, "b")?.phase).toBe("next")
   })
 
   it("shows a party called out of order as called, with people still ahead", () => {
@@ -112,8 +114,8 @@ describe("diffMemberStatus", () => {
       announcementAt: "t1",
     })
     expect(diffMemberStatus(prev, next, "me")).toEqual([{ kind: "called" }])
-    // Everyone else still sees it as an announcement
-    expect(diffMemberStatus(prev, next, "b")).toEqual([{ kind: "announcement", text: "ME, you're up!" }])
+    // Everyone else still sees it as an announcement (and b, now on deck, is next)
+    expect(diffMemberStatus(prev, next, "b")).toEqual([{ kind: "next" }, { kind: "announcement", text: "ME, you're up!" }])
   })
 
   it("reports being served", () => {

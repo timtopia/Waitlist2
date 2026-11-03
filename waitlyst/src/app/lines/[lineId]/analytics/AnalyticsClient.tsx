@@ -131,6 +131,8 @@ export function AnalyticsClient({
     // Swap fees earned per day, last 30 days
     const feesPerDay = new Map<string, number>()
     for (const s of data.swaps) {
+      // Match the headline stat: fees still on hold aren't earned yet
+      if (s.settled === false) continue
       const k = dayKey(new Date(s.at))
       feesPerDay.set(k, (feesPerDay.get(k) ?? 0) + s.ownerFee)
     }

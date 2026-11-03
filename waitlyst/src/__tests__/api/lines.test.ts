@@ -40,6 +40,7 @@ const mockPrisma = {
   },
   user: {
     findMany: vi.fn(),
+    deleteMany: vi.fn(),
   },
   $queryRaw: vi.fn(),
   $transaction: vi.fn((fn) => fn(mockPrisma)),

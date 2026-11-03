@@ -411,9 +411,10 @@ describe("POST /api/lines/[lineId]/settlement/action (cancel on PENDING)", () =>
     expect(response.status).toBe(200)
 
     // abandonPendingTransaction unlocks, FAILs (only if still PENDING),
-    // expires the session and reopens the offer -- see stripe-core tests.
+    // expires the session -- see stripe-core tests. The organizer called
+    // it off, so the offer is closed rather than coming back acceptable.
     const { abandonPendingTransaction } = await import("@/lib/stripe")
-    expect(abandonPendingTransaction).toHaveBeenCalledWith("txn-1")
+    expect(abandonPendingTransaction).toHaveBeenCalledWith("txn-1", { offerOutcome: "expire" })
   })
 
   it("rejects 'capture' on a PENDING transaction (nothing was ever authorized)", async () => {

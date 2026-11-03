@@ -32,7 +32,7 @@ export async function POST(
   }
   if (position.graceMinutes + GRACE_STEP_MINUTES > MAX_GRACE_MINUTES) {
     return NextResponse.json(
-      { error: `They've already had ${position.graceMinutes} extra minutes. Call them again to restart their time.` },
+      { error: `They've already had ${position.graceMinutes} extra minutes. Use Call again on their row in the list to restart their time.` },
       { status: 400 }
     )
   }

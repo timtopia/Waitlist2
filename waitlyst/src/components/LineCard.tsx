@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { getLineStatus, getStatusBadge } from "@/lib/line-status"
-import { formatDropCountdown } from "@/lib/format"
+import { formatCurrency, formatDropCountdown } from "@/lib/format"
 
 interface LineCardProps {
   line: {
@@ -104,7 +104,7 @@ export function LineCard({ line }: LineCardProps) {
                   )}
                   {line.productPrice != null && (
                     <span className="font-mono text-xs text-ink/60 whitespace-nowrap">
-                      Retail ${line.productPrice.toFixed(2)}
+                      Retail {formatCurrency(line.productPrice)}
                     </span>
                   )}
                 </div>

@@ -93,7 +93,7 @@ export async function POST(
     // A swap still on the payment page would push them back after they were
     // called, so it's called off (the buyer's hold is released).
     if (frontPosition.lockedBy && frontPosition.lockedUntil && frontPosition.lockedUntil > new Date()) {
-      await abandonPendingTransaction(frontPosition.lockedBy)
+      await abandonPendingTransaction(frontPosition.lockedBy, { offerOutcome: "expire" })
     }
 
     const calledAt = new Date()

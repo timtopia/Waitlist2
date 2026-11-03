@@ -3,6 +3,7 @@ import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { releaseAndSettle, returnBuyerFunds, abandonPendingTransaction } from "@/lib/stripe"
 import { rateLimit } from "@/lib/rate-limit"
+import { notifySaleReversed } from "@/lib/queue-exit"
 
 const settlementLimiter = rateLimit({ interval: 60000, limit: 20 })
 
@@ -83,6 +84,7 @@ export async function POST(
             data: { settledAt: new Date() },
           })
         }
+        notifySaleReversed(unfulfilledTxns.filter((t) => returnedIds.includes(t.id)), lineId)
 
         return NextResponse.json({
           success: true,
@@ -143,8 +145,9 @@ export async function POST(
       }
 
       // Also kills the Stripe session so a stale link the buyer still has
-      // can't be used, and puts an accepted offer back to PENDING.
-      await abandonPendingTransaction(transactionId)
+      // can't be used. An accepted offer is closed rather than reopened: the
+      // organizer just called this swap off, so it mustn't come back acceptable.
+      await abandonPendingTransaction(transactionId, { offerOutcome: "expire" })
 
       return NextResponse.json({ success: true, action: "cancel", transactionId })
     }
@@ -165,8 +168,16 @@ export async function POST(
 
     if (action === "capture") {
       if (!(await releaseAndSettle(transaction))) {
+        // Release is refused while the buyer is still in line, so don't
+        // point there when it isn't available
+        const buyerWaiting = await prisma.linePosition.findFirst({
+          where: { lineId, userId: transaction.buyerId, fulfilled: false },
+          select: { id: true },
+        })
         return NextResponse.json(
-          { error: "Couldn't collect this payment -- the card hold may have expired. You can release it instead." },
+          { error: buyerWaiting
+            ? "Couldn't collect this payment. The buyer is still in line: remove them with a refund from the line page, or try collecting again later."
+            : "Couldn't collect this payment -- the card hold may have expired. You can release it instead." },
           { status: 402 }
         )
       }
@@ -200,6 +211,8 @@ export async function POST(
         where: { id: transactionId },
         data: { settledAt: new Date() },
       })
+      // The seller was promised this payout; tell them it isn't coming
+      notifySaleReversed([transaction], lineId)
 
       return NextResponse.json({
         success: true,

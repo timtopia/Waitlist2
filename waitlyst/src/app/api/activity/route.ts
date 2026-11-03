@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { buyerTotal } from "@/lib/fees"
+import { formatCurrency } from "@/lib/format"
 
 export const dynamic = "force-dynamic"
 
@@ -101,7 +102,7 @@ export async function GET() {
         : visit.outcome === "NO_SHOW"
           ? { type: "removed" as const, description: `Skipped in "${name}" after not showing up in time` }
           : visit.outcome === "REMOVED"
-            ? { type: "removed" as const, description: `Removed from "${name}" by the organizer` }
+            ? { type: "removed" as const, description: `Removed from "${name}" by the ${visit.line.kind === "RESTAURANT" ? "host" : "organizer"}` }
             : { type: "left" as const, description: `Left "${name}"` }
       activities.push({
         id: `exit-${visit.id}`,
@@ -116,7 +117,7 @@ export async function GET() {
       activities.push({
         id: `offer-${offer.id}`,
         type: "offer",
-        description: `Received a $${offer.amount.toFixed(2)} swap offer${lineName ? ` in "${lineName}"` : ""}`,
+        description: `Received a ${formatCurrency(offer.amount)} swap offer${lineName ? ` in "${lineName}"` : ""}`,
         amount: offer.amount,
         ...(lineName && { lineId: offer.lineId, lineName }),
         createdAt: offer.createdAt.toISOString(),
@@ -137,8 +138,12 @@ export async function GET() {
           id: `refund-${tx.id}`,
           type: "refund",
           description: isBuyer
-            ? `Received a refund of $${refunded.toFixed(2)}${inLine}`
-            : `A sale of yours${inLine} was refunded ($${refunded.toFixed(2)})`,
+            // A hold that was released never left their account: "refund"
+            // would send them hunting their statement for money that never moved
+            ? tx.capturedAt
+              ? `Received a refund of ${formatCurrency(refunded)}${inLine}`
+              : `Card hold of ${formatCurrency(refunded)} released${inLine}`
+            : `A sale of yours${inLine} was refunded (${formatCurrency(refunded)})`,
           amount: refunded,
           ...link,
           // When it was closed out, where recorded, not when the money was
@@ -156,8 +161,8 @@ export async function GET() {
           id: `tx-${tx.id}`,
           type: isBuyer ? "purchase" : "sale",
           description: isBuyer
-            ? `Bought a position${inLine} for $${buyerPaid.toFixed(2)}`
-            : `Sold a position${inLine} for $${tx.amount.toFixed(2)}`,
+            ? `Bought a spot${inLine} for ${formatCurrency(buyerPaid)}${tx.capturedAt || tx.settledAt ? "" : " (not charged yet)"}`
+            : `Sold a spot${inLine} for ${formatCurrency(tx.amount)}`,
           amount: isBuyer ? buyerPaid : tx.amount,
           ...link,
           createdAt: tx.createdAt.toISOString(),

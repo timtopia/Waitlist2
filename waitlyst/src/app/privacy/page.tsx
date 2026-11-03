@@ -69,7 +69,7 @@ export default function PrivacyPolicyPage() {
           <ul className="list-disc list-inside text-ink/70 space-y-2">
             <li>
               <strong>Manage your account:</strong> Identify you across sessions,
-              display your name and profile picture in lines.
+              display your name in lines (in full only to the line&apos;s creator).
             </li>
             <li>
               <strong>Process transactions:</strong> Facilitate position swaps,
@@ -137,12 +137,21 @@ export default function PrivacyPolicyPage() {
             </li>
             <li>
               <strong>With other users:</strong> Other people in a line you
-              join see your first name, last initial and profile picture.
-              People who aren&apos;t in the line see only positions, not who
-              holds them. When you are called, your first name is shown on the
-              line&apos;s page. The line&apos;s creator sees your full name and
-              position, and can export a list of the people in their line that
-              includes email addresses so they can contact you.
+              join see your first name and last initial (no profile picture).
+              They see that a spot was bought and for how much, but not who
+              bought or sold it. People who aren&apos;t in the line see only
+              positions, not who holds them. When you are called, your first name
+              is shown on the line&apos;s page. The line&apos;s creator sees your
+              full name, profile picture, party size, any note you add and your
+              swaps, and can export a list of the people who have been in their
+              line (including anyone who has since left) with email addresses, so
+              they can contact you.
+            </li>
+            <li>
+              <strong>If you create a line:</strong> your name and profile
+              picture are shown publicly with it, including on its shared link
+              preview. Names a host types in for walk-in guests are deleted with
+              the line.
             </li>
             <li>
               <strong>As required by law:</strong> We may disclose information if
@@ -179,7 +188,7 @@ export default function PrivacyPolicyPage() {
             reporting and dispute resolution purposes.
           </p>
           <p className="text-ink/70 leading-relaxed">
-            If you delete your account, we will remove your personal information
+            If you ask us to delete your account, we will remove your personal information
             from our active systems. Some information may be retained in backups
             for a limited period or as required by law.
           </p>

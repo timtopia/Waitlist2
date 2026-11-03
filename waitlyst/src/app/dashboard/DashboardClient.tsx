@@ -208,6 +208,9 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
   // Activity Feed
   const [activities, setActivities] = useState<Activity[]>([])
   const [activitiesLoading, setActivitiesLoading] = useState(true)
+  // The first load failed: "No recent activity" would tell someone checking
+  // on a sale or refund that nothing happened
+  const [activitiesFailed, setActivitiesFailed] = useState(false)
 
   // Refetched with the dashboard poll below: router.refresh() doesn't re-run
   // this client fetch, so a sale or refund that lands while the tab sits open
@@ -219,10 +222,14 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
         const data = await res.json()
         if (Array.isArray(data)) {
           setActivities(data)
+          setActivitiesFailed(false)
         }
+      } else {
+        setActivitiesFailed(true)
       }
     } catch {
-      // Offline: keep showing the last feed
+      // Offline: keep showing the last feed (and say so if there is none)
+      setActivitiesFailed(true)
     } finally {
       setActivitiesLoading(false)
     }
@@ -650,15 +657,8 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                   </div>
                 )}
 
-                <div className="border border-rule p-4 text-center">
-                  <p className="font-mono text-2xl tabular-nums">
-                    {formatCurrency(statsModal.stats.netRevenue)}
-                  </p>
-                  <p className="font-mono text-xs uppercase tracking-widest text-ink/60 mt-1">Net Swap Volume (Settled)</p>
-                </div>
-
                 <p className="text-sm text-ink/60 text-center">
-                  Total transactions: {statsModal.stats.totalTransactions}
+                  Paid swaps: {statsModal.stats.completedCount + statsModal.stats.pendingSettlementCount + statsModal.stats.refundedCount}
                 </p>
               </div>
             ) : (
@@ -995,6 +995,13 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
               {[1, 2, 3].map((i) => (
                 <div key={i} className="h-12 bg-ink/5 animate-pulse" />
               ))}
+            </div>
+          ) : activities.length === 0 && activitiesFailed ? (
+            <div className="text-center py-6" role="alert">
+              <p className="text-ink/60 mb-3">Couldn&apos;t load your activity.</p>
+              <Button size="sm" variant="secondary" onClick={() => { setActivitiesLoading(true); fetchActivities() }}>
+                Try again
+              </Button>
             </div>
           ) : activities.length === 0 ? (
             <div className="text-center py-6">

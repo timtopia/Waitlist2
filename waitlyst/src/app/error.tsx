@@ -41,6 +41,19 @@ export default function Error({
           <p className="text-ink/60 mb-8">
             An unexpected error occurred. Please try again or return to the home page.
           </p>
+          {error.digest && (
+            // Gives support something to find in the logs
+            <p className="text-sm text-ink/60 -mt-6 mb-8">
+              Still stuck? Email{" "}
+              <a
+                href={`mailto:support@waitlyst.app?subject=${encodeURIComponent(`Error ${error.digest}`)}`}
+                className="text-accent underline underline-offset-2"
+              >
+                support@waitlyst.app
+              </a>{" "}
+              with reference <span className="font-mono">{error.digest}</span>.
+            </p>
+          )}
           <div className="flex items-center justify-center gap-3">
             <Link href="/" className={buttonClasses({ variant: "secondary" })}>
               Go Home

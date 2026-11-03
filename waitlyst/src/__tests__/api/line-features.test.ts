@@ -588,7 +588,7 @@ describe("POST /api/lines/[lineId]/checkout", () => {
     expect(response.status).toBe(409)
 
     const data = await response.json()
-    expect(data.error).toContain("another transaction")
+    expect(data.error).toContain("middle of a payment")
   })
 
   it("should return 409 if target position is locked", async () => {
@@ -625,7 +625,7 @@ describe("POST /api/lines/[lineId]/checkout", () => {
     expect(response.status).toBe(409)
 
     const data = await response.json()
-    expect(data.error).toContain("another transaction")
+    expect(data.error).toContain("paying for this spot right now")
   })
 
   it("should complete swap in dev mode (no Stripe) successfully", async () => {

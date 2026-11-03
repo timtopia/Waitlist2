@@ -85,6 +85,10 @@ export function MemberStatusCard({
     return () => clearInterval(timer)
   }, [deadlineMs, quotedAt])
   const left = timeLeft(deadline, now)
+  // When the number ahead last changed: the estimate's clock time counts
+  // from here (adjusting state during render, per React's guidance)
+  const [aheadSince, setAheadSince] = useState(() => ({ ahead, at: Date.now() }))
+  if (aheadSince.ahead !== ahead) setAheadSince({ ahead, at: Date.now() })
 
   // Refetch as the line moves: each service event changes the pace estimate.
   useEffect(() => {
@@ -143,20 +147,35 @@ export function MemberStatusCard({
     detail = isRestaurant ? "Enjoy your meal." : "You're all set. Leave the line whenever you're ready."
   } else if (phase === "next") {
     headline = "You're next"
-    detail = quoteDetail ?? "No one is ahead of you. Stay close; you'll be called soon."
+    // Everyone still ahead has been called (they're at the stand), which is
+    // when the "you're next" email goes out
+    const calledAhead = ahead === 1
+      ? `The ${isRestaurant ? "party" : "person"} ahead of you has been called.`
+      : `The ${ahead} ${isRestaurant ? "parties" : "people"} ahead of you have been called.`
+    detail = quoteDetail ?? (ahead > 0
+      ? `${calledAhead} Stay close; you're up next.`
+      : "No one is ahead of you. Stay close; you'll be called soon.")
   } else {
     headline = isRestaurant
       ? `${ahead} ${ahead === 1 ? "party" : "parties"} ahead of you`
       : `${ahead} ${ahead === 1 ? "person" : "people"} ahead of you`
-    if (quoteDetail) detail = quoteDetail
+    // A paused line isn't moving: a clock time would bring them back too early
+    if (isPaused) detail = `Line paused. No wait estimate until the ${organizer} resumes it.`
+    else if (quoteDetail) detail = quoteDetail
     else if (waitTimeLoading) detail = "Estimating your wait..."
     else if (minutesPerPerson != null) {
       // A clock time, like the host's quote: someone stepping away for a
-      // drink needs to know when to be back, not do the maths
+      // drink needs to know when to be back, not do the maths. Counted from
+      // when the line last moved, not from each poll -- otherwise a big
+      // party watching smaller ones get seated around them sees "around
+      // 7:40" quietly drift to 8:05 while the estimate never changes.
       const minutes = minutesPerPerson * ahead
-      const around = new Date(Date.now() + minutes * 60_000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-      detail = `Est. wait: ${formatWaitTime(minutes)}${minutes >= 1 ? ` (around ${around})` : ""}`
-    } else detail = `Wait estimate appears once the ${organizer} starts ${isRestaurant ? "seating" : "serving"} people.`
+      const aroundMs = aheadSince.at + minutes * 60_000
+      const around = new Date(aroundMs).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+      detail = minutes >= 1 && Date.now() > aroundMs + 5 * 60_000
+        ? `Taking longer than estimated (we guessed around ${around}). You're still in line.`
+        : `Est. wait: ${formatWaitTime(minutes)}${minutes >= 1 ? ` (around ${around})` : ""}`
+    } else detail = `Wait estimate appears after the ${organizer} has ${isRestaurant ? "seated" : "served"} a couple of ${isRestaurant ? "parties" : "people"}.`
   }
 
   const accent = phase === "called"
@@ -203,7 +222,7 @@ export function MemberStatusCard({
                 {isRestaurant
                   ? phase === "called"
                     // Party size is locked once called; the host handles it in person
-                    ? "Party size changed? Tell the host at the stand. Add a note or leave"
+                    ? "Party size changed? Tell the host at the stand. Add a note or leave."
                     : "Change party size, add a note, or leave"
                   : "Manage your spot or leave"}
               </a>
@@ -252,8 +271,8 @@ export function MemberStatusCard({
               // guest unsure whether they still had a place
               <p className="text-sm font-medium text-accent">
                 {isRestaurant
-                  ? "Your time to show up has run out. Go to the host stand now and tell them you're here; you may be skipped at any moment."
-                  : "Your time to show up has run out. Go now; you may be skipped at any moment."}
+                  ? "Your time to show up has run out, so you'll be skipped in a moment. If you're already at the stand, tell the host -- they can add you back."
+                  : "Your time to show up has run out, so you'll be skipped in a moment."}
               </p>
             )}
             {purchaseLimit && (

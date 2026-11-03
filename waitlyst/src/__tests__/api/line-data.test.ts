@@ -675,10 +675,10 @@ describe("GET /api/activity", () => {
     const sale = data.find((a: { type: string }) => a.type === "sale")
     const purchase = data.find((a: { type: string }) => a.type === "purchase")
     expect(sale).toBeDefined()
-    expect(sale.description).toContain("Sold a position for $10.00")
+    expect(sale.description).toContain("Sold a spot for $10.00")
     expect(sale.amount).toBe(10)
     expect(purchase).toBeDefined()
-    expect(purchase.description).toContain("Bought a position for $25.00")
+    expect(purchase.description).toContain("Bought a spot for $25.00")
     expect(purchase.amount).toBe(25)
   })
 
@@ -717,9 +717,9 @@ describe("GET /api/activity", () => {
 
     const purchase = data.find((a: { id: string }) => a.id === "tx-txn-buy")
     const sale = data.find((a: { id: string }) => a.id === "tx-txn-sell")
-    expect(purchase.description).toContain("Bought a position for $103.50")
+    expect(purchase.description).toContain("Bought a spot for $103.50")
     expect(purchase.amount).toBe(103.5)
-    expect(sale.description).toContain("Sold a position for $50.00")
+    expect(sale.description).toContain("Sold a spot for $50.00")
     expect(sale.amount).toBe(50)
   })
 
@@ -735,6 +735,7 @@ describe("GET /api/activity", () => {
         ownerFee: 1.5,
         platformFee: 0.75,
         status: "REFUNDED",
+        capturedAt: new Date("2025-06-01T13:00:00Z"),
         createdAt: new Date("2025-06-01T14:00:00Z"),
       },
     ])
@@ -810,5 +811,35 @@ describe("GET /api/lines/[lineId]/activity -- who sees names", () => {
     const res = await GET(new Request("http://localhost/api/lines/line-1/activity"), { params: Promise.resolve({ lineId: "line-1" }) })
     const data = await res.json()
     expect(data[0].description).toBe("Alice Walker joined the line")
+  })
+})
+
+describe("GET /api/activity -- released holds aren't refunds", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPrisma.queueVisit.findMany.mockResolvedValue([])
+    mockPrisma.swapOffer.findMany.mockResolvedValue([])
+  })
+
+  it("calls a released card hold a release, not a refund", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "user-1" } })
+    mockPrisma.transaction.findMany.mockResolvedValue([
+      {
+        id: "txn-1",
+        lineId: "line-1",
+        buyerId: "user-1",
+        sellerId: "user-2",
+        amount: 15.0,
+        ownerFee: 1.5,
+        platformFee: 0.75,
+        status: "REFUNDED",
+        capturedAt: null,
+        createdAt: new Date("2025-06-01T14:00:00Z"),
+      },
+    ])
+    mockPrisma.linePosition.findMany.mockResolvedValue([])
+    const { GET } = await import("@/app/api/activity/route")
+    const data = await (await GET()).json()
+    expect(data[0].description).toContain("Card hold of $17.25 released")
   })
 })

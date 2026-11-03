@@ -117,7 +117,15 @@ export function Header() {
             ) : session ? (
               <>
                 {/* Desktop profile dropdown */}
-                <div className="relative hidden md:block" ref={accountMenuRef}>
+                <div
+                  className="relative hidden md:block"
+                  ref={accountMenuRef}
+                  // Tabbing out of the menu closes it instead of leaving it over the page
+                  onBlur={(e) => {
+                    const to = e.relatedTarget as Node | null
+                    if (menuOpen && to && !e.currentTarget.contains(to)) setMenuOpen(false)
+                  }}
+                >
                   {/* A disclosure of plain links, not an ARIA menu */}
                   <button
                     ref={accountButtonRef}
@@ -175,6 +183,7 @@ export function Header() {
               className="md:hidden flex items-center justify-center w-11 h-11 text-ink/60 hover:text-ink hover:bg-ink/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-ink"
               aria-label="Toggle menu"
               aria-expanded={mobileMenuOpen}
+              aria-controls="mobile-menu"
             >
               {mobileMenuOpen ? (
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -192,7 +201,7 @@ export function Header() {
 
       {/* Mobile menu */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t border-rule bg-paper">
+        <div className="md:hidden border-t border-rule bg-paper" id="mobile-menu">
           <nav className="px-4 py-2 space-y-1">
             <Link
               href="/browse"

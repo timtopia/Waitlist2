@@ -120,10 +120,11 @@ export default async function ProfilePage() {
   }
 
   // The history lists money that actually moved: completed and refunded
-  // purchases. Abandoned or failed checkouts never charged anyone.
+  // purchases. Abandoned or failed checkouts never charged anyone. Not cut
+  // to 20: the header counted them all, and "View all" couldn't reach the
+  // older ones someone was asking support about. The list pages itself.
   const history = transactions
     .filter((t) => t.status === "COMPLETED" || t.status === "REFUNDED")
-    .slice(0, 20)
   const historyLines = await prisma.line.findMany({
     where: { id: { in: [...new Set(history.map((t) => t.lineId))] } },
     select: { id: true, name: true },

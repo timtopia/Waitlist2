@@ -61,7 +61,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const styles: Record<ToastType, string> = {
     success: "bg-green-700",
     error: "bg-accent",
-    warning: "bg-amber-600",
+    // amber-600 under white 14px text was ~3:1; amber-800 clears AA
+    warning: "bg-amber-800",
     info: "bg-ink",
   }
 

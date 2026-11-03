@@ -1,11 +1,11 @@
-import type { LinePosition, Prisma } from "@prisma/client"
+import type { LinePosition, Prisma, Transaction } from "@prisma/client"
 import { prisma } from "./prisma"
 import { settleTransactionsForUser } from "./settle-transactions"
 import { buyerTotal } from "./fees"
 import { expireCheckoutSession, getBaseUrl, releaseAndSettle, returnBuyerFunds } from "./stripe"
 import { runAfterResponse } from "./after-response"
 import { sendEmail } from "./email"
-import { removedFromLineEmail } from "./email-templates"
+import { removedFromLineEmail, saleReversedEmail } from "./email-templates"
 
 export class PositionNotFoundError extends Error {
   constructor() {
@@ -72,6 +72,9 @@ export async function removeByOrganizer(
   }
 
   const refunded = openPurchases.filter((p) => refundedIds.includes(p.id))
+  const refundedAmount = refunded.reduce((sum, p) => sum + buyerTotal(p), 0)
+  const refundFailed = action === "refund" && refunded.length < openPurchases.length
+  notifySaleReversed(refunded, lineId)
 
   // Someone removed while waiting would otherwise only find out if they had
   // the page open. Served people leaving the list don't need telling.
@@ -93,7 +96,8 @@ export async function removeByOrganizer(
         // A host-marked no-show was called and didn't come, same as a timeout
         missedCall || noShow ? "missed" : closing ? "closed" : "removed",
         collectedCount > 0,
-        line.kind === "RESTAURANT"
+        line.kind === "RESTAURANT",
+        { refundedAmount, refundFailed }
       )
       await sendEmail(user.email, subject, html)
     })
@@ -102,11 +106,42 @@ export async function removeByOrganizer(
   return {
     fulfilled: position.fulfilled,
     refundedCount: refunded.length,
-    refundedAmount: refunded.reduce((sum, p) => sum + buyerTotal(p), 0),
+    refundedAmount,
     refundFailedCount: action === "refund" ? openPurchases.length - refunded.length : 0,
     collectedCount,
     collectFailedCount: action === "payout" ? openPurchases.length - collectedCount : 0,
   }
+}
+
+/**
+ * Tell each seller whose sale was just refunded to the buyer: they were
+ * promised a payout that now isn't coming. Sent after the response.
+ */
+export function notifySaleReversed(purchases: Pick<Transaction, "sellerId" | "amount">[], lineId: string) {
+  if (purchases.length === 0) return
+  runAfterResponse(async () => {
+    const [line, sellers] = await Promise.all([
+      prisma.line.findUnique({ where: { id: lineId }, select: { name: true, kind: true } }),
+      prisma.user.findMany({
+        where: { id: { in: purchases.map((p) => p.sellerId) } },
+        select: { id: true, name: true, email: true, emailNotifications: true },
+      }),
+    ])
+    if (!line) return
+    const byId = new Map(sellers.map((s) => [s.id, s]))
+    for (const p of purchases) {
+      const seller = byId.get(p.sellerId)
+      if (!seller?.email || !seller.emailNotifications) continue
+      const { subject, html } = saleReversedEmail(
+        seller.name || "there",
+        line.name,
+        p.amount,
+        `${getBaseUrl()}/lines/${lineId}`,
+        line.kind === "RESTAURANT"
+      )
+      await sendEmail(seller.email, subject, html)
+    }
+  })
 }
 
 /**

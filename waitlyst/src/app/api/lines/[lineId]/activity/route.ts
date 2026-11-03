@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { lineViewer, shortName } from "@/lib/privacy"
 import { buyerTotal } from "@/lib/fees"
+import { formatCurrency } from "@/lib/format"
 import { rateLimit } from "@/lib/rate-limit"
 
 export const dynamic = "force-dynamic"
@@ -75,7 +76,17 @@ export async function GET(
         })
       : []
 
-    const userMap = new Map(users.map((u) => [u.id, displayName(u.name)]))
+    // What someone paid, earned or got back is theirs: other guests see that
+    // a spot traded and for how much, but not who. The owner sees everything;
+    // a guest sees their own trades as "You".
+    const viewerId = session?.user?.id ?? null
+    const nameMap = new Map(users.map((u) => [u.id, u.name]))
+    const tradeName = (id: string, subject: boolean) =>
+      viewer === "owner"
+        ? nameMap.get(id) || "Someone"
+        : id === viewerId
+          ? subject ? "You" : "you"
+          : subject ? "Someone" : "someone"
 
     type Activity = {
       id: string
@@ -99,14 +110,16 @@ export async function GET(
 
     // Add transaction events
     for (const tx of transactions) {
-      const buyerName = userMap.get(tx.buyerId) || "Someone"
-      const sellerName = userMap.get(tx.sellerId) || "Someone"
+      const buyerName = tradeName(tx.buyerId, true)
+      const sellerName = tradeName(tx.sellerId, false)
 
       if (tx.status === "REFUNDED") {
+        // Someone else's refund is nobody else's business
+        if (viewer !== "owner" && tx.buyerId !== viewerId) continue
         activities.push({
           id: `refund-${tx.id}`,
           type: "refund",
-          description: `${buyerName} received a refund of $${buyerTotal(tx).toFixed(2)}`,
+          description: `${buyerName} received a refund of ${formatCurrency(buyerTotal(tx))}`,
           timestamp: tx.createdAt.toISOString(),
         })
       } else if (tx.status === "COMPLETED") {
@@ -119,7 +132,9 @@ export async function GET(
         activities.push({
           id: `sale-${tx.id}`,
           type: "sale",
-          description: `${buyerName} bought a spot from ${sellerName} for $${buyerPaid.toFixed(2)} ($${tx.amount.toFixed(2)} to ${sellerName})`,
+          description: viewer !== "owner" && tx.sellerId !== viewerId
+            ? `${buyerName} bought a spot for ${formatCurrency(buyerPaid)}`
+            : `${buyerName} bought a spot from ${sellerName} for ${formatCurrency(buyerPaid)} (${formatCurrency(tx.amount)} to ${sellerName})`,
           timestamp: tx.createdAt.toISOString(),
         })
       }

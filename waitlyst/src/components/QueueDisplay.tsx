@@ -69,6 +69,9 @@ interface BuyConfirm {
 const QUOTE_CHOICES = [5, 10, 15, 20, 25, 30, 45, 60, 75, 90, 120]
 
 const NO_CONNECTION = "No connection. That wasn't sent -- try again when you have signal."
+// The request may have reached the server and only the reply was lost, so
+// don't claim it wasn't sent: refresh and let the screen show what stuck
+const NO_CONNECTION_MAYBE = "Connection dropped -- that may not have gone through. Check the line below before trying again."
 
 function formatTimeLeft(iso: string): string {
   const minutes = Math.max(0, (new Date(iso).getTime() - Date.now()) / 60000)
@@ -111,6 +114,8 @@ interface QueueDisplayProps {
   positions: Position[]
   /** Guests the line still has room for, when it has a cap (null = no cap) */
   roomLeft?: number | null
+  /** The line caps guests (even when the count is hidden from guests) */
+  hasCapacityLimit?: boolean
   onRefresh: () => void
   isCreator?: boolean
   feeInfo?: FeeInfo
@@ -139,7 +144,7 @@ function formatWaited(minutes: number): string {
   return `${Math.floor(minutes / 60)} hr${rest ? ` ${rest} min` : ""}`
 }
 
-export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, isCreator = false, feeInfo, isPaused = false, hasPayoutSetup = false, stripeEnabled = false, allowResale = true, maxAskingPrice = null, hideCapacity = false, nowServingUserId = null, isRestaurant = false, onLeft, responseWindowMinutes = null, emailEnabled = false }: QueueDisplayProps) {
+export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLimit = false, onRefresh, isCreator = false, feeInfo, isPaused = false, hasPayoutSetup = false, stripeEnabled = false, allowResale = true, maxAskingPrice = null, hideCapacity = false, nowServingUserId = null, isRestaurant = false, onLeft, responseWindowMinutes = null, emailEnabled = false }: QueueDisplayProps) {
   const { data: session } = useSession()
   const { addToast } = useToast()
   const [loadingAction, setLoadingAction] = useState<string | null>(null)
@@ -189,7 +194,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
     try {
       const res = await fetch(`/api/lines/${lineId}/wait-time`)
       if (res.ok) {
-        const data = await res.json()
+        const data = await res.json().catch(() => ({}))
         setWaitTimeData(data)
       }
     } catch {
@@ -219,7 +224,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
     try {
       const res = await fetch(`/api/lines/${lineId}/offer`)
       if (res.ok) {
-        const data = await res.json()
+        const data = await res.json().catch(() => ({}))
         setSentOffers(data.sent)
         setReceivedOffers(data.received)
         const pending = (data.received as SwapOffer[]).filter((o) => o.status === "PENDING")
@@ -274,7 +279,9 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
           for (const o of received) {
             if (prevReceived.get(o.id) !== "ACCEPTED") continue
             if (o.status === "PENDING" || o.status === "EXPIRED") {
-              offerAlert(`They didn't pay for the ${formatCurrency(o.amount)} swap in time, so it's off. You keep your spot.`, "info")
+              // Lapsed payment, a call, or an organizer cancel all land here: say
+              // what happened without blaming the buyer for a reason we can't see
+              offerAlert(`The ${formatCurrency(o.amount)} swap didn't go through, so it's off. You keep your spot.`, "info")
             } else if (o.status === "WITHDRAWN") {
               offerAlert(`They backed out of the ${formatCurrency(o.amount)} swap. You keep your spot.`, "info")
             }
@@ -304,7 +311,9 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
   // doesn't need them (each poll scans the line's positions).
   const viewerInLine = !!session?.user?.id && positions.some((p) => p.user.id === session.user.id)
   useEffect(() => {
-    if (!viewerInLine) return
+    // With swaps off there are no offers to hear about: polling would just
+    // double every guest's traffic (and share-IP rate limit) for nothing
+    if (!viewerInLine || !allowResale) return
     const interval = setInterval(() => {
       // With notifications on, a hidden tab still checks: an offer or a
       // 30-minute payment window shouldn't wait for them to come back
@@ -312,7 +321,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
       if (document.visibilityState === "visible" || notifying) fetchOffers()
     }, 10000)
     return () => clearInterval(interval)
-  }, [fetchOffers, viewerInLine])
+  }, [fetchOffers, viewerInLine, allowResale])
 
   /** What a buyer actually pays for a listed position, including owner + platform fees. */
   function buyerTotal(askingPrice: number): number {
@@ -351,6 +360,13 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
     }
   }, [lineId, myLockUntil])
 
+  /** A mutation's reply never arrived (Wi-Fi to cellular, a 502 page...) */
+  function lostConnection() {
+    addToast(NO_CONNECTION_MAYBE, "error")
+    fetchOffers()
+    onRefresh()
+  }
+
   async function handleGiveMoreTime(positionId: string) {
     setLoadingAction(`grace-${positionId}`)
     try {
@@ -363,6 +379,8 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
       if (res.ok) addToast("Gave them 5 more minutes", "success")
       else addToast(data.error || "Couldn't give more time", "error")
       onRefresh()
+    } catch {
+      lostConnection()
     } finally {
       setLoadingAction(null)
     }
@@ -380,6 +398,8 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
         addToast(data.error || "Couldn't cancel the purchase", "error")
       }
       onRefresh()
+    } catch {
+      lostConnection()
     } finally {
       setLoadingAction(null)
     }
@@ -445,7 +465,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ toUserId, amount }),
       })
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
       if (res.ok) {
         addToast(sentOfferToFront?.status === "PENDING" ? "Offer raised" : "Offer sent", "success")
         setOfferFormOpen(null)
@@ -456,6 +476,8 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
         // They answered, or a payment is waiting: show the offer as it is now
         if (res.status === 409) fetchOffers()
       }
+    } catch {
+      lostConnection()
     } finally {
       setOfferLoading(false)
     }
@@ -472,7 +494,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, expectedAmount: offer.amount }),
       })
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
       if (res.ok) {
         if (action === "accept") {
           if (data.devMode) {
@@ -491,6 +513,8 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
         // Raised, withdrawn, expired or already answered: show what it is now
         fetchOffers()
       }
+    } catch {
+      lostConnection()
     } finally {
       setLoadingAction(null)
     }
@@ -514,7 +538,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
           ...(feeInfo ? { expectedTotal: buyerTotal(confirm.askingPrice) } : {}),
         }),
       })
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
       if (res.ok) {
         if (data.url) {
           window.location.href = data.url
@@ -526,6 +550,8 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
         addToast(data.error || "Failed to buy position", "error")
         if (res.status === 409) onRefresh()
       }
+    } catch {
+      lostConnection()
     } finally {
       setLoadingAction(null)
     }
@@ -536,7 +562,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
     setLoadingAction(`withdraw-${offerId}`)
     try {
       const res = await fetch(`/api/lines/${lineId}/offer/${offerId}`, { method: "DELETE" })
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
       if (res.ok) {
         addToast("Offer withdrawn", "info")
         fetchOffers()
@@ -546,6 +572,8 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
         // They may have just answered it
         fetchOffers()
       }
+    } catch {
+      lostConnection()
     } finally {
       setLoadingAction(null)
     }
@@ -556,7 +584,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
     setLoadingAction(`pay-${offerId}`)
     try {
       const res = await fetch(`/api/lines/${lineId}/offer/${offerId}/checkout`)
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
       if (res.ok && data.checkoutUrl) {
         window.location.href = data.checkoutUrl
         return
@@ -570,6 +598,8 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
       // Paid, window closed, or the swap fell through: the card above is stale
       fetchOffers()
       onRefresh()
+    } catch {
+      lostConnection()
     } finally {
       setLoadingAction(null)
     }
@@ -583,7 +613,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ returnTo: window.location.pathname }),
       })
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
       if (res.ok && data.url) {
         window.location.href = data.url
       } else {
@@ -613,7 +643,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ price }),
       })
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
       if (res.ok) {
         addToast(
           price === null ? "Removed from sale" : `Listed for ${formatCurrency(price)}`,
@@ -625,6 +655,8 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
       } else {
         addToast(data.error || "Failed to update listing", "error")
       }
+    } catch {
+      lostConnection()
     } finally {
       setPriceLoading(false)
     }
@@ -656,8 +688,12 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
       }
     } catch {
       // A dropped connection used to fail silently, leaving them unsure
-      // whether they were still holding a table
-      addToast(NO_CONNECTION, "error")
+      // whether they were still holding a table. The leave may have landed
+      // with only the reply lost: mark it as theirs so the next poll doesn't
+      // report "removed by the host" (a poll still showing them clears it)
+      onLeft?.()
+      addToast(NO_CONNECTION_MAYBE, "error")
+      onRefresh()
     } finally {
       setLoadingAction(null)
     }
@@ -676,7 +712,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
     try {
       const res = await fetch(`/api/lines/${lineId}/position-transactions?userId=${userId}`)
       if (res.ok) {
-        const data = await res.json()
+        const data = await res.json().catch(() => ({}))
         setRemovalModal(prev => prev ? { ...prev, transactionInfo: data, loading: false } : null)
       } else {
         setRemovalModal(prev => prev ? { ...prev, loading: false } : null)
@@ -701,7 +737,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
         }),
       })
       if (res.ok) {
-        const data = await res.json()
+        const data = await res.json().catch(() => ({}))
         if (data.refundFailedCount > 0) {
           addToast(
             `Removed, but ${data.refundFailedCount} refund(s) didn't go through. They're still open on the settlement page.`,
@@ -901,7 +937,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
         }),
       })
       if (res.ok) {
-        const data = await res.json()
+        const data = await res.json().catch(() => ({}))
         let msg = data.failed > 0
           ? `Removed ${data.removed}, ${data.failed} failed.`
           : `Removed ${data.removed} ${data.removed === 1 ? "person" : "people"} from line.`
@@ -1247,7 +1283,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
                         setSelectedIds(new Set(allIds))
                       }
                     }}
-                    className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"
+                    className="min-h-11 sm:min-h-0 font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"
                   >
                     {selectedIds.size === positions.filter((p) => p.user.id !== session?.user?.id).length
                       ? "Deselect All"
@@ -1268,7 +1304,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
                     setSelectMode(true)
                   }
                 }}
-                className={`font-mono text-xs uppercase tracking-widest px-3 py-1.5 border transition-colors ${
+                className={`min-h-11 sm:min-h-0 font-mono text-xs uppercase tracking-widest px-3 py-1.5 border transition-colors ${
                   selectMode
                     ? "border-ink bg-ink text-paper"
                     : "border-transparent text-ink/60 hover:text-ink hover:bg-ink/5"
@@ -1443,7 +1479,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
                                 const next = Number(e.target.value)
                                 // A mis-tap from 8 to 1 frees 7 seats someone else can take
                                 if (
-                                  isCurrentUser && roomLeft != null && next < (pos.partySize ?? 1) &&
+                                  isCurrentUser && (roomLeft != null || hasCapacityLimit) && next < (pos.partySize ?? 1) &&
                                   !window.confirm("Make your party smaller? The seats you free up can go to others, and you may not get them back.")
                                 ) return
                                 handlePartySize(next, isCurrentUser ? undefined : pos.id)
@@ -1550,6 +1586,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
                           disabled={loadingAction === `call-${pos.id}`}
                           className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[2.25rem] font-mono text-xs uppercase tracking-widest text-accent border border-rule hover:border-accent transition-colors disabled:opacity-50"
                           title={`Call this party of ${pos.partySize ?? 1}`}
+                          aria-label={`${pos.calledAt || pos.user.id === nowServingUserId ? "Call again" : "Call"} ${pos.user.name || "this party"}, party of ${pos.partySize ?? 1}`}
                         >
                           {pos.calledAt || pos.user.id === nowServingUserId ? "Call again" : "Call"}
                         </button>
@@ -1561,6 +1598,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
                           disabled={loadingAction === `fulfill-${pos.id}` || !!isLocked}
                           className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[2.25rem] font-mono text-xs uppercase tracking-widest text-green-700 border border-rule hover:border-green-700 transition-colors disabled:opacity-50"
                           title={isLocked ? "A swap for this spot is in progress -- wait for it to finish" : isRestaurant ? "Mark as seated" : "Mark as fulfilled"}
+                          aria-label={`${isRestaurant ? "Mark seated:" : "Fulfill"} ${pos.user.name || (isRestaurant ? "this party" : "this person")}`}
                         >
                           {loadingAction === `fulfill-${pos.id}` && (
                             <div className="w-3 h-3 border-2 border-green-700 border-t-transparent rounded-full animate-spin" />
@@ -1573,6 +1611,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, onRefresh, is
                           size="sm"
                           variant="danger"
                           onClick={() => openRemovalModal(pos.id, pos.user.id, pos.user.name, !!pos.calledAt && !pos.fulfilled)}
+                          aria-label={`Remove ${pos.user.name || (isRestaurant ? "this party" : "this person")}`}
                           isLoading={loadingAction === `remove-${pos.id}`}
                         >
                           Remove
