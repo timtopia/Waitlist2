@@ -101,6 +101,8 @@ describe("POST /api/lines/[lineId]/call-next", () => {
     }
     mockPrisma.linePosition.findFirst.mockResolvedValueOnce(front).mockResolvedValueOnce(onDeck)
     mockPrisma.line.update.mockResolvedValue({ id: "line-1", name: "Drop" })
+    // No one ahead of Ann is still waiting to be called
+    mockPrisma.linePosition.count.mockResolvedValue(0)
 
     const { POST } = await import("@/app/api/lines/[lineId]/call-next/route")
     const call = () => POST(new Request("http://localhost/api/lines/line-1/call-next", { method: "POST" }), params)

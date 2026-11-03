@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
-import { removeByOrganizer } from "@/lib/queue-exit"
+import { removeByOrganizer, PositionNotFoundError } from "@/lib/queue-exit"
 
 export async function POST(
   req: Request,
@@ -42,6 +42,8 @@ export async function POST(
 
   let removed = 0
   let failed = 0
+  // Removed by another device or the guest in the meantime: not a failure
+  let alreadyGone = 0
   let refundedCount = 0
   let refundedAmount = 0
   let refundFailedCount = 0
@@ -55,10 +57,11 @@ export async function POST(
       refundedAmount += result.refundedAmount
       refundFailedCount += result.refundFailedCount
       collectFailedCount += result.collectFailedCount
-    } catch {
-      failed++
+    } catch (e) {
+      if (e instanceof PositionNotFoundError) alreadyGone++
+      else failed++
     }
   }
 
-  return NextResponse.json({ removed, failed, refundedCount, refundedAmount, refundFailedCount, collectFailedCount })
+  return NextResponse.json({ removed, failed, alreadyGone, refundedCount, refundedAmount, refundFailedCount, collectFailedCount })
 }

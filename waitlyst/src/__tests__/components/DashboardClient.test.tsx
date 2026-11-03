@@ -236,7 +236,7 @@ describe("DashboardClient", () => {
 
       await waitFor(() => {
         expect(screen.getByText("$150.00")).toBeInTheDocument()
-        expect(screen.getByText("Settled (5)")).toBeInTheDocument()
+        expect(screen.getByText("Collected (5)")).toBeInTheDocument()
       })
     })
 
@@ -262,7 +262,7 @@ describe("DashboardClient", () => {
 
       await waitFor(() => {
         expect(screen.getByText("$50.00")).toBeInTheDocument()
-        expect(screen.getByText("Refunded (2)")).toBeInTheDocument()
+        expect(screen.getByText("Refunded or released (2)")).toBeInTheDocument()
       })
     })
 
@@ -288,7 +288,7 @@ describe("DashboardClient", () => {
 
       await waitFor(() => {
         expect(screen.getByText("$75.00")).toBeInTheDocument()
-        expect(screen.getByText("Pending Settlement (3)")).toBeInTheDocument()
+        expect(screen.getByText("Not collected (3)")).toBeInTheDocument()
         expect(screen.getByText("Couldn't be collected automatically -- check the settlement page")).toBeInTheDocument()
       })
     })
@@ -397,8 +397,8 @@ describe("DashboardClient", () => {
       fireEvent.click(screen.getByText("View Stats"))
 
       await waitFor(() => {
-        // 5 settled + 0 pending + 2 refunded; the 10 included failed checkouts
-        expect(screen.getByText("Paid swaps: 7")).toBeInTheDocument()
+        // 5 settled + 0 pending; refunded/released and failed checkouts didn't go through
+        expect(screen.getByText("Swaps that went through: 5")).toBeInTheDocument()
       })
     })
 

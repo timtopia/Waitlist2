@@ -92,6 +92,18 @@ export function EditLineClient({
     setErrorField(id)
     requestAnimationFrame(() => document.getElementById(id)?.focus())
   }
+  /** Which field a save error from the server is about, if any */
+  const serverErrorField = (message: string): string | null => {
+    if (/capacity/i.test(message)) return "maxCapacity"
+    if (/\bfee\b/i.test(message)) return "ownerFee"
+    if (/asking price/i.test(message)) return "maxAskingPrice"
+    if (/product price/i.test(message)) return "productPrice"
+    if (/closing time|close after/i.test(message)) return "closesAt"
+    if (/opening time/i.test(message)) return "opensAt"
+    if (/^name is required/i.test(message)) return "name"
+    if (/^description/i.test(message)) return "description"
+    return null
+  }
   const fieldA11y = (id: string, hintId?: string) => ({
     "aria-invalid": errorField === id || undefined,
     "aria-describedby": [hintId, errorField === id ? "form-error" : null].filter(Boolean).join(" ") || undefined,
@@ -206,9 +218,13 @@ export function EditLineClient({
         router.push(`/lines/${line.id}`)
         router.refresh()
       } else {
-        const data = await res.json()
-        setError(data.error || "Failed to update line")
-        addToast(data.error || "Failed to update line", "error")
+        const data = await res.json().catch(() => ({}))
+        const message: string = data.error || "Failed to update line"
+        // Mark, describe and focus the field the server refused, like the
+        // checks above; the message under the form is enough without a toast
+        const field = serverErrorField(message)
+        if (field && document.getElementById(field)) failField(field, message)
+        else setError(message)
       }
     } catch {
       setError("Failed to update line")
@@ -380,6 +396,7 @@ export function EditLineClient({
                 id="maxCapacity"
                 {...fieldA11y("maxCapacity", "maxCapacity-hint")}
                 type="number"
+                inputMode="numeric"
                 min={line.capacityUsed || 1}
                 placeholder="Unlimited"
                 value={maxCapacity}
@@ -420,6 +437,7 @@ export function EditLineClient({
                     id="purchaseLimit"
                     {...fieldA11y("purchaseLimit", "purchaseLimit-hint")}
                     type="number"
+                    inputMode="numeric"
                     min="1"
                     max="99"
                     placeholder="No limit"
@@ -438,6 +456,7 @@ export function EditLineClient({
                   id="responseWindow"
                   {...fieldA11y("responseWindow", "responseWindow-hint")}
                   type="number"
+                  inputMode="numeric"
                   min="1"
                   max="60"
                   placeholder="No limit"
@@ -577,6 +596,7 @@ export function EditLineClient({
                     <input
                       id="productPrice"
                       type="number"
+                      inputMode="decimal"
                       min="0.01"
                       step="0.01"
                       placeholder="0.00"
@@ -673,11 +693,13 @@ export function EditLineClient({
                         <input
                           id="maxAskingPrice"
                           type="number"
+                          inputMode="decimal"
                           min="1"
                           step="0.01"
                           placeholder="No limit"
                           value={maxAskingPrice}
                           onChange={(e) => setMaxAskingPrice(e.target.value)}
+                          {...fieldA11y("maxAskingPrice")}
                           className="w-full pl-7 pr-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                         />
                       </div>
@@ -704,12 +726,14 @@ export function EditLineClient({
                       <input
                         id="ownerFee"
                         type="number"
+                        inputMode="decimal"
                         min="0"
                         max="50"
                         step="any"
                         placeholder="0"
                         value={ownerFeePercent}
                         onChange={(e) => setOwnerFeePercent(e.target.value)}
+                        {...fieldA11y("ownerFee")}
                         className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                       />
                       <p className="text-xs text-ink/60 mt-1">

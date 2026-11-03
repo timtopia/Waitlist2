@@ -43,6 +43,8 @@ function niceMax(max: number): number {
  */
 export function BarChart({ title, subtitle, bars, labelHeader, valueHeader, labelEvery = 1, formatTick = String }: BarChartProps) {
   const [active, setActive] = useState<number | null>(null)
+  // Keyboard focus, apart from hover, so only focus draws the outline
+  const [focused, setFocused] = useState<number | null>(null)
   const [asTable, setAsTable] = useState(false)
   // One Tab stop for the whole chart; arrow keys move between bars
   const [focusIdx, setFocusIdx] = useState(0)
@@ -135,9 +137,20 @@ export function BarChart({ title, subtitle, bars, labelHeader, valueHeader, labe
                   onFocus={() => setActive(i)}
                   onBlur={() => setActive(null)}
                   className="outline-none"
+                  onFocusCapture={() => setFocused(i)}
+                  onBlurCapture={() => setFocused(null)}
                 >
-                  {/* Hit target: the whole band, taller than the bar */}
-                  <rect x={PAD.left + band * i} y={PAD.top} width={band} height={plotH} fill="transparent" />
+                  {/* Hit target: the whole band, taller than the bar. Outlined
+                      while focused: a 0 bar draws nothing else to show focus */}
+                  <rect
+                    x={PAD.left + band * i}
+                    y={PAD.top}
+                    width={band}
+                    height={plotH}
+                    fill="transparent"
+                    stroke={focused === i ? "#1a1815" : "none"}
+                    strokeWidth={2}
+                  />
                   {h > 0 && (
                     // Rounded data end, square at the baseline
                     <path

@@ -244,6 +244,15 @@ export async function PATCH(
       data: { status: "ACCEPTED" },
     })
     if (claimed.count === 0) {
+      // Usually the buyer raised while the seller was pressing Accept: say
+      // so, rather than "already responded to", which reads like a mistake
+      const now = await prisma.swapOffer.findUnique({ where: { id: offerId }, select: { status: true, amount: true } })
+      if (now?.status === "PENDING" && Math.abs(now.amount - offer.amount) > 0.001) {
+        return NextResponse.json(
+          { error: `They just raised their offer to $${now.amount.toFixed(2)}. Take another look before answering.` },
+          { status: 409 }
+        )
+      }
       return NextResponse.json(
         { error: "This offer was already responded to" },
         { status: 409 }

@@ -106,6 +106,9 @@ interface RemovalModal {
   noPayments?: boolean
   fulfilled?: boolean
   partySize?: number
+  /** The call shown when the dialog opened, so a No-show can't act on a stale one */
+  calledAt?: string | null
+  graceMinutes?: number
 }
 
 interface FeeInfo {
@@ -219,6 +222,12 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
     sendNotification("Swap update", { body: message, tag: `waitlyst-${lineId}-offer` })
     if (document.visibilityState === "visible") addToast(message, type)
   }, [sendNotification, addToast, lineId])
+  // Read by the offer watcher without re-creating it on every poll
+  const positionsRef = useRef(positions)
+  useEffect(() => {
+    positionsRef.current = positions
+  }, [positions])
+
   const fetchOffers = useCallback(async () => {
     if (!session?.user?.id) return
     try {
@@ -251,8 +260,11 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
             if (!was || was === o.status) continue
             const amount = formatCurrency(o.amount)
             if (was === "PENDING" && o.status === "ACCEPTED" && o.awaitingPayment) {
+              // A hidden tab may hear about it late: give the time actually left
+              const lockedUntil = positionsRef.current.find((p) => p.user.id === o.toUserId)?.lockedUntil
+              const payWindow = lockedUntil && new Date(lockedUntil) > new Date() ? formatTimeLeft(lockedUntil) : "30 min"
               offerAlert(
-                `Your ${amount} offer was accepted. Pay ${o.chargeTotal != null ? formatCurrency(o.chargeTotal) : "it"} (incl. fees) within 30 min to take their spot.`,
+                `Your ${amount} offer was accepted. Pay ${o.chargeTotal != null ? formatCurrency(o.chargeTotal) : "it"} (incl. fees) within ${payWindow} to take their spot.`,
                 "success"
               )
             } else if (o.status === "DECLINED") {
@@ -349,10 +361,19 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
   // Where they stood while their direct buy was pending, to tell them how it
   // ended when the lock clears (the "Resume payment" card used to just vanish)
   const pendingBuyFrom = useRef<number | null>(null)
+  // Where they stood while someone else was paying for their spot: a sale
+  // used to show nothing on screen -- the spot just moved back
+  const sellingFrom = useRef<number | null>(null)
   useEffect(() => {
     if (!myLockUntil || new Date(myLockUntil) <= new Date()) {
       const was = pendingBuyFrom.current
       pendingBuyFrom.current = null
+      const sold = sellingFrom.current
+      sellingFrom.current = null
+      // A swap that fell through is already announced by the offer watcher
+      if (sold !== null && myPlace !== null && myPlace > sold) {
+        addToast(`Your spot sold -- you're now #${myPlace}. Your earnings are on your profile.`, "success")
+      }
       if (was !== null && myPlace !== null) {
         if (myPlace < was) {
           addToast(`Your payment went through -- you're now #${myPlace}.`, "success")
@@ -389,6 +410,8 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
     // Only their own pending buy (not someone paying for their spot); cancelling
     // clears myCheckout first, so a deliberate cancel isn't reported
     pendingBuyFrom.current = myCheckout?.pending ? myPlace : null
+    // { pending: false } while locked: someone else is buying this spot
+    sellingFrom.current = myCheckout && !myCheckout.pending && !myCheckout.paid ? myPlace : null
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myCheckout])
 
@@ -736,7 +759,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
     userId: string,
     userName: string | null,
     canNoShow: boolean,
-    opts: { isWalkIn?: boolean; partySize?: number; fulfilled?: boolean } = {}
+    opts: { isWalkIn?: boolean; partySize?: number; fulfilled?: boolean; calledAt?: string | null; graceMinutes?: number } = {}
   ) {
     // A walk-in has no account to have paid with: skip the spinner and the
     // "$0.00 (0 purchases)" panel, which only reads as a money problem
@@ -751,6 +774,8 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
       noPayments: skipFetch,
       partySize: opts.partySize,
       fulfilled: opts.fulfilled,
+      calledAt: opts.calledAt,
+      graceMinutes: opts.graceMinutes,
     })
     if (skipFetch) return
 
@@ -782,7 +807,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
         body: JSON.stringify({
           positionId: removalModal.positionId,
           action,
-          ...(noShow && { noShow: true }),
+          ...(noShow && { noShow: true, calledAt: removalModal.calledAt ?? undefined, graceMinutes: removalModal.graceMinutes ?? 0 }),
         }),
       })
       if (res.ok) {
@@ -808,6 +833,13 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
       } else {
         const data = await res.json().catch(() => ({}))
         addToast(data.error || (isRestaurant ? "Couldn't remove the party" : "Failed to remove person"), "error")
+        // Usually another device (or the guest) got there first: close the
+        // dialog on the stale row and show what really happened
+        if (res.status === 404 || res.status === 409) {
+          setRemovalModal(null)
+          focusListSoon()
+          await onRefresh()
+        }
       }
     } catch {
       addToast(NO_CONNECTION, "error")
@@ -870,6 +902,8 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
       } else {
         const data = await res.json().catch(() => ({}))
         addToast(data.error || (positionId ? "Failed to update the party size" : "Failed to update your party size"), "error")
+        // Refused because they were called, seated or removed meanwhile: show it
+        if (res.status === 400 || res.status === 404) await onRefresh()
       }
     } catch {
       addToast(NO_CONNECTION, "error")
@@ -892,6 +926,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
       } else {
         const data = await res.json().catch(() => ({}))
         addToast(data.error || "Failed to save the note", "error")
+        if (res.status === 400 || res.status === 404) await onRefresh()
       }
     } catch {
       addToast(NO_CONNECTION, "error")
@@ -960,6 +995,17 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
     }
   }
 
+  // Another device (or the guest) can remove a selected party mid-selection:
+  // drop it so "N selected" and the batch count match what's on screen
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev
+      const live = new Set(positions.map((p) => p.id))
+      const next = new Set([...prev].filter((id) => live.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [positions])
+
   function toggleSelection(positionId: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev)
@@ -991,16 +1037,22 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
       })
       if (res.ok) {
         const data = await res.json().catch(() => ({}))
+        // Parties another device (or the guest) already took off aren't failures
+        const gone: number = data.alreadyGone ?? 0
         let msg = data.failed > 0
           ? `Removed ${data.removed}, ${data.failed} failed.`
+          : data.removed === 0 && gone > 0
+          ? gone === 1 ? "They had already left the line." : `All ${gone} had already left the line.`
           : `Removed ${data.removed} ${isRestaurant ? (data.removed === 1 ? "party" : "parties") : (data.removed === 1 ? "person" : "people")} from line.`
+        if (gone > 0 && data.removed > 0) msg += ` ${gone} had already left.`
         if (data.refundedCount > 0) msg += ` Refunded ${formatCurrency(data.refundedAmount)}.`
         const moneyProblems = (data.refundFailedCount ?? 0) + (data.collectFailedCount ?? 0)
         if (moneyProblems > 0) msg += ` ${moneyProblems} payment(s) need attention on the settlement page.`
         addToast(msg, data.failed > 0 || moneyProblems > 0 ? "info" : "success")
         cancelSelectMode()
         focusListSoon()
-        onRefresh()
+        // Awaited so removed rows don't linger, still tappable, until a poll
+        await onRefresh()
       } else {
         const data = await res.json().catch(() => ({}))
         addToast(data.error || "Batch remove failed", "error")
@@ -1138,10 +1190,12 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                   No-show{removalModal.transactionInfo && removalModal.transactionInfo.refundableCount > 0 ? " (keep purchase)" : ""}
                 </Button>
               )}
+              {/* Starts here, not on Remove: a repeated Enter shouldn't remove them */}
               <Button
                 variant="ghost"
                 onClick={() => setRemovalModal(null)}
                 className="w-full"
+                data-autofocus
               >
                 Cancel
               </Button>
@@ -1332,6 +1386,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                 variant="ghost"
                 onClick={() => setShowBatchConfirm(false)}
                 className="w-full"
+                data-autofocus
               >
                 Cancel
               </Button>
@@ -1449,7 +1504,10 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                         checked={isSelected}
                         onChange={() => toggleSelection(pos.id)}
                         onClick={(e) => e.stopPropagation()}
-                        aria-label={`Select ${pos.user.name || "party"} #${pos.position}`}
+                        // Same number the row shows (seated rows keep their slot at a restaurant)
+                        aria-label={`Select ${pos.user.name || (isRestaurant ? "party" : "person")}, ${
+                          isRestaurant ? (pos.fulfilled ? "seated" : `#${unservedAhead + 1}`) : `#${pos.position}`
+                        }`}
                         className="w-4 h-4 accent-ink border-rule flex-shrink-0"
                       />
                     )}
@@ -1522,10 +1580,12 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                             : null
                           if (left) return null
                           const ago = Math.max(0, Math.floor((clock - new Date(pos.calledAt).getTime()) / 60_000))
-                          const stale = ago >= (responseWindowMinutes ? responseWindowMinutes * 2 : 10)
+                          // While paused nobody is late: the show-up clock is on hold
+                          const stale = !isPaused && ago >= (responseWindowMinutes ? responseWindowMinutes * 2 : 10)
                           return (
                             <span className={`text-xs ${stale ? "text-amber-700" : "text-ink/60"}`}>
                               called {formatWaited(ago)} ago
+                              {isPaused && responseWindowMinutes && !pos.user.isWalkIn && " · timer on hold"}
                             </span>
                           )
                         })()}
@@ -1571,7 +1631,8 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                       {isRestaurant && (
                         // Guests change their own size until they're called;
                         // the host can change any party's size until it's seated.
-                        !pos.fulfilled && ((isCurrentUser && !pos.calledAt) || (isCreator && !isCurrentUser)) ? (
+                        // In select mode a tap on the row toggles it, so no controls.
+                        !selectMode && !pos.fulfilled && ((isCurrentUser && !pos.calledAt) || (isCreator && !isCurrentUser)) ? (
                           <label className="flex items-center gap-1.5 text-xs text-ink/60 mt-0.5">
                             Party of
                             <select
@@ -1587,7 +1648,8 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                               }}
                               disabled={loadingAction === (isCurrentUser ? "party-size" : `party-size-${pos.id}`)}
                               className="border border-rule bg-white px-2 py-0.5 min-h-11 pointer-fine:min-h-0 text-ink"
-                              aria-label={isCurrentUser ? "Your party size" : `Party size for ${pos.user.name || "this party"}`}
+                              // Starts with the visible "Party of" so voice control can target it
+                              aria-label={isCurrentUser ? "Party of (yours)" : `Party of, ${pos.user.name || "this party"}`}
                             >
                               {/* Sizes the line can't fit only failed after picking */}
                               {Array.from(
@@ -1605,7 +1667,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                           </p>
                         )
                       )}
-                      {isRestaurant && !pos.fulfilled && (isCurrentUser || isCreator) && (
+                      {isRestaurant && !selectMode && !pos.fulfilled && (isCurrentUser || isCreator) && (
                         <NoteField
                           key={pos.id}
                           initial={pos.note ?? ""}
@@ -1617,7 +1679,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                       {isRestaurant && pos.fulfilled && pos.note && (isCurrentUser || isCreator) && (
                         <p className="text-xs text-ink/60 mt-0.5 break-words">Note: {pos.note}</p>
                       )}
-                      {isCreator && !isCurrentUser && !pos.fulfilled && (
+                      {isCreator && !isCurrentUser && !pos.fulfilled && !selectMode && (
                         <label className="flex items-center gap-1.5 text-xs text-ink/60 mt-0.5">
                           Quote
                           <select
@@ -1685,7 +1747,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                             handleCall(pos.id, !!pos.calledAt || pos.user.id === nowServingUserId)
                           }}
                           disabled={loadingAction === `call-${pos.id}`}
-                          className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[2.25rem] font-mono text-xs uppercase tracking-widest text-accent border border-rule hover:border-accent transition-colors disabled:opacity-50"
+                          className="inline-flex items-center gap-1.5 px-3 py-2 min-h-11 pointer-fine:min-h-[2.25rem] font-mono text-xs uppercase tracking-widest text-accent border border-rule hover:border-accent transition-colors disabled:opacity-50"
                           title={`Call this party of ${pos.partySize ?? 1}`}
                           aria-label={`${pos.calledAt || pos.user.id === nowServingUserId ? "Call again" : "Call"} ${pos.user.name || "this party"}, party of ${pos.partySize ?? 1}`}
                         >
@@ -1703,7 +1765,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                           }}
                           // A swap in progress can't be seated until it settles (the server refuses too)
                           disabled={loadingAction === `fulfill-${pos.id}` || !!isLocked}
-                          className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[2.25rem] font-mono text-xs uppercase tracking-widest text-green-700 border border-rule hover:border-green-700 transition-colors disabled:opacity-50"
+                          className="inline-flex items-center gap-1.5 px-3 py-2 min-h-11 pointer-fine:min-h-[2.25rem] font-mono text-xs uppercase tracking-widest text-green-700 border border-rule hover:border-green-700 transition-colors disabled:opacity-50"
                           title={isLocked ? "A swap for this spot is in progress -- wait for it to finish" : isRestaurant ? "Mark as seated" : "Mark as fulfilled"}
                           aria-label={`${isRestaurant ? "Mark seated:" : "Fulfill"} ${pos.user.name || (isRestaurant ? "this party" : "this person")}`}
                         >
@@ -1717,7 +1779,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                         <Button
                           size="sm"
                           variant="danger"
-                          onClick={() => openRemovalModal(pos.id, pos.user.id, pos.user.name, !!pos.calledAt && !pos.fulfilled, { isWalkIn: pos.user.isWalkIn, partySize: pos.partySize, fulfilled: !!pos.fulfilled })}
+                          onClick={() => openRemovalModal(pos.id, pos.user.id, pos.user.name, !!pos.calledAt && !pos.fulfilled, { isWalkIn: pos.user.isWalkIn, partySize: pos.partySize, fulfilled: !!pos.fulfilled, calledAt: pos.calledAt, graceMinutes: pos.graceMinutes })}
                           aria-label={`Remove ${pos.user.name || (isRestaurant ? "this party" : "this person")}`}
                           isLoading={loadingAction === `remove-${pos.id}`}
                         >
@@ -1830,7 +1892,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                       // seller copy once we know it isn't our own purchase.
                       payingForOffer ? (
                         <p className="text-sm text-ink/60">Your spot is held while you pay for the spot ahead.</p>
-                      ) : myCheckout === null ? null : (
+                      ) : myCheckout === null || receivedOffers.some((o) => o.status === "ACCEPTED" && o.awaitingPayment) ? null : (
                         <p className="text-sm text-ink/60">
                           {pos.lockedUntil
                             ? `Someone is paying for your spot. If they don't finish in ${formatTimeLeft(pos.lockedUntil)}, it stays yours.`
@@ -1862,11 +1924,19 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                           <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-ink/60">$</span>
                           <input
                             type="number"
+                            inputMode="decimal"
+                            enterKeyHint="done"
                             min="1"
                             max={maxAskingPrice ?? undefined}
                             step="0.01"
                             placeholder="0.00"
                             aria-label="Asking price for your spot"
+                            onKeyDown={(e) => {
+                              if (e.key !== "Enter" || priceLoading || !(parseFloat(listPriceAmount) >= 1)) return
+                              if (maxAskingPrice != null && parseFloat(listPriceAmount) > maxAskingPrice) return
+                              e.preventDefault()
+                              handleSetPrice(parseFloat(listPriceAmount))
+                            }}
                             // The button that opened this form is gone; focus belongs here
                             autoFocus
                             aria-invalid={maxAskingPrice != null && !!listPriceAmount && parseFloat(listPriceAmount) > maxAskingPrice}
@@ -1950,6 +2020,15 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                     to reach their payment link -- even if the line pauses. */}
                 {isDirectlyInFront && !isCurrentUser && allowResale && !selectMode && pos.user.isWalkIn && !offMarket(pos) && (
                   <p className="mt-3 text-xs text-ink/60">Added by the host at the stand -- this spot can&apos;t be bought or offered on.</p>
+                )}
+                {/* Buy and Offer used to vanish with no reason */}
+                {isDirectlyInFront && !isCurrentUser && allowResale && !selectMode && offMarket(pos) &&
+                  currentUserPosition && !offMarket(currentUserPosition) && (
+                  <p className="mt-3 text-xs text-ink/60">
+                    {pos.fulfilled
+                      ? `They've been ${isRestaurant ? "seated" : "served"}, so there's no spot ahead of you to buy right now.`
+                      : `They've been called up, so their spot can't be bought or offered on.`}
+                  </p>
                 )}
                 {isDirectlyInFront && !isCurrentUser && allowResale && (!isPaused || payingForOffer) && !selectMode && !pos.user.isWalkIn &&
                   !offMarket(pos) && !(currentUserPosition && offMarket(currentUserPosition)) && (
@@ -2070,9 +2149,17 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                             type="number"
                             min={sentOfferToFront?.status === "PENDING" ? (sentOfferToFront.amount + 0.01).toFixed(2) : "1"}
                             max={maxAskingPrice ?? undefined}
+                            inputMode="decimal"
+                            enterKeyHint="send"
                             step="0.01"
                             placeholder="0.00"
                             aria-label="Your offer"
+                            onKeyDown={(e) => {
+                              if (e.key !== "Enter" || offerLoading || !(parseFloat(offerAmount) >= 1)) return
+                              if (maxAskingPrice != null && parseFloat(offerAmount) > maxAskingPrice) return
+                              e.preventDefault()
+                              handleSendOffer(pos.user.id)
+                            }}
                             autoFocus
                             aria-invalid={maxAskingPrice != null && !!offerAmount && parseFloat(offerAmount) > maxAskingPrice}
                             aria-describedby={maxAskingPrice != null ? `offer-max-${pos.id}` : undefined}
@@ -2148,7 +2235,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
 
       {/* Floating action bar for batch select mode */}
       {selectMode && selectedIds.size > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-ink z-40 px-4 py-3">
+        <div data-action-bar className="fixed bottom-0 left-0 right-0 bg-white border-t border-ink z-40 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="max-w-4xl mx-auto flex items-center justify-between">
             <span className="font-mono text-xs uppercase tracking-widest text-ink tabular-nums">
               {selectedIds.size} selected

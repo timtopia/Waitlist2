@@ -8,6 +8,7 @@ import { useInAppBrowser } from "@/hooks/useInAppBrowser"
 export function SignInButton({ callbackUrl }: { callbackUrl: string }) {
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [copyFailed, setCopyFailed] = useState(false)
   const inAppBrowser = useInAppBrowser()
 
   // Back from Google restores this page from the back/forward cache with the
@@ -32,13 +33,27 @@ export function SignInButton({ callbackUrl }: { callbackUrl: string }) {
               await navigator.clipboard.writeText(window.location.href)
               setCopied(true)
             } catch {
-              setCopied(false)
+              // Clipboard is often blocked in these webviews: show the link to
+              // copy by hand instead of a button that silently does nothing
+              setCopyFailed(true)
             }
           }}
           className="mt-2 font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4 min-h-11 pointer-fine:min-h-0"
         >
           {copied ? "Link copied" : "Copy link"}
         </button>
+        {copyFailed && (
+          <>
+            <p className="mt-2 text-xs text-ink/70" role="status">Couldn&apos;t copy. Press and hold the link to copy it:</p>
+            <input
+              readOnly
+              aria-label="Link to open in your browser"
+              value={window.location.href}
+              onFocus={(e) => e.target.select()}
+              className="mt-1 w-full font-mono text-base sm:text-xs px-2 py-2 bg-white border border-rule text-ink/70"
+            />
+          </>
+        )}
       </div>
     )
   }

@@ -97,10 +97,22 @@ export default async function SignInPage({ searchParams }: Props) {
           </p>
           <p className="text-sm text-ink/60 mt-4">
             Just looking?{" "}
-            <Link href="/browse" className="text-accent hover:underline underline-offset-4">
-              Browse open lines
-            </Link>{" "}
-            without an account.
+            {/* A shared (maybe private) line isn't in Browse, but its page works signed out */}
+            {toLine ? (
+              <>
+                <Link href={destination} className="text-accent hover:underline underline-offset-4">
+                  View {label || "the line"}
+                </Link>{" "}
+                without signing in.
+              </>
+            ) : (
+              <>
+                <Link href="/browse" className="text-accent hover:underline underline-offset-4">
+                  Browse open lines
+                </Link>{" "}
+                without an account.
+              </>
+            )}
           </p>
         </CardContent>
       </Card>

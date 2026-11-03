@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { callDeadline, timeLeft } from "@/lib/call-deadline"
 import { Button } from "./ui/Button"
 import { Card } from "@/components/ui/Card"
-import { formatCurrency, timeAgo } from "@/lib/format"
+import { formatCurrency } from "@/lib/format"
 import { formatWaitTime } from "@/lib/wait-time"
 import type { MemberStatus } from "@/lib/member-status"
 
@@ -154,9 +154,12 @@ export function MemberStatusCard({
   let detail: string
   if (phase === "called") {
     headline = "It's your turn"
+    // No "just now"/"5 min ago": resuming a pause moves calledAt forward so the
+    // show-up clock picks up where it stopped, which made an old call read as
+    // a fresh one. The countdown below says how long they have.
     detail = isRestaurant
-      ? `The host called you${calledAt ? ` ${timeAgo(calledAt)}` : ""}. Head to the host stand.`
-      : `The organizer called you${calledAt ? ` ${timeAgo(calledAt)}` : ""}. It's your turn now.`
+      ? "The host called you. Head to the host stand."
+      : "The organizer called you. It's your turn now."
   } else if (phase === "served") {
     headline = isRestaurant ? "You've been seated" : "You've been served"
     detail = isRestaurant ? "Enjoy your meal." : "You're all set. Leave the line whenever you're ready."
@@ -212,7 +215,8 @@ export function MemberStatusCard({
       <div className="px-5 py-4 sm:px-6">
         <div className="flex items-center gap-4 sm:gap-6">
           <div
-            className={`flex-shrink-0 w-16 h-16 sm:w-20 sm:h-20 flex flex-col items-center justify-center ${
+            // Grows past 64px for big drops (#10000) instead of spilling out
+            className={`flex-shrink-0 min-w-16 h-16 px-1 sm:min-w-20 sm:h-20 flex flex-col items-center justify-center ${
               accent ? "bg-accent text-paper" : done ? "bg-green-700 text-paper" : "bg-ink text-paper"
             }`}
           >
@@ -245,7 +249,7 @@ export function MemberStatusCard({
               <a
                 href="#my-spot"
                 onClick={() => requestAnimationFrame(() => document.getElementById("my-spot")?.focus({ preventScroll: true }))}
-                className="inline-block text-sm text-accent underline underline-offset-2"
+                className="inline-flex items-center min-h-11 pointer-fine:min-h-0 text-sm text-accent underline underline-offset-2"
               >
                 {isRestaurant
                   ? phase === "called"
@@ -335,9 +339,9 @@ export function MemberStatusCard({
                     {response === "RUNNING_LATE" && responseWindowMinutes
                       ? respondedAt
                         // "On my way" only extends a call once: don't promise more
-                        ? "The host can see this, but your time is still running and you've already had your extra time. Ask the host if you need longer."
-                        : "The host can see this, but your time is still running. Tap On my way when you head over to get more time."
-                      : `The host can see this${response === "ON_MY_WAY" && responseWindowMinutes ? ", and you get a little more time" : ""}.`}
+                        ? `The ${organizer} can see this, but your time is still running and you've already had your extra time. Ask the ${organizer} if you need longer.`
+                        : `The ${organizer} can see this, but your time is still running. Tap On my way when you head over to get more time.`
+                      : `The ${organizer} can see this${response === "ON_MY_WAY" && responseWindowMinutes ? ", and you have a little more time" : ""}.`}
                   </span>
                 )}
               </div>
@@ -381,7 +385,7 @@ export function MemberStatusCard({
                 <span className="text-xs text-ink/60">Get an alert when it&apos;s your turn, even in another tab.</span>
                 <button
                   onClick={onEnableNotifications}
-                  className="flex-shrink-0 px-3 py-1.5 font-mono text-xs uppercase tracking-widest border border-ink text-ink hover:bg-ink hover:text-paper transition-colors"
+                  className="flex-shrink-0 px-3 py-1.5 min-h-11 pointer-fine:min-h-0 font-mono text-xs uppercase tracking-widest border border-ink text-ink hover:bg-ink hover:text-paper transition-colors"
                 >
                   Turn on alerts
                 </button>

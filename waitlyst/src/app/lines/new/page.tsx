@@ -330,8 +330,17 @@ function CreateLineForm() {
         const line = await res.json()
         router.push(`/lines/${line.id}?created=1`)
       } else {
-        const data = await res.json()
-        setError(data.error || "Failed to create line")
+        const data = await res.json().catch(() => ({}))
+        const message: string = data.error || "Failed to create line"
+        // Point at the field the server refused, as the checks above do
+        const field = /capacity/i.test(message) ? "maxCapacity"
+          : /\bfee\b/i.test(message) ? "ownerFee"
+          : /asking price/i.test(message) ? "maxAskingPrice"
+          : /closing time|close after/i.test(message) ? "closesAt"
+          : /opening time/i.test(message) ? "opensAt"
+          : null
+        if (field && document.getElementById(field)) failField(field, message)
+        else setError(message)
       }
     } catch {
       setError("Failed to create line")
@@ -430,8 +439,10 @@ function CreateLineForm() {
                 </label>
                 <p id="sw-public-line-hint" className="text-xs text-ink/60">
                   {isPublic
-                    ? "Anyone can find this line in Browse"
-                    : "Only people with the link can join"}
+                    ? "Anyone can find this line in Browse."
+                    : "Only people with the link can join."}
+                  {/* Shown on the Browse card and every link preview */}
+                  {" "}Your name is shown with the line and on its shared link.
                 </p>
               </div>
             </div>
@@ -453,7 +464,7 @@ function CreateLineForm() {
                 <span className="block text-xs text-ink/60 mt-0.5">
                   {kind === "RESTAURANT"
                     ? "Guests give a party size, capacity counts guests, and you can call any party. Paid swaps are held on the buyer's card until you seat them, so you can still release them if the evening goes wrong."
-                    : "Everyone holds one spot and is called in order. Paid swaps are collected and paid out as soon as they happen."}
+                    : "Everyone holds one spot and is called in order. Paid swaps are collected right away; sellers are paid once they connect a payout account."}
                 </span>
               </span>
             </label>
@@ -467,6 +478,7 @@ function CreateLineForm() {
                 id="maxCapacity"
                 {...fieldA11y("maxCapacity", "maxCapacity-hint")}
                 type="number"
+                inputMode="numeric"
                 min="1"
                 placeholder="Unlimited"
                 value={maxCapacity}
@@ -505,6 +517,7 @@ function CreateLineForm() {
                     id="purchaseLimit"
                     {...fieldA11y("purchaseLimit", "purchaseLimit-hint")}
                     type="number"
+                    inputMode="numeric"
                     min="1"
                     max="99"
                     placeholder="No limit"
@@ -523,6 +536,7 @@ function CreateLineForm() {
                   id="responseWindow"
                   {...fieldA11y("responseWindow", "responseWindow-hint")}
                   type="number"
+                  inputMode="numeric"
                   min="1"
                   max="60"
                   placeholder="No limit"
@@ -659,6 +673,7 @@ function CreateLineForm() {
                     <input
                       id="productPrice"
                       type="number"
+                      inputMode="decimal"
                       min="0.01"
                       step="0.01"
                       placeholder="0.00"
@@ -750,6 +765,7 @@ function CreateLineForm() {
                         <input
                           id="maxAskingPrice"
                           type="number"
+                          inputMode="decimal"
                           min="1"
                           step="0.01"
                           placeholder="No limit"
@@ -775,6 +791,7 @@ function CreateLineForm() {
                         <input
                           id="ownerFee"
                           type="number"
+                          inputMode="decimal"
                           min="0"
                           max="50"
                           step="any"
@@ -821,7 +838,19 @@ function CreateLineForm() {
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => router.push("/dashboard")}
+                onClick={() => {
+                  // Back to where they tapped "Start a line" (home, Browse...),
+                  // not an empty dashboard -- unless that was the sign-in page
+                  let sameSite = false
+                  try {
+                    const ref = new URL(document.referrer)
+                    sameSite = ref.origin === window.location.origin && !ref.pathname.startsWith("/signin")
+                  } catch {
+                    // No referrer
+                  }
+                  if (sameSite && window.history.length > 1) router.back()
+                  else router.push("/dashboard")
+                }}
               >
                 Cancel
               </Button>

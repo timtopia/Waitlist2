@@ -59,7 +59,7 @@ export async function POST(
 
       const guest = await tx.user.create({ data: { name, isWalkIn: true } })
       const last = await tx.linePosition.findFirst({ where: { lineId }, orderBy: { position: "desc" } })
-      return tx.linePosition.create({
+      const created = await tx.linePosition.create({
         data: {
           lineId,
           userId: guest.id,
@@ -68,6 +68,12 @@ export async function POST(
           note,
         },
       })
+      // Who's still waiting ahead, counted under the lock: the host's screen
+      // may be a poll behind another tablet's walk-ins
+      const ahead = await tx.linePosition.count({
+        where: { lineId, fulfilled: false, position: { lt: created.position } },
+      })
+      return { ...created, ahead }
     })
 
     return NextResponse.json(position)

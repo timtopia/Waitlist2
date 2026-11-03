@@ -82,7 +82,8 @@ export function Header() {
   const isCurrent = (href: string) => pathname === href || !!pathname?.startsWith(`${href}/`)
   const desktopLink = (href: string) =>
     `font-mono text-xs uppercase tracking-widest pb-0.5 border-b-2 ${
-      isCurrent(href) ? "border-accent text-ink" : "border-transparent text-ink/60 hover:text-ink"
+      // /70: small grey text on the paper background needs it for AA contrast
+      isCurrent(href) ? "border-accent text-ink" : "border-transparent text-ink/70 hover:text-ink"
     }`
 
   return (

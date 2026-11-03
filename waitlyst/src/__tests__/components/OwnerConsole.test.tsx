@@ -206,7 +206,7 @@ describe("OwnerConsole", () => {
     )
     expect(addToastMock).not.toHaveBeenCalled()
     rerender(<OwnerConsole {...props} positions={[pos("p2", 2, "Cara")]} />)
-    expect(addToastMock).toHaveBeenCalledWith("Bob ran out of time to show up and was skipped as a no-show", "info")
+    expect(addToastMock).toHaveBeenCalledWith("Bob is no longer in line (their time to show up had run out)", "info")
   })
 
   it("doesn't call it a timeout when a called party with time left goes", () => {
@@ -253,7 +253,8 @@ describe("OwnerConsole", () => {
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/lines/line-1/remove-position",
-        expect.objectContaining({ body: JSON.stringify({ positionId: "p3", action: "payout", noShow: true }) })
+        // The call the host saw goes along, so a stale no-show is refused
+        expect.objectContaining({ body: JSON.stringify({ positionId: "p3", action: "payout", noShow: true, calledAt, graceMinutes: 0 }) })
       )
     )
   })
@@ -273,7 +274,7 @@ describe("OwnerConsole", () => {
   it("returns focus to the walk-in button when the form closes", async () => {
     render(<OwnerConsole {...baseProps} positions={[]} />)
     fireEvent.click(screen.getByText("+ Add walk-in"))
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }))
+    fireEvent.click(screen.getByRole("button", { name: "Done" }))
     await waitFor(() => expect(screen.getByText("+ Add walk-in")).toHaveFocus())
   })
 

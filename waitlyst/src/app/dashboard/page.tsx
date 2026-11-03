@@ -4,6 +4,7 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { DashboardClient } from "./DashboardClient"
 import { getMemberPhase } from "@/lib/member-status"
+import { countCapacityUsed } from "@/lib/capacity-server"
 
 export const metadata: Metadata = {
   title: "Dashboard",
@@ -51,7 +52,7 @@ export default async function DashboardPage() {
 
   const isNewUser = createdLines.length === 0 && positions.length === 0
 
-  const [aheadCounts, aheadUncalledCounts] = await Promise.all([
+  const [aheadCounts, aheadUncalledCounts, capacityUsed] = await Promise.all([
     Promise.all(
       positions.map((pos) =>
         prisma.linePosition.count({
@@ -67,12 +68,16 @@ export default async function DashboardPage() {
         })
       )
     ),
+    // Served drop buyers still use up spots: "0 waiting" on a sold-out drop
+    // looked like a quiet line with plenty of room
+    Promise.all(createdLines.map((line) => (line.maxCapacity ? countCapacityUsed(line) : Promise.resolve(null)))),
   ])
 
   return (
     <DashboardClient
-      createdLines={createdLines.map((line) => ({
+      createdLines={createdLines.map((line, i) => ({
         ...line,
+        capacityUsed: capacityUsed[i],
         createdAt: line.createdAt.toISOString(),
         updatedAt: line.updatedAt.toISOString(),
         opensAt: line.opensAt?.toISOString() ?? null,

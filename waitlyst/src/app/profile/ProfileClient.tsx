@@ -424,7 +424,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
               </div>
               {(stats.sellerPendingSettlement > 0 || stats.sellerPendingPayment > 0) && (
                 <p className="text-xs text-ink/60 mt-3 pt-2 border-t border-rule">
-                  {stats.sellerPendingSettlement > 0 && "The buyer's card is held until they're served, then you're paid. "}
+                  {stats.sellerPendingSettlement > 0 && "The buyer's card is on hold: you're paid once they're seated, or once the organizer collects it from the settlement page. "}
                   {stats.sellerPendingPayment > 0 && "Pending payments are transactions in progress."}
                 </p>
               )}

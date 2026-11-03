@@ -64,5 +64,8 @@ export async function POST(
       { status: 409 }
     )
   }
-  return NextResponse.json({ response: body.response })
+  // Whether this tap bought the one extension: a repeat "on my way" doesn't,
+  // so the guest isn't promised time that never shows up on their countdown
+  const extended = body.response === "ON_MY_WAY" && !position.respondedAt && !!responseWindowMinutes
+  return NextResponse.json({ response: body.response, extended })
 }
