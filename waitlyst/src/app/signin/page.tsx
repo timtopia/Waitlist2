@@ -83,7 +83,9 @@ export default async function SignInPage({ searchParams }: Props) {
             <p className="text-sm text-accent mb-4" role="alert">
               {error === "OAuthAccountNotLinked"
                 ? "That email is already linked to a different sign-in. Try the account you used before."
-                : "Sign-in didn't go through. Please try again."}
+                : error === "Configuration"
+                  ? "Sign-in is having trouble on our end. Please try again in a minute."
+                  : "Sign-in didn't go through. Please try again."}
             </p>
           )}
           <SignInButton callbackUrl={destination} />

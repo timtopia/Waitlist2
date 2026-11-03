@@ -52,7 +52,7 @@ describe("PATCH /api/lines/[lineId]/party", () => {
     const res = await setPartySize(4)
 
     expect(res.status).toBe(400)
-    expect((await res.json()).error).toBe("There's only room for 1 more guest in this line")
+    expect((await res.json()).error).toMatch(/^There's only room for 1 more guest right now\. You're still in line with \d+ guests?; ask the host/)
     expect(mockPrisma.linePosition.update).not.toHaveBeenCalled()
   })
 

@@ -156,8 +156,18 @@ export async function POST(
     // Check if either position is locked
     const now = new Date()
     if (buyerPosition.lockedUntil && now < buyerPosition.lockedUntil) {
+      // Their own spot is also locked while someone behind pays for it --
+      // "finish your payment" would send them looking for one that isn't theirs.
+      const lockTxn = buyerPosition.lockedBy
+        ? await prisma.transaction.findUnique({ where: { id: buyerPosition.lockedBy }, select: { buyerId: true } })
+        : null
+      const ownPayment = !lockTxn || lockTxn.buyerId === result.userId
       return NextResponse.json(
-        { error: "You're already in the middle of a payment. Finish or cancel it first." },
+        {
+          error: ownPayment
+            ? "You're already in the middle of a payment (maybe in another tab). Finish or cancel it first."
+            : "Someone behind you is paying for your spot right now. Try again in a few minutes.",
+        },
         { status: 409 }
       )
     }

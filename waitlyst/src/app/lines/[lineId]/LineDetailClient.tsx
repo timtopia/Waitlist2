@@ -124,7 +124,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [notificationPermission, setNotificationPermission] = useState<NotificationState>("unsupported")
   const notificationsEnabled = notificationPermission === "granted"
   // partySize is what they were in line as, so rejoining keeps the table size
-  const [departure, setDeparture] = useState<{ wasServed: boolean; wasCalled: boolean; closed?: boolean; partySize: number } | null>(null)
+  const [departure, setDeparture] = useState<{ wasServed: boolean; wasCalled: boolean; closed?: boolean; partySize: number; note?: string } | null>(null)
   // Set when the viewer leaves from this tab, so the next poll isn't
   // reported as "you're no longer in line".
   const leftHereRef = useRef(false)
@@ -407,7 +407,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       }
       if (change.kind === "removed") {
         const was = prev.positions.find((p) => p.user.id === session?.user?.id)
-        setDeparture({ wasServed: change.wasServed, wasCalled: change.wasCalled, closed: change.closed, partySize: was?.partySize ?? 1 })
+        setDeparture({ wasServed: change.wasServed, wasCalled: change.wasCalled, closed: change.closed, partySize: was?.partySize ?? 1, note: was?.note ?? undefined })
       }
       if (change.kind === "called" || change.kind === "next") setDeparture(null)
       if (change.kind === "called") alertTurn()
@@ -578,7 +578,11 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         // picker on the default notices before the host plans a table for 2
         addToast(line?.kind === "RESTAURANT" ? `You're in line as a party of ${size}` : "You're in line!", "success")
         setJoinNote("")
-        refreshAll()
+        // The Join button they were on is gone: move focus to the new
+        // "Your place" headline instead of dropping it to the top of the page
+        void Promise.resolve(refreshAll()).then(() =>
+          requestAnimationFrame(() => document.getElementById("my-status-headline")?.focus())
+        )
         return true
       }
       const data = await res.json().catch(() => ({}))
@@ -699,6 +703,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     } else {
       const data = await res.json().catch(() => ({}))
       addToast(data.error || "Couldn't send that to the host", "error")
+      // Seated, skipped or re-called meanwhile: show where they really stand
+      refreshAll()
     }
   }
 
@@ -927,7 +933,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                         addToast("Couldn't copy -- use the app's menu to open in your browser", "error")
                       }
                     }}
-                    className="mt-2 font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4 min-h-11 sm:min-h-0"
+                    className="mt-2 font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4 min-h-11 pointer-fine:min-h-0"
                   >
                     {linkCopied ? "Link copied" : "Copy link"}
                   </button>
@@ -940,11 +946,13 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                   {session || status === "loading" ? "Join Line" : "Sign in to Join"}
                 </Button>
               )}
-              {canJoin && !session && status !== "loading" && !inAppBrowser && (
+              {(canJoin || (lineNotYetOpen && line.emailEnabled && !linePaused)) && !session && status !== "loading" && !inAppBrowser && (
                 // Most first-timers sign in from here, not the /signin page
                 <p className="w-full text-xs text-ink/60">
-                  You&apos;ll sign in with Google, no password needed. The line&apos;s{" "}
-                  {line.kind === "RESTAURANT" ? "host" : "organizer"} sees your name and email. By continuing you agree to our{" "}
+                  You&apos;ll sign in with Google, no password needed.{" "}
+                  {canJoin && <>The line&apos;s {line.kind === "RESTAURANT" ? "host" : "organizer"} sees your name and email.{" "}</>}
+                  {canJoin && "Already in line on another device? Sign in to see your place. "}
+                  By continuing you agree to our{" "}
                   <Link href="/terms" className="underline underline-offset-4 hover:text-ink">Terms</Link> and{" "}
                   <Link href="/privacy" className="underline underline-offset-4 hover:text-ink">Privacy Policy</Link>.
                 </p>
@@ -1078,6 +1086,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
           hasAnnouncement={!!line.announcement}
           opensAt={line.opensAt}
           closesAt={line.closesAt}
+          roomLeft={line.maxCapacity != null ? Math.max(0, line.maxCapacity - line.capacityUsed) : null}
         />
       )}
 
@@ -1164,7 +1173,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                   <button
                     onClick={handleClearAnnouncement}
                     disabled={savingAnnouncement}
-                    className="px-3 py-1.5 min-h-11 sm:min-h-0 text-xs text-accent hover:bg-accent/5 transition-colors disabled:opacity-50"
+                    className="px-3 py-1.5 min-h-11 pointer-fine:min-h-0 text-xs text-accent hover:bg-accent/5 transition-colors disabled:opacity-50"
                   >
                     Clear
                   </button>
@@ -1175,14 +1184,14 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                     setAnnouncementDraft("")
                   }}
                   disabled={savingAnnouncement}
-                  className="px-3 py-1.5 min-h-11 sm:min-h-0 text-xs text-ink/60 hover:bg-ink/5 transition-colors disabled:opacity-50"
+                  className="px-3 py-1.5 min-h-11 pointer-fine:min-h-0 text-xs text-ink/60 hover:bg-ink/5 transition-colors disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSaveAnnouncement}
                   disabled={savingAnnouncement || announcementDraft.trim().length === 0}
-                  className="px-3 py-1.5 min-h-11 sm:min-h-0 text-xs font-medium text-paper bg-ink hover:bg-accent transition-colors disabled:opacity-50"
+                  className="px-3 py-1.5 min-h-11 pointer-fine:min-h-0 text-xs font-medium text-paper bg-ink hover:bg-accent transition-colors disabled:opacity-50"
                 >
                   {savingAnnouncement ? "Saving..." : "Save"}
                 </button>
@@ -1293,7 +1302,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                     if (!isRestaurant) return handleJoin()
                     // Come back as the same party, not the default of 2
                     if (departure.partySize > maxPartySize) return partyNoLongerFits(departure.partySize)
-                    return handleJoin(Math.min(departure.partySize, maxPartySize))
+                    // Keep "high chair" / "wheelchair access" for the host
+                    return handleJoin(Math.min(departure.partySize, maxPartySize), departure.note ?? "")
                   }}
                   isLoading={joining}
                 >

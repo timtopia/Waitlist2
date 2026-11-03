@@ -55,14 +55,25 @@ export function formatDate(iso: string): string {
   })
 }
 
-/** Date + time: "Jan 5, 2:30 PM" */
-export function formatDateTime(iso: string): string {
+/**
+ * Date + time: "Jan 5, 2:30 PM". withZone adds "PST", for times people
+ * copy and share with others who may be in another time zone.
+ */
+export function formatDateTime(iso: string, opts: { withZone?: boolean } = {}): string {
   return new Date(iso).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
+    ...(opts.withZone && { timeZoneName: "short" }),
   })
+}
+
+/** How long someone has waited: "45 min", "2 hr 15 min" */
+export function formatWaited(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`
+  const rest = minutes % 60
+  return `${Math.floor(minutes / 60)} hr${rest ? ` ${rest} min` : ""}`
 }
 
 /** Currency: "$25.00" or "$1,234.56" */

@@ -27,7 +27,7 @@ export function SignInButton({ callbackUrl }: { callbackUrl: string }) {
               setCopied(false)
             }
           }}
-          className="mt-2 font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4 min-h-11 sm:min-h-0"
+          className="mt-2 font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4 min-h-11 pointer-fine:min-h-0"
         >
           {copied ? "Link copied" : "Copy link"}
         </button>

@@ -33,6 +33,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   // /dashboard, /profile, etc. land somewhere that explains what's going on
   pages: {
     signIn: "/signin",
+    // Anything that isn't a sign-in error (a database hiccup mid-sign-in)
+    // otherwise lands on Auth.js's bare "Server error" page with no way back
+    error: "/signin",
   },
   callbacks: {
     session: async ({ session, user }) => {

@@ -181,7 +181,7 @@ export default function BrowsePage() {
               key={f}
               onClick={() => setFilter(f)}
               aria-pressed={filter === f}
-              className={`min-h-11 sm:min-h-0 font-mono text-xs uppercase tracking-widest pb-1 border-b-2 transition-colors ${
+              className={`min-h-11 pointer-fine:min-h-0 font-mono text-xs uppercase tracking-widest pb-1 border-b-2 transition-colors ${
                 filter === f
                   ? "border-accent text-ink"
                   : "border-transparent text-ink/60 hover:text-ink"
@@ -201,7 +201,7 @@ export default function BrowsePage() {
             key={s}
             onClick={() => setSortBy(s)}
             aria-pressed={sortBy === s}
-            className={`min-h-11 sm:min-h-0 font-mono text-xs uppercase tracking-widest pb-1 border-b-2 transition-colors ${
+            className={`min-h-11 pointer-fine:min-h-0 font-mono text-xs uppercase tracking-widest pb-1 border-b-2 transition-colors ${
               sortBy === s
                 ? "border-accent text-ink"
                 : "border-transparent text-ink/60 hover:text-ink"

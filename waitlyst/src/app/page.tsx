@@ -52,7 +52,10 @@ const features = [
 export default async function HomePage() {
   const [session, activeLines, peopleInQueues, swapsCompleted] = await Promise.all([
     auth(),
-    prisma.line.count({ where: { isActive: true } }),
+    // What a visitor will actually find on Browse: public lines still open
+    prisma.line.count({
+      where: { isActive: true, isPublic: true, OR: [{ closesAt: null }, { closesAt: { gt: new Date() } }] },
+    }),
     prisma.linePosition.count({ where: { fulfilled: false } }),
     prisma.transaction.count({ where: { status: "COMPLETED" } }),
   ])

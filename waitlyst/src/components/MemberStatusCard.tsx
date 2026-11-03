@@ -232,12 +232,21 @@ export function MemberStatusCard({
             <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Your place</p>
             {/* Only the headline is live: announcing the whole card re-read
                 every button and countdown whenever anything changed */}
-            <p role="status" className={`text-xl font-semibold tracking-tight ${accent ? "text-accent" : "text-ink"}`}>
+            <p
+              id="my-status-headline"
+              role="status"
+              tabIndex={-1}
+              className={`text-xl font-semibold tracking-tight focus:outline-none ${accent ? "text-accent" : "text-ink"}`}
+            >
               {headline}
             </p>
             <p className="text-sm text-ink/60">{detail}</p>
             {!done && (
-              <a href="#my-spot" className="inline-block text-sm text-accent underline underline-offset-2">
+              <a
+                href="#my-spot"
+                onClick={() => requestAnimationFrame(() => document.getElementById("my-spot")?.focus({ preventScroll: true }))}
+                className="inline-block text-sm text-accent underline underline-offset-2"
+              >
                 {isRestaurant
                   ? phase === "called"
                     // Party size is locked once called; the host handles it in person

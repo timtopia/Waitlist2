@@ -91,10 +91,10 @@ describe("GET /api/lines/[lineId]/export", () => {
     const response = await GET(req, { params: Promise.resolve({ lineId: "line-1" }) })
 
     expect(response.status).toBe(200)
-    expect(response.headers.get("Content-Type")).toBe("text/csv")
+    expect(response.headers.get("Content-Type")).toBe("text/csv; charset=utf-8")
 
     const csv = await response.text()
-    expect(csv).toBe("Position,Name,Email,Joined At,Called At,Served At,Asking Price,Status")
+    expect(csv).toBe("Position,Name,Email,Joined At (UTC),Called At (UTC),Served At (UTC),Asking Price,Status")
   })
 
   it("should return CSV with position data", async () => {
@@ -128,13 +128,13 @@ describe("GET /api/lines/[lineId]/export", () => {
     const response = await GET(req, { params: Promise.resolve({ lineId: "line-1" }) })
 
     expect(response.status).toBe(200)
-    expect(response.headers.get("Content-Type")).toBe("text/csv")
+    expect(response.headers.get("Content-Type")).toBe("text/csv; charset=utf-8")
     expect(response.headers.get("Content-Disposition")).toContain("my-cool-line-export.csv")
 
     const csv = await response.text()
     const lines = csv.split("\n")
-    expect(lines[0]).toBe("Position,Name,Email,Joined At,Called At,Served At,Asking Price,Status")
-    expect(lines[1]).toContain("1,Alice,alice@test.com,")
+    expect(lines[0]).toBe("Position,Name,Email,Joined At (UTC),Called At (UTC),Served At (UTC),Asking Price,Status")
+    expect(lines[1]).toContain("1,Alice,alice@test.com,2025-01-15 10:00:00,")
     expect(lines[1]).toContain(",Waiting")
     expect(lines[2]).toContain("2,Bob,bob@test.com,")
     expect(lines[2]).toContain("$25.00,Open to Swap")

@@ -97,6 +97,14 @@ export function Header() {
             >
               Browse
             </Link>
+            {/* Otherwise only the footer offers it */}
+            <Link
+              href="/lines/new"
+              className={desktopLink("/lines/new")}
+              aria-current={isCurrent("/lines/new") ? "page" : undefined}
+            >
+              Start a line
+            </Link>
             {session && (
               <>
                 <Link
@@ -212,6 +220,14 @@ export function Header() {
               onClick={() => setMobileMenuOpen(false)}
             >
               Browse
+            </Link>
+            <Link
+              href="/lines/new"
+              aria-current={isCurrent("/lines/new") ? "page" : undefined}
+              className="block px-3 py-3 font-mono text-sm uppercase tracking-widest text-ink/70 hover:text-ink aria-[current=page]:text-ink aria-[current=page]:border-l-2 aria-[current=page]:border-accent"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Start a line
             </Link>
             {session && (
               <Link

@@ -329,7 +329,7 @@ export function ShareLine({ lineId, lineName, canEmbed = false }: ShareLineProps
                     ref={qrHideRef}
                     onClick={() => { focusAfterToggle.current = "qr"; setShowQr(false) }}
                     aria-label="Hide QR code"
-                    className="font-mono text-xs uppercase tracking-widest text-ink/60 hover:text-ink px-2 -mr-2 min-h-11 sm:min-h-0"
+                    className="font-mono text-xs uppercase tracking-widest text-ink/60 hover:text-ink px-2 -mr-2 min-h-11 pointer-fine:min-h-0"
                   >
                     Hide
                   </button>
@@ -407,7 +407,7 @@ export function ShareLine({ lineId, lineName, canEmbed = false }: ShareLineProps
                     ref={embedHideRef}
                     onClick={() => { focusAfterToggle.current = "embed"; setShowEmbed(false) }}
                     aria-label="Hide embed code"
-                    className="font-mono text-xs uppercase tracking-widest text-ink/60 hover:text-ink px-2 -mr-2 min-h-11 sm:min-h-0"
+                    className="font-mono text-xs uppercase tracking-widest text-ink/60 hover:text-ink px-2 -mr-2 min-h-11 pointer-fine:min-h-0"
                   >
                     Hide
                   </button>

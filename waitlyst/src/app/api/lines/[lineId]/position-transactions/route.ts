@@ -75,7 +75,8 @@ export async function GET(
     // What they actually paid, fees included, so it matches the refundable amount
     const totalPaid = completedBuyer.reduce((sum, t) => sum + buyerTotal(t), 0)
     const totalReceived = completedSales.reduce((sum, t) => sum + t.amount, 0)
-    const totalRefundedToBuyer = refundedBuyer.reduce((sum, t) => sum + t.amount, 0)
+    // Refunds return everything the buyer paid, fees included
+    const totalRefundedToBuyer = refundedBuyer.reduce((sum, t) => sum + buyerTotal(t), 0)
     const totalRefundedAsSeller = refundedSeller.reduce((sum, t) => sum + t.amount, 0)
 
     return NextResponse.json({

@@ -33,6 +33,19 @@ export function Footer() {
             >
               Terms
             </Link>
+            {/* Support was only reachable from error, legal and profile pages */}
+            <Link
+              href="/#faq"
+              className="font-mono text-xs uppercase tracking-widest text-ink/60 hover:text-ink transition-colors"
+            >
+              Help
+            </Link>
+            <a
+              href="mailto:support@waitlyst.app"
+              className="font-mono text-xs uppercase tracking-widest text-ink/60 hover:text-ink transition-colors"
+            >
+              Contact
+            </a>
           </nav>
         </div>
       </div>

@@ -74,12 +74,13 @@ export function BarChart({ title, subtitle, bars, labelHeader, valueHeader, labe
     <figure className="border border-rule bg-white p-4" aria-labelledby={titleId}>
       <div className="flex items-start justify-between gap-3 mb-2">
         <figcaption>
-          <p id={titleId} className="text-sm font-semibold text-ink">{title}</p>
+          {/* A heading, so screen-reader users can jump chart to chart */}
+          <h2 id={titleId} className="text-sm font-semibold text-ink">{title}</h2>
           {subtitle && <p className="text-xs text-ink/60">{subtitle}</p>}
         </figcaption>
         <button
           onClick={() => setAsTable(!asTable)}
-          className="inline-flex items-center min-h-11 sm:min-h-0 px-2 -mr-2 -my-3 sm:my-0 font-mono text-[10px] uppercase tracking-widest text-ink/60 hover:text-ink flex-shrink-0"
+          className="inline-flex items-center min-h-11 pointer-fine:min-h-0 px-2 -mr-2 -my-3 sm:my-0 font-mono text-[10px] uppercase tracking-widest text-ink/60 hover:text-ink flex-shrink-0"
         >
           {asTable ? "Show chart" : "Show table"}
         </button>
@@ -111,7 +112,7 @@ export function BarChart({ title, subtitle, bars, labelHeader, valueHeader, labe
             {ticks.map((t) => (
               <g key={t}>
                 <line x1={PAD.left} x2={width - PAD.right} y1={y(t)} y2={y(t)} stroke="#e7e4dc" strokeWidth={1} />
-                <text x={PAD.left - 6} y={y(t)} dy="0.32em" textAnchor="end" fontSize={10} fill="#8a877f" className="tabular-nums">
+                <text x={PAD.left - 6} y={y(t)} dy="0.32em" textAnchor="end" fontSize={12} fill="#6b6862" className="tabular-nums">
                   {formatTick(t)}
                 </text>
               </g>
@@ -146,7 +147,7 @@ export function BarChart({ title, subtitle, bars, labelHeader, valueHeader, labe
                     />
                   )}
                   {i % labelEvery === 0 && (
-                    <text x={cx} y={HEIGHT - 6} textAnchor="middle" fontSize={10} fill="#8a877f">
+                    <text x={cx} y={HEIGHT - 6} textAnchor="middle" fontSize={12} fill="#6b6862">
                       {b.label}
                     </text>
                   )}

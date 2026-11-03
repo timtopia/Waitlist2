@@ -193,10 +193,11 @@ export function AnalyticsClient({
       </Link>
       <h1 className="text-2xl font-semibold tracking-tight">Analytics &mdash; {lineName}</h1>
       <p className="text-sm text-ink/60 mt-1 mb-6">
-        The last {data?.days ?? 90} days, in your time zone.
+        {/* Data only loads in the browser, so naming the zone can't mismatch the server render */}
+        The last {data?.days ?? 90} days, in {data ? Intl.DateTimeFormat().resolvedOptions().timeZone.replace(/_/g, " ") : "your time zone"}.
       </p>
 
-      {error && <p className="text-sm text-accent">Couldn&apos;t load analytics. Please refresh to try again.</p>}
+      {error && <p className="text-sm text-accent" role="alert">Couldn&apos;t load analytics. Please refresh to try again.</p>}
       {!data && !error && <p className="text-sm text-ink/60">Loading…</p>}
 
       {view && (
@@ -212,7 +213,7 @@ export function AnalyticsClient({
             <Stat
               label={isRestaurant ? "Parties seated" : "People served"}
               value={view.servedCount.toLocaleString()}
-              note={isRestaurant ? `${view.guestsServed.toLocaleString()} guests` : undefined}
+              note={isRestaurant ? `${view.guestsServed.toLocaleString()} ${view.guestsServed === 1 ? "guest" : "guests"}` : undefined}
             />
             <Stat
               label="Typical wait"
@@ -237,7 +238,8 @@ export function AnalyticsClient({
 
           {view.servedCount === 0 && view.hours.every((h) => h.value === 0) ? (
             <p className="text-sm text-ink/60">
-              No one has come through this line yet. Charts appear once people start joining.
+              No one has come through this line in the last {data?.days ?? 90} days. Charts appear once people join;
+              older activity still shows on the settlement page and in the CSV export.
             </p>
           ) : (
             <>

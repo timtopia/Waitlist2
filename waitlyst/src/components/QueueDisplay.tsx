@@ -8,7 +8,7 @@ import { ConfirmModal } from "./ui/ConfirmModal"
 import { useToast } from "./ui/Toast"
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useSession } from "next-auth/react"
-import { formatCurrency } from "@/lib/format"
+import { formatCurrency, formatWaited } from "@/lib/format"
 import { calcFees } from "@/lib/fees"
 import { OFFER_COOLDOWN_MS } from "@/lib/offers"
 import { formatWaitTime } from "@/lib/wait-time"
@@ -102,6 +102,9 @@ interface RemovalModal {
   canNoShow: boolean
   transactionInfo: TransactionInfo | null
   loading: boolean
+  /** Walk-in, or nothing ever bought or sold: no money panel to show */
+  noPayments?: boolean
+  partySize?: number
 }
 
 interface FeeInfo {
@@ -116,7 +119,8 @@ interface QueueDisplayProps {
   roomLeft?: number | null
   /** The line caps guests (even when the count is hidden from guests) */
   hasCapacityLimit?: boolean
-  onRefresh: () => void
+  /** Awaited after host actions, so a button isn't re-enabled on stale data */
+  onRefresh: () => void | Promise<void>
   isCreator?: boolean
   feeInfo?: FeeInfo
   isPaused?: boolean
@@ -138,11 +142,6 @@ interface QueueDisplayProps {
 
 /** Format estimated wait time into a human-readable string */
 /** How long a party has actually waited: "12 min", "1 hr 5 min" */
-function formatWaited(minutes: number): string {
-  if (minutes < 60) return `${minutes} min`
-  const rest = minutes % 60
-  return `${Math.floor(minutes / 60)} hr${rest ? ` ${rest} min` : ""}`
-}
 
 export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLimit = false, onRefresh, isCreator = false, feeInfo, isPaused = false, hasPayoutSetup = false, stripeEnabled = false, allowResale = true, maxAskingPrice = null, hideCapacity = false, nowServingUserId = null, isRestaurant = false, onLeft, responseWindowMinutes = null, emailEnabled = false }: QueueDisplayProps) {
   const { data: session } = useSession()
@@ -345,8 +344,24 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
   // Cancelling counts toward the walk-away limit, so it's confirmed like Back Out
   const [cancelCheckoutConfirm, setCancelCheckoutConfirm] = useState(false)
   const myLockUntil = currentUserPosition?.lockedUntil ?? null
+  const myPlace = currentUserPosition?.position ?? null
+  // Where they stood while their direct buy was pending, to tell them how it
+  // ended when the lock clears (the "Resume payment" card used to just vanish)
+  const pendingBuyFrom = useRef<number | null>(null)
   useEffect(() => {
     if (!myLockUntil || new Date(myLockUntil) <= new Date()) {
+      const was = pendingBuyFrom.current
+      pendingBuyFrom.current = null
+      if (was !== null && myPlace !== null) {
+        if (myPlace < was) {
+          addToast(`Your payment went through -- you're now #${myPlace}.`, "success")
+        } else {
+          addToast(
+            "Your purchase of the spot ahead was called off (they were called up, left, or the organizer stopped it). You weren't charged.",
+            "info"
+          )
+        }
+      }
       setMyCheckout(null)
       return
     }
@@ -366,7 +381,15 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
     return () => {
       cancelled = true
     }
+    // myPlace is read only when the lock clears, which changes myLockUntil
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lineId, myLockUntil, addToast, onRefresh])
+  useEffect(() => {
+    // Only their own pending buy (not someone paying for their spot); cancelling
+    // clears myCheckout first, so a deliberate cancel isn't reported
+    pendingBuyFrom.current = myCheckout?.pending ? myPlace : null
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myCheckout])
 
   /** A mutation's reply never arrived (Wi-Fi to cellular, a 502 page...) */
   function lostConnection() {
@@ -386,7 +409,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
       const data = await res.json().catch(() => ({}))
       if (res.ok) addToast(`Gave ${name || "them"} 5 more minutes${data.graceMinutes > 5 ? ` (${data.graceMinutes} extra in all)` : ""}`, "success")
       else addToast(data.error || "Couldn't give more time", "error")
-      onRefresh()
+      await onRefresh()
     } catch {
       lostConnection()
     } finally {
@@ -707,21 +730,37 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
     }
   }
 
-  async function openRemovalModal(positionId: string, userId: string, userName: string | null, canNoShow: boolean) {
+  async function openRemovalModal(
+    positionId: string,
+    userId: string,
+    userName: string | null,
+    canNoShow: boolean,
+    opts: { isWalkIn?: boolean; partySize?: number } = {}
+  ) {
+    // A walk-in has no account to have paid with: skip the spinner and the
+    // "$0.00 (0 purchases)" panel, which only reads as a money problem
+    const skipFetch = !!opts.isWalkIn
     setRemovalModal({
       positionId,
       userId,
       userName,
       canNoShow,
       transactionInfo: null,
-      loading: true,
+      loading: !skipFetch,
+      noPayments: skipFetch,
+      partySize: opts.partySize,
     })
+    if (skipFetch) return
 
     try {
       const res = await fetch(`/api/lines/${lineId}/position-transactions?userId=${userId}`)
       if (res.ok) {
         const data = await res.json().catch(() => ({}))
-        setRemovalModal(prev => prev ? { ...prev, transactionInfo: data, loading: false } : null)
+        const none =
+          Array.isArray(data.asBuyer) && data.asBuyer.length === 0 &&
+          Array.isArray(data.asSeller) && data.asSeller.length === 0 &&
+          !(data.downstreamBuyers?.length > 0)
+        setRemovalModal(prev => prev ? { ...prev, transactionInfo: data, loading: false, noPayments: none } : null)
       } else {
         setRemovalModal(prev => prev ? { ...prev, loading: false } : null)
       }
@@ -763,7 +802,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
         }
         setRemovalModal(null)
         focusListSoon()
-        onRefresh()
+        await onRefresh()
       } else {
         const data = await res.json().catch(() => ({}))
         addToast(data.error || (isRestaurant ? "Couldn't remove the party" : "Failed to remove person"), "error")
@@ -801,11 +840,11 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
             : `Called ${data.calledUser} (party of ${data.partySize})`,
           "success"
         )
-        onRefresh()
+        await onRefresh()
       } else {
         addToast(data.error || "Failed to call this party", "error")
         // Usually another device acted: show what really happened
-        if (res.status === 409) onRefresh()
+        if (res.status === 409) await onRefresh()
       }
     } catch {
       addToast(NO_CONNECTION, "error")
@@ -825,7 +864,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
       })
       if (res.ok) {
         addToast(`Updated to a party of ${partySize}`, "success")
-        onRefresh()
+        await onRefresh()
       } else {
         const data = await res.json().catch(() => ({}))
         addToast(data.error || "Failed to update your party size", "error")
@@ -847,7 +886,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
       })
       if (res.ok) {
         addToast(note.trim() ? "Note saved" : "Note removed", "success")
-        onRefresh()
+        await onRefresh()
       } else {
         const data = await res.json().catch(() => ({}))
         addToast(data.error || "Failed to save the note", "error")
@@ -869,7 +908,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
       })
       if (res.ok) {
         addToast(minutes ? `Quoted about ${minutes} min` : "Quote cleared", "success")
-        onRefresh()
+        await onRefresh()
       } else {
         const data = await res.json().catch(() => ({}))
         addToast(data.error || "Failed to save the quote", "error")
@@ -881,7 +920,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
     }
   }
 
-  async function handleFulfill(positionId: string) {
+  async function handleFulfill(positionId: string, name?: string) {
     setLoadingAction(`fulfill-${positionId}`)
     try {
       const res = await fetch(`/api/lines/${lineId}/fulfill`, {
@@ -891,22 +930,26 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
       })
       if (res.ok) {
         const data = await res.json().catch(() => ({}))
-        const payoutMsg = data.payoutsReleased > 0
-          ? ` (${data.payoutsReleased} payout${data.payoutsReleased === 1 ? "" : "s"} released)`
+        const n = data.payoutsReleased ?? 0
+        const payoutMsg = n > 0
+          ? isRestaurant
+            ? ` (${n} held payment${n === 1 ? "" : "s"} collected)`
+            : ` (${n} payout${n === 1 ? "" : "s"} released)`
           : ""
-        addToast(`${isRestaurant ? "Marked as seated" : "Marked as served"}${payoutMsg}`, "success")
+        const who = name && !name.startsWith("this ") ? name : isRestaurant ? "Party" : "Person"
+        addToast(`${who} ${isRestaurant ? "seated" : "marked as served"}${payoutMsg}`, "success")
         if (data.payoutsFailed > 0) {
           addToast(
             `${data.payoutsFailed} payment${data.payoutsFailed === 1 ? "" : "s"} couldn't be collected -- review on the settlement page.`,
             "error"
           )
         }
-        onRefresh()
+        await onRefresh()
       } else {
         const data = await res.json().catch(() => ({}))
         addToast(data.error || `Failed to mark as ${isRestaurant ? "seated" : "served"}`, "error")
         // Another host device may have just seated them: show the real state
-        onRefresh()
+        await onRefresh()
       }
     } catch {
       addToast(NO_CONNECTION, "error")
@@ -972,16 +1015,24 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
       {/* Removal Modal */}
       {removalModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div ref={removalDialogRef} className="bg-white border border-ink p-6 max-w-md w-full mx-4" role="dialog" aria-modal="true" aria-label={`Remove ${removalModal.userName || (isRestaurant ? "this party" : "this person")}`}>
-            <h3 className="text-lg font-semibold tracking-tight text-ink mb-4">
+          <div ref={removalDialogRef} className="bg-white border border-ink p-6 max-w-md w-full mx-4" role="dialog" aria-modal="true" aria-labelledby="remove-title" aria-describedby="remove-desc">
+            <h3 id="remove-title" className="text-lg font-semibold tracking-tight text-ink mb-4">
               Remove {removalModal.userName || (isRestaurant ? "this party" : "this person")}?
             </h3>
 
+            <div id="remove-desc">
             {removalModal.loading ? (
               <div className="text-center py-4">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-ink mx-auto"></div>
                 <p className="text-sm text-ink/60 mt-2">Loading transaction history...</p>
               </div>
+            ) : removalModal.noPayments ? (
+              <p className="text-sm text-ink/60 mb-4">
+                {isRestaurant && removalModal.partySize
+                  ? `They're a party of ${removalModal.partySize}. `
+                  : ""}
+                Everyone behind them moves up.
+              </p>
             ) : removalModal.transactionInfo ? (
               <div className="space-y-3 mb-4">
                 <div className="bg-paper border border-rule p-3">
@@ -1042,6 +1093,8 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
               </p>
             )}
 
+            </div>
+
             <div className="flex flex-col space-y-2">
               <Button
                 onClick={() => handleRemoveWithAction("payout")}
@@ -1094,17 +1147,17 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
         const breakdown = feeBreakdown(buyConfirm.askingPrice)
         return (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div ref={buyDialogRef} className="bg-white border border-ink p-6 max-w-sm w-full mx-4" role="dialog" aria-modal="true" aria-label="Confirm purchase">
-              <h3 className="text-lg font-semibold tracking-tight text-ink mb-2">
+            <div ref={buyDialogRef} className="bg-white border border-ink p-6 max-w-sm w-full mx-4" role="dialog" aria-modal="true" aria-labelledby="buy-confirm-title" aria-describedby="buy-confirm-desc buy-confirm-total">
+              <h3 id="buy-confirm-title" className="text-lg font-semibold tracking-tight text-ink mb-2">
                 Buy spot #{buyConfirm.position}?
               </h3>
-              <p className="text-sm text-ink/60 mb-4">
+              <p id="buy-confirm-desc" className="text-sm text-ink/60 mb-4">
                 You&apos;ll swap places with {buyConfirm.sellerName || "the person in front of you"}.
                 {stripeEnabled && (isRestaurant
                   ? " Your card is held, not charged, until you're seated. It's charged when you're seated or if you leave; the host can release it if you aren't seated."
                   : " This purchase is final: you're charged now and the seller is paid right away, even if you leave or are removed later.")}
               </p>
-              <dl className="text-sm border border-rule divide-y divide-rule mb-4">
+              <dl id="buy-confirm-total" className="text-sm border border-rule divide-y divide-rule mb-4">
                 <div className="flex justify-between px-3 py-1.5">
                   <dt className="text-ink/60">To {buyConfirm.sellerName || "seller"}</dt>
                   <dd className="font-mono tabular-nums">{formatCurrency(buyConfirm.askingPrice)}</dd>
@@ -1152,7 +1205,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
         isLoading={!!fulfillConfirm && loadingAction === `fulfill-${fulfillConfirm.positionId}`}
         onConfirm={async () => {
           if (!fulfillConfirm) return
-          await handleFulfill(fulfillConfirm.positionId)
+          await handleFulfill(fulfillConfirm.positionId, fulfillConfirm.name)
           setFulfillConfirm(null)
         }}
         onCancel={() => setFulfillConfirm(null)}
@@ -1236,14 +1289,18 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
       {/* Batch Remove Confirm Modal */}
       {showBatchConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div ref={batchDialogRef} className="bg-white border border-ink p-6 max-w-sm w-full mx-4" role="dialog" aria-modal="true" aria-label="Remove selected people">
-            <h3 className="text-lg font-semibold tracking-tight text-ink mb-2">
-              Remove {selectedIds.size} {selectedIds.size === 1 ? "person" : "people"}?
+          <div ref={batchDialogRef} className="bg-white border border-ink p-6 max-w-sm w-full mx-4" role="dialog" aria-modal="true" aria-labelledby="batch-remove-title" aria-describedby="batch-remove-desc">
+            <h3 id="batch-remove-title" className="text-lg font-semibold tracking-tight text-ink mb-2">
+              Remove {selectedIds.size} {isRestaurant
+                ? selectedIds.size === 1 ? "party" : "parties"
+                : selectedIds.size === 1 ? "person" : "people"}?
             </h3>
-            <p className="text-sm text-ink/60 mb-4">
-              {isRestaurant
-                ? "Any of their payments still on hold can be kept (collected and paid out) or refunded. Payments already collected are final."
-                : "Swaps on this line are paid out as they happen, so purchases are final. Only a payment that couldn't be collected can still be refunded."}
+            <p id="batch-remove-desc" className="text-sm text-ink/60 mb-4">
+              {!allowResale
+                ? "Everyone behind them moves up."
+                : isRestaurant
+                  ? "Any of their payments still on hold can be kept (collected and paid out) or refunded. Payments already collected are final."
+                  : "Swaps on this line are paid out as they happen, so purchases are final. Only a payment that couldn't be collected can still be refunded."}
             </p>
             <div className="flex flex-col space-y-2">
               <Button
@@ -1251,16 +1308,18 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                 isLoading={batchLoading}
                 className="w-full"
               >
-                Remove and keep purchases
+                {allowResale ? "Remove and keep purchases" : "Remove"}
               </Button>
-              <Button
-                variant="danger"
-                onClick={() => handleBatchRemove("refund")}
-                isLoading={batchLoading}
-                className="w-full"
-              >
-                Remove and refund held payments
-              </Button>
+              {allowResale && (
+                <Button
+                  variant="danger"
+                  onClick={() => handleBatchRemove("refund")}
+                  isLoading={batchLoading}
+                  className="w-full"
+                >
+                  Remove and refund held payments
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 onClick={() => setShowBatchConfirm(false)}
@@ -1308,7 +1367,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                         setSelectedIds(new Set(allIds))
                       }
                     }}
-                    className="min-h-11 sm:min-h-0 font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"
+                    className="min-h-11 pointer-fine:min-h-0 font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"
                   >
                     {selectedIds.size === positions.filter((p) => p.user.id !== session?.user?.id).length
                       ? "Deselect All"
@@ -1329,7 +1388,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                     setSelectMode(true)
                   }
                 }}
-                className={`min-h-11 sm:min-h-0 font-mono text-xs uppercase tracking-widest px-3 py-1.5 border transition-colors ${
+                className={`min-h-11 pointer-fine:min-h-0 font-mono text-xs uppercase tracking-widest px-3 py-1.5 border transition-colors ${
                   selectMode
                     ? "border-ink bg-ink text-paper"
                     : "border-transparent text-ink/60 hover:text-ink hover:bg-ink/5"
@@ -1366,6 +1425,9 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                 key={pos.id}
                 role="listitem"
                 id={isCurrentUser ? "my-spot" : undefined}
+                // Focusable from the status card's "Manage your spot" link, so a
+                // screen reader lands on the row and not back at the link
+                tabIndex={isCurrentUser ? -1 : undefined}
                 onClick={canSelect ? () => toggleSelection(pos.id) : undefined}
                 className={`flex flex-col px-4 py-3 scroll-mt-20 ${leftBorder} ${
                   isSelected ? "bg-ink/5" : isCurrentUser ? "bg-paper" : "bg-white"
@@ -1386,7 +1448,13 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                     <div className={`w-8 flex-shrink-0 font-mono tabular-nums text-lg text-right ${
                       isFront ? "text-accent" : "text-ink/60"
                     }`}>
-                      {pos.position}
+                      {/* Seated parties stay listed at a restaurant, so the raw
+                          position would disagree with "You're #3" on the card */}
+                      {isRestaurant
+                        ? pos.fulfilled
+                          ? <span aria-label="Seated">✓</span>
+                          : unservedAhead + 1
+                        : pos.position}
                     </div>
                     {pos.user.image ? (
                       <Image
@@ -1510,7 +1578,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                                 handlePartySize(next, isCurrentUser ? undefined : pos.id)
                               }}
                               disabled={loadingAction === (isCurrentUser ? "party-size" : `party-size-${pos.id}`)}
-                              className="border border-rule bg-white px-2 py-0.5 min-h-11 sm:min-h-0 text-ink"
+                              className="border border-rule bg-white px-2 py-0.5 min-h-11 pointer-fine:min-h-0 text-ink"
                               aria-label={isCurrentUser ? "Your party size" : `Party size for ${pos.user.name || "this party"}`}
                             >
                               {/* Sizes the line can't fit only failed after picking */}
@@ -1548,7 +1616,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                             value={pos.quotedMinutes ?? ""}
                             onChange={(e) => handleQuote(pos.id, e.target.value ? Number(e.target.value) : null)}
                             disabled={loadingAction === `quote-${pos.id}`}
-                            className="border border-rule bg-white px-2 py-0.5 min-h-11 sm:min-h-0 text-ink"
+                            className="border border-rule bg-white px-2 py-0.5 min-h-11 pointer-fine:min-h-0 text-ink"
                             aria-label={`Quoted wait for ${pos.user.name || "this party"}`}
                           >
                             <option value="">--</option>
@@ -1571,7 +1639,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                           Swap pending
                         </p>
                       )}
-                      {!isFront && !pos.fulfilled && !pos.calledAt && !isCurrentUser && waitTimeData?.estimatedMinutesPerPerson != null && (
+                      {!isFront && !isPaused && !pos.fulfilled && !pos.calledAt && !isCurrentUser && waitTimeData?.estimatedMinutesPerPerson != null && (
                         <p className="text-xs text-ink/60">
                           Est. wait: {formatWaitTime(waitTimeData.estimatedMinutesPerPerson * unservedAhead)}
                         </p>
@@ -1635,7 +1703,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                         <Button
                           size="sm"
                           variant="danger"
-                          onClick={() => openRemovalModal(pos.id, pos.user.id, pos.user.name, !!pos.calledAt && !pos.fulfilled)}
+                          onClick={() => openRemovalModal(pos.id, pos.user.id, pos.user.name, !!pos.calledAt && !pos.fulfilled, { isWalkIn: pos.user.isWalkIn, partySize: pos.partySize })}
                           aria-label={`Remove ${pos.user.name || (isRestaurant ? "this party" : "this person")}`}
                           isLoading={loadingAction === `remove-${pos.id}`}
                         >
@@ -1670,7 +1738,9 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                         </p>
                       ) : isLocked ? (
                         <p className="text-xs text-ink/60 mt-2">
-                          A swap for your spot is in progress right now. You can answer this once it finishes.
+                          {payingForOffer || myCheckout?.pending
+                            ? "Finish or cancel your payment for the spot ahead first, then you can answer this."
+                            : "A swap for your spot is in progress right now. You can answer this once it finishes."}
                         </p>
                       ) : allowResale && !offMarket(pos) && (
                         <div className="flex items-center gap-2 mt-2">
@@ -1915,7 +1985,16 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                           </Button>
                         </div>
                       </div>
-                    ) : isLocked || myLockActive ? null : sentOfferToFront?.status === "PENDING" && offerFormOpen !== pos.user.id ? (
+                    ) : isLocked || myLockActive ? (
+                      // Buttons gone with no reason left buyers guessing
+                      myCheckout?.pending ? null : (
+                        <p className="text-xs text-ink/60">
+                          {myLockActive
+                            ? "Someone behind you is paying for your spot right now. You can buy or make an offer once that finishes."
+                            : `They're in the middle of another swap. You can buy or make an offer once it finishes${pos.lockedUntil ? ` (up to ${formatTimeLeft(pos.lockedUntil)})` : ""}.`}
+                        </p>
+                      )
+                    ) : sentOfferToFront?.status === "PENDING" && offerFormOpen !== pos.user.id ? (
                       <div className="flex items-center gap-3 flex-wrap">
                         <p className="text-sm text-ink/60">
                           Offer sent: {formatCurrency(sentOfferToFront.amount)} (you&apos;d pay {formatCurrency(buyerTotal(sentOfferToFront.amount))} incl. fees) -- waiting for response
@@ -1951,6 +2030,8 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                           {sentOfferToFront.status === "WITHDRAWN"
                             ? `You withdrew your ${formatCurrency(sentOfferToFront.amount)} offer.`
                             : `Your ${formatCurrency(sentOfferToFront.amount)} offer ${sentOfferToFront.status === "DECLINED" ? "was declined" : "expired"}.`}
+                          {sentOfferToFront.status === "DECLINED" && pos.askingPrice != null &&
+                            ` They listed their spot at ${formatCurrency(pos.askingPrice)} instead, so you can buy it outright.`}
                           {cooldownLeft > 0 && ` You can make a new one in ${Math.ceil(cooldownLeft / 60_000)} min.`}
                         </p>
                         {cooldownLeft <= 0 && (

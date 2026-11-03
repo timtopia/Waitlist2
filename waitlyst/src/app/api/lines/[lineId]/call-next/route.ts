@@ -97,8 +97,24 @@ export async function POST(
     }
 
     const calledAt = new Date()
-    const [line] = await prisma.$transaction([
-      prisma.line.update({
+    const line = await prisma.$transaction(async (tx) => {
+      // Conditional on what we read: two tablets tapping Call together, or a
+      // co-host seating/removing them in between, mustn't both go through.
+      const marked = await tx.linePosition.updateMany({
+        where: { id: frontPosition.id, fulfilled: false, calledAt: frontPosition.calledAt },
+        // A new call: whatever they answered last time no longer applies
+        data: { calledAt, askingPrice: null, response: null, respondedAt: null, graceMinutes: 0 },
+      })
+      if (marked.count === 0) return null
+      await tx.swapOffer.updateMany({
+        where: {
+          lineId,
+          status: "PENDING",
+          OR: [{ fromUserId: frontPosition.userId }, { toUserId: frontPosition.userId }],
+        },
+        data: { status: "EXPIRED" },
+      })
+      return tx.line.update({
         where: { id: lineId },
         // The owner's own announcement is left alone: the called party is
         // told by their status card, and everyone sees "Now serving".
@@ -107,21 +123,17 @@ export async function POST(
           nowServingUserId: frontPosition.userId,
           nowServingAt: calledAt,
         },
-      }),
-      prisma.linePosition.update({
-        where: { id: frontPosition.id },
-        // A new call: whatever they answered last time no longer applies
-        data: { calledAt, askingPrice: null, response: null, respondedAt: null, graceMinutes: 0 },
-      }),
-      prisma.swapOffer.updateMany({
-        where: {
-          lineId,
-          status: "PENDING",
-          OR: [{ fromUserId: frontPosition.userId }, { toUserId: frontPosition.userId }],
+      })
+    })
+    if (!line) {
+      return NextResponse.json(
+        {
+          error: `${frontPosition.user?.name || "That party"} was just called, seated or removed (maybe from another device). Refresh to see the latest.`,
+          code: "ALREADY_CALLED",
         },
-        data: { status: "EXPIRED" },
-      }),
-    ])
+        { status: 409 }
+      )
+    }
 
     // Send email notifications (fire-and-forget)
     const lineUrl = `${getBaseUrl()}/lines/${lineId}`

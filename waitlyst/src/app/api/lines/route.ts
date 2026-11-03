@@ -216,7 +216,9 @@ export async function GET(req: Request) {
     // Cached publicly, so every viewer gets the anonymous view of capacity
     const visible = lines.map((line) => {
       const rows = guestSums.filter((g) => g.lineId === line.id)
-      const guests = rows.reduce((sum, g) => sum + (g._sum.partySize ?? 0), 0)
+      // Still waiting: served buyers stay listed until cleared, but they're
+      // not "in line" any more (the line page says "N waiting, M served")
+      const guests = rows.filter((g) => !g.fulfilled).reduce((sum, g) => sum + (g._sum.partySize ?? 0), 0)
       const used = line.kind === "RESTAURANT"
         ? rows.filter((g) => !g.fulfilled).reduce((sum, g) => sum + (g._sum.partySize ?? 0), 0)
         : rows.reduce((sum, g) => sum + g._count, 0) + (clearedIn.get(line.id) ?? 0)
