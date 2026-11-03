@@ -243,7 +243,7 @@ export function EditLineClient({
       <ConfirmModal
         open={showDelete}
         title="Delete Line"
-        message={`Delete "${line.name}"? Everyone in it is removed, any swap payment still on hold is refunded, and you lose access to its settlement page. Export it first if you need a record. This can't be undone.`}
+        message={`Delete "${line.name}"? Everyone in it is removed, any swap payment still on hold is refunded, and you lose access to its settlement page. Export the people list and the swaps CSV first if you need a record. This can't be undone.`}
         confirmLabel="Delete Line"
         variant="danger"
         isLoading={deleting}
@@ -295,10 +295,12 @@ export function EditLineClient({
               <button
                 type="button"
                 role="switch"
+                id="sw-public-line"
                 aria-checked={isPublic}
                 aria-label="Public line"
+                aria-describedby="sw-public-line-hint"
                 onClick={() => setIsPublic(!isPublic)}
-                className={`relative inline-flex h-6 w-11 items-center transition-colors ${
+                className={`relative inline-flex h-6 w-11 items-center transition-colors before:absolute before:-inset-y-2.5 before:inset-x-0 before:content-[''] ${
                   isPublic ? "bg-ink" : "bg-rule"
                 }`}
               >
@@ -309,8 +311,8 @@ export function EditLineClient({
                 />
               </button>
               <div>
-                <label className="text-sm font-medium text-ink">Public Line</label>
-                <p className="text-xs text-ink/60">
+                <label htmlFor="sw-public-line" className="text-sm font-medium text-ink cursor-pointer">Public Line</label>
+                <p id="sw-public-line-hint" className="text-xs text-ink/60">
                   {isPublic ? "Anyone can find this line in Browse" : "Only people with the link can join"}
                 </p>
               </div>
@@ -321,10 +323,12 @@ export function EditLineClient({
               <button
                 type="button"
                 role="switch"
+                id="sw-line-open-not-paused"
                 aria-checked={isActive}
                 aria-label="Line open (not paused)"
+                aria-describedby="sw-line-open-not-paused-hint"
                 onClick={() => setIsActive(!isActive)}
-                className={`relative inline-flex h-6 w-11 items-center transition-colors ${
+                className={`relative inline-flex h-6 w-11 items-center transition-colors before:absolute before:-inset-y-2.5 before:inset-x-0 before:content-[''] ${
                   isActive ? "bg-green-700" : "bg-rule"
                 }`}
               >
@@ -335,8 +339,8 @@ export function EditLineClient({
                 />
               </button>
               <div>
-                <label className="text-sm font-medium text-ink">Active</label>
-                <p className="text-xs text-ink/60">
+                <label htmlFor="sw-line-open-not-paused" className="text-sm font-medium text-ink cursor-pointer">Active</label>
+                <p id="sw-line-open-not-paused-hint" className="text-xs text-ink/60">
                   {!isActive
                     ? "Line is paused - no new joins allowed"
                     : enableSchedule && closesAt && new Date(closesAt) <= new Date()
@@ -436,10 +440,12 @@ export function EditLineClient({
               <button
                 type="button"
                 role="switch"
+                id="sw-schedule-opening-and-closing-times"
                 aria-checked={enableSchedule}
                 aria-label="Schedule opening and closing times"
+                aria-describedby="sw-schedule-opening-and-closing-times-hint"
                 onClick={() => setEnableSchedule(!enableSchedule)}
-                className={`relative inline-flex h-6 w-11 items-center transition-colors ${
+                className={`relative inline-flex h-6 w-11 items-center transition-colors before:absolute before:-inset-y-2.5 before:inset-x-0 before:content-[''] ${
                   enableSchedule ? "bg-ink" : "bg-rule"
                 }`}
               >
@@ -450,8 +456,8 @@ export function EditLineClient({
                 />
               </button>
               <div>
-                <label className="text-sm font-medium text-ink">Schedule Open/Close Times</label>
-                <p className="text-xs text-ink/60">
+                <label htmlFor="sw-schedule-opening-and-closing-times" className="text-sm font-medium text-ink cursor-pointer">Schedule Open/Close Times</label>
+                <p id="sw-schedule-opening-and-closing-times-hint" className="text-xs text-ink/60">
                   {enableSchedule
                     ? "Line will only accept joins during the scheduled window"
                     : "No scheduled open/close times"}
@@ -474,12 +480,13 @@ export function EditLineClient({
                   </label>
                   <input
                     id="opensAt"
+                    aria-describedby="opensAt-hint"
                     type="datetime-local"
                     value={opensAt}
                     onChange={(e) => setOpensAt(e.target.value)}
                     className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                   />
-                  <p className="text-xs text-ink/60 mt-1">
+                  <p id="opensAt-hint" className="text-xs text-ink/60 mt-1">
                     Leave empty to open immediately. Times are in your time zone ({Intl.DateTimeFormat().resolvedOptions().timeZone}).
                   </p>
                 </div>
@@ -489,13 +496,14 @@ export function EditLineClient({
                   </label>
                   <input
                     id="closesAt"
+                    aria-describedby="closesAt-hint"
                     type="datetime-local"
                     value={closesAt}
                     onChange={(e) => setClosesAt(e.target.value)}
                     min={opensAt || undefined}
                     className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                   />
-                  <p className="text-xs text-ink/60 mt-1">Leave empty for no end time</p>
+                  <p id="closesAt-hint" className="text-xs text-ink/60 mt-1">Leave empty for no end time</p>
                 </div>
               </div>
             )}
@@ -601,10 +609,12 @@ export function EditLineClient({
                     <button
                       type="button"
                       role="switch"
+                id="sw-allow-position-swapping"
                       aria-checked={allowResale}
                       aria-label="Allow position swapping"
+                aria-describedby="sw-allow-position-swapping-hint"
                       onClick={() => setAllowResale(!allowResale)}
-                      className={`relative inline-flex h-6 w-11 items-center transition-colors ${
+                      className={`relative inline-flex h-6 w-11 items-center transition-colors before:absolute before:-inset-y-2.5 before:inset-x-0 before:content-[''] ${
                         allowResale ? "bg-ink" : "bg-rule"
                       }`}
                     >
@@ -615,10 +625,10 @@ export function EditLineClient({
                       />
                     </button>
                     <div>
-                      <label className="text-sm font-medium text-ink">
+                      <label htmlFor="sw-allow-position-swapping" className="text-sm font-medium text-ink cursor-pointer">
                         Allow position swapping
                       </label>
-                      <p className="text-xs text-ink/60">
+                      <p id="sw-allow-position-swapping-hint" className="text-xs text-ink/60">
                         {allowResale
                           ? "People can swap their positions with the person next to them"
                           : "Swapping is disabled — no one can swap positions"}

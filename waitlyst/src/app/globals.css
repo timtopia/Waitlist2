@@ -98,6 +98,16 @@ body {
   }
 }
 
+/* Text fields: focus:outline-none + a 1px border colour change was nearly
+   invisible to keyboard and low-vision users. Unlayered so it beats the
+   outline-none utilities. */
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--foreground);
+  outline-offset: 0;
+}
+
 /* Windows High Contrast / forced-colors mode drops box-shadow focus rings
    (focus:ring-*) and background-only fills, so controls styled with
    focus:outline-none would show no focus at all. Unlayered so it beats the

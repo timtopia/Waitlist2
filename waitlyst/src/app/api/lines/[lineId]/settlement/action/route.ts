@@ -3,7 +3,7 @@ import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { releaseAndSettle, returnBuyerFunds, abandonPendingTransaction } from "@/lib/stripe"
 import { rateLimit } from "@/lib/rate-limit"
-import { notifySaleReversed } from "@/lib/queue-exit"
+import { notifyBuyerRefunded, notifySaleReversed } from "@/lib/queue-exit"
 
 const settlementLimiter = rateLimit({ interval: 60000, limit: 20 })
 
@@ -84,7 +84,9 @@ export async function POST(
             data: { settledAt: new Date() },
           })
         }
-        notifySaleReversed(unfulfilledTxns.filter((t) => returnedIds.includes(t.id)), lineId)
+        const returned = unfulfilledTxns.filter((t) => returnedIds.includes(t.id))
+        notifySaleReversed(returned, lineId)
+        notifyBuyerRefunded(returned, lineId)
 
         return NextResponse.json({
           success: true,
@@ -213,6 +215,7 @@ export async function POST(
       })
       // The seller was promised this payout; tell them it isn't coming
       notifySaleReversed([transaction], lineId)
+      notifyBuyerRefunded([transaction], lineId)
 
       return NextResponse.json({
         success: true,

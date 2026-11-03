@@ -59,6 +59,7 @@ export async function GET(
       ownerFeePending,
       ownerFeeAwaitingPayout,
       kind: result.line.kind,
+      ownerFeePercent: Number(result.line.ownerFeePercent ?? 0),
       totalTransactions: transactions.length,
       completedCount: settledCompleted.length,
       refundedCount: refunded.length,

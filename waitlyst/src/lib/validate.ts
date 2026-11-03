@@ -49,6 +49,12 @@ export function validateNumber(
   return null
 }
 
+/** Links are sent to every visitor on every poll; a 5 MB "URL" would be too */
+export const MAX_URL_LENGTH = 2048
+
+/** Postgres Int tops out near 2.1 billion; "10000000000 = unlimited" was a 500 */
+export const MAX_CAPACITY = 100_000
+
 export function validateUrl(value: unknown, name: string): string | null {
   if (value === undefined || value === null) {
     return `${name} is required`
@@ -56,6 +62,7 @@ export function validateUrl(value: unknown, name: string): string | null {
   if (typeof value !== "string") {
     return `${name} must be a string`
   }
+  if (value.length > MAX_URL_LENGTH) return `${name} must be ${MAX_URL_LENGTH} characters or fewer`
   let url: URL
   try {
     url = new URL(value)
@@ -71,6 +78,7 @@ export function validateUrl(value: unknown, name: string): string | null {
 
 /** A product image link: any https URL to an image host. */
 export function validateImageUrl(value: string): string | null {
+  if (value.length > MAX_URL_LENGTH) return `The product image link must be ${MAX_URL_LENGTH} characters or fewer`
   let url: URL
   try {
     url = new URL(value)
@@ -113,7 +121,9 @@ export const MAX_NOTE_LENGTH = 140
 export function parseNote(value: unknown): string | null | { error: string } {
   if (value === undefined || value === null) return null
   if (typeof value !== "string") return { error: "Note must be text" }
-  const note = value.trim()
+  // Bidi overrides, zero-width characters or a wall of newlines garbled the
+  // host's console row
+  const note = cleanText(value)
   if (!note) return null
   if (note.length > MAX_NOTE_LENGTH) return { error: `Notes can be at most ${MAX_NOTE_LENGTH} characters` }
   return note

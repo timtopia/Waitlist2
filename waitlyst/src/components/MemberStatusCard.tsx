@@ -14,6 +14,9 @@ interface MemberStatusCardProps {
   status: MemberStatus
   maxCapacity: number | null
   totalPositions: number
+  /** Capacity used as the server counts it: served-and-cleared people still
+   * take up spots, so "spots left" can't be worked out from the list alone */
+  capacityUsed?: number
   askingPrice: number | null
   lineId: string
   hideCapacity?: boolean
@@ -46,6 +49,7 @@ export function MemberStatusCard({
   status,
   maxCapacity,
   totalPositions,
+  capacityUsed,
   askingPrice,
   lineId,
   hideCapacity = false,
@@ -68,6 +72,9 @@ export function MemberStatusCard({
   const { phase, position, ahead } = status
   const [minutesPerPerson, setMinutesPerPerson] = useState<number | null>(null)
   const [waitTimeLoading, setWaitTimeLoading] = useState(true)
+  // A failed request (rate limit on shared Wi-Fi, server error) isn't "no one
+  // has been seated yet"
+  const [waitTimeFailed, setWaitTimeFailed] = useState(false)
   const [responding, setResponding] = useState<string | null>(null)
   // Tick once a second while called, for the countdown
   const [now, setNow] = useState(() => Date.now())
@@ -95,11 +102,18 @@ export function MemberStatusCard({
     if (phase !== "waiting") return
     let cancelled = false
     fetch(`/api/lines/${lineId}/wait-time`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (!cancelled && data) setMinutesPerPerson(data.estimatedMinutesPerPerson ?? null)
+      .then((res) => {
+        if (!res.ok) throw new Error(String(res.status))
+        return res.json()
       })
-      .catch(() => {})
+      .then((data) => {
+        if (cancelled) return
+        setWaitTimeFailed(false)
+        setMinutesPerPerson(data?.estimatedMinutesPerPerson ?? null)
+      })
+      .catch(() => {
+        if (!cancelled) setWaitTimeFailed(true)
+      })
       .finally(() => {
         if (!cancelled) setWaitTimeLoading(false)
       })
@@ -109,6 +123,7 @@ export function MemberStatusCard({
   }, [lineId, ahead, phase])
 
   const pastCapacity = maxCapacity !== null && position > maxCapacity
+  const spotsLeft = maxCapacity !== null ? Math.max(maxCapacity - (capacityUsed ?? totalPositions), 0) : 0
   let capacityLabel: string | null = null
   let capacityColor = "text-ink"
   let capacityDot = "bg-green-600"
@@ -152,9 +167,12 @@ export function MemberStatusCard({
     const calledAhead = ahead === 1
       ? `The ${isRestaurant ? "party" : "person"} ahead of you has been called.`
       : `The ${ahead} ${isRestaurant ? "parties" : "people"} ahead of you have been called.`
-    detail = quoteDetail ?? (ahead > 0
-      ? `${calledAhead} Stay close; you're up next.`
-      : "No one is ahead of you. Stay close; you'll be called soon.")
+    // A paused drop calls no one; a restaurant host can still call while paused
+    detail = isPaused && !isRestaurant && ahead === 0
+      ? "You're first in line. The organizer paused the line, so you'll be called once it resumes."
+      : quoteDetail ?? (ahead > 0
+        ? `${calledAhead} Stay close; you're up next.`
+        : "No one is ahead of you. Stay close; you'll be called soon.")
   } else {
     headline = isRestaurant
       ? `${ahead} ${ahead === 1 ? "party" : "parties"} ahead of you`
@@ -175,7 +193,8 @@ export function MemberStatusCard({
       detail = minutes >= 1 && Date.now() > aroundMs + 5 * 60_000
         ? `Taking longer than estimated (we guessed around ${around}). You're still in line.`
         : `Est. wait: ${formatWaitTime(minutes)}${minutes >= 1 ? ` (around ${around})` : ""}`
-    } else detail = `Wait estimate appears after the ${organizer} has ${isRestaurant ? "seated" : "served"} a couple of ${isRestaurant ? "parties" : "people"}.`
+    } else if (waitTimeFailed) detail = "Wait estimate unavailable right now. You're still in line."
+    else detail = `Wait estimate appears after the ${organizer} has ${isRestaurant ? "seated" : "served"} a couple of ${isRestaurant ? "parties" : "people"}.`
   }
 
   const accent = phase === "called"
@@ -367,7 +386,7 @@ export function MemberStatusCard({
             <div className="flex items-center justify-between font-mono text-xs uppercase tracking-widest text-ink/60 tabular-nums">
               <span>Position {position} of {totalPositions} in line</span>
               <span>
-                {Math.max(maxCapacity - totalPositions, 0)} spot{maxCapacity - totalPositions !== 1 ? "s" : ""} left
+                {spotsLeft} spot{spotsLeft !== 1 ? "s" : ""} left
               </span>
             </div>
             <div className="mt-1.5 w-full bg-ink/10 h-1.5">

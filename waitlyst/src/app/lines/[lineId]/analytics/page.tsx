@@ -18,7 +18,7 @@ export default async function AnalyticsPage({ params }: Props) {
 
   const line = await prisma.line.findUnique({
     where: { id: lineId },
-    select: { id: true, name: true, createdById: true, kind: true, allowResale: true },
+    select: { id: true, name: true, createdById: true, kind: true, allowResale: true, ownerFeePercent: true },
   })
   if (!line) redirect("/dashboard")
   if (line.createdById !== session.user.id) redirect(`/lines/${lineId}`)
@@ -29,6 +29,7 @@ export default async function AnalyticsPage({ params }: Props) {
       lineName={line.name}
       isRestaurant={line.kind === "RESTAURANT"}
       allowResale={line.allowResale}
+      ownerFeePercent={Number(line.ownerFeePercent)}
     />
   )
 }

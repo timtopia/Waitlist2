@@ -124,6 +124,15 @@ describe("diffMemberStatus", () => {
     expect(diffMemberStatus(prev, next, "me")).toEqual([{ kind: "served" }])
   })
 
+  it("says the line was closed when everyone waiting was cleared from a paused line", () => {
+    const base = { nowServingUserId: null, announcement: null, announcementAt: null }
+    const prev = { ...base, isActive: false, positions: [{ position: 1, fulfilled: false, user: { id: "u1", name: "A" } }] }
+    const next = { ...base, isActive: false, positions: [] }
+    const [event] = diffMemberStatus(prev as StatusLine, next as StatusLine, "u1")
+    expect(event).toEqual({ kind: "removed", wasServed: false, wasCalled: false, closed: true })
+    expect(describeMemberEvent(event, "Dinner", true)?.body).toBe("The host closed Dinner for now, so everyone waiting was cleared.")
+  })
+
   it("distinguishes leaving after service from being removed while waiting", () => {
     const empty = makeLine([{ id: "b" }])
     expect(diffMemberStatus(makeLine([{ id: "me", fulfilled: true }, { id: "b" }]), empty, "me"))

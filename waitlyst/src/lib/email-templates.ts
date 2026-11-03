@@ -76,6 +76,8 @@ export interface ServiceEmailOptions {
   isRestaurant?: boolean
   /** Minutes a called party has to show up; null/undefined when there's no limit */
   windowMinutes?: number | null
+  /** The host called them again: a copy of the first email read as a glitch */
+  recall?: boolean
 }
 
 export function positionCalledEmail(
@@ -88,14 +90,18 @@ export function positionCalledEmail(
   const safeLine = escapeHtml(lineName)
   // The subject is often all that shows on a lock screen, so it carries the
   // what and the deadline on its own
-  const subject = `${opts.isRestaurant ? `Your table is ready at ${lineName}` : `You're up in ${lineName}`}${
+  const subject = `${opts.recall ? "Reminder: " : ""}${opts.isRestaurant ? `Your table is ready at ${lineName}` : `You're up in ${lineName}`}${
     opts.windowMinutes ? ` -- arrive within ${opts.windowMinutes} min` : ""
   }`
   const deadline = opts.windowMinutes
     ? `You have ${opts.windowMinutes} min to get there, or your place goes to the next ${opts.isRestaurant ? "party" : "person"}. Open the line and tap "On my way" if you need a little more time.`
     : "Please come forward as soon as possible so you don't lose your spot."
+  const recalled = opts.recall
+    ? `<p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">The ${opts.isRestaurant ? "host" : "organizer"} called you again${opts.windowMinutes ? `, so your ${opts.windowMinutes} minutes start now` : ""}.</p>`
+    : ""
   const body = `
     <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">You're up, ${safeName}!</h2>
+    ${recalled}
     <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">${opts.isRestaurant
       ? `Your table is ready at <strong>${safeLine}</strong>. Head to the host stand.`
       : `You've been called to the front of <strong>${safeLine}</strong>.`}</p>
@@ -313,6 +319,30 @@ export function saleReversedEmail(
     <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">A sale was cancelled, ${safeName}</h2>
     <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">The ${isRestaurant ? "host" : "organizer"} of <strong>${safeLine}</strong> refunded the buyer of your spot, so the <strong>${formattedAmount}</strong> sale won't be paid out.</p>
     <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Your place in line isn't affected by this.</p>
+  `
+  return { subject, html: wrapTemplate(subject, body, "View Line", lineUrl) }
+}
+
+/**
+ * The buyer of a spot whose payment the organizer returned from the
+ * settlement page (they'd left or been cleared). A refund showing up on a
+ * card days later with no word is how disputes start.
+ */
+export function buyerRefundedEmail(
+  userName: string,
+  lineName: string,
+  amount: number,
+  lineUrl: string,
+  isRestaurant = false
+): { subject: string; html: string } {
+  const safeName = escapeHtml(userName)
+  const safeLine = escapeHtml(lineName)
+  const formattedAmount = amount.toLocaleString("en-US", { style: "currency", currency: "USD" })
+  const subject = `Your ${formattedAmount} payment for ${lineName} was returned`
+  const body = `
+    <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">Your payment was returned, ${safeName}</h2>
+    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">The ${isRestaurant ? "host" : "organizer"} of <strong>${safeLine}</strong> returned the <strong>${formattedAmount}</strong> you paid for a spot in line.</p>
+    <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">If the payment was only on hold, the hold is released right away. If it had been charged, the refund can take a few business days to show up on your statement.</p>
   `
   return { subject, html: wrapTemplate(subject, body, "View Line", lineUrl) }
 }

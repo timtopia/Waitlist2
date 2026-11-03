@@ -51,13 +51,23 @@ export default async function DashboardPage() {
 
   const isNewUser = createdLines.length === 0 && positions.length === 0
 
-  const aheadCounts = await Promise.all(
-    positions.map((pos) =>
-      prisma.linePosition.count({
-        where: { lineId: pos.lineId, position: { lt: pos.position }, fulfilled: false },
-      })
-    )
-  )
+  const [aheadCounts, aheadUncalledCounts] = await Promise.all([
+    Promise.all(
+      positions.map((pos) =>
+        prisma.linePosition.count({
+          where: { lineId: pos.lineId, position: { lt: pos.position }, fulfilled: false },
+        })
+      )
+    ),
+    // Everyone ahead already called means "you're next", as on the line page
+    Promise.all(
+      positions.map((pos) =>
+        prisma.linePosition.count({
+          where: { lineId: pos.lineId, position: { lt: pos.position }, fulfilled: false, calledAt: null },
+        })
+      )
+    ),
+  ])
 
   return (
     <DashboardClient
@@ -77,6 +87,7 @@ export default async function DashboardPage() {
         phase: getMemberPhase({
           fulfilled: pos.fulfilled,
           ahead: aheadCounts[i],
+          aheadUncalled: aheadUncalledCounts[i],
           calledAt: pos.calledAt,
         }),
         askingPrice: pos.askingPrice?.toString() || null,

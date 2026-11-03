@@ -6,6 +6,14 @@ export const metadata: Metadata = {
   description:
     "Public virtual lines you can join right now: restaurants, shops, product drops, and events. Take a number from your phone and wait anywhere.",
   alternates: { canonical: "/browse" },
+  // Without this a shared browse link previews as the generic home page
+  openGraph: {
+    title: "Browse Lines - Waitlyst",
+    description: "Public virtual lines you can join right now: restaurants, shops, product drops, and events.",
+    type: "website",
+    siteName: "Waitlyst",
+    images: ["/opengraph-image"],
+  },
 }
 
 export default function BrowseLayout({

@@ -304,13 +304,14 @@ describe("POST /api/lines/[lineId]/fulfill", () => {
     vi.clearAllMocks()
   })
 
-  it("refuses to fulfill a position that's locked in a pending swap", async () => {
+  it("calls off a pending swap on the spot before seating it, refusing only if it's still locked", async () => {
     mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
     mockPrisma.line.findUnique.mockResolvedValue({ id: "line-1", createdById: "owner-1" })
     mockPrisma.linePosition.findUnique.mockResolvedValue({
       id: "pos-1",
       lineId: "line-1",
       fulfilled: false,
+      lockedBy: "txn-1",
       lockedUntil: new Date(Date.now() + 10 * 60 * 1000), // locked for 10 more minutes
       user: { id: "user-1", email: null, emailNotifications: false },
     })
@@ -326,6 +327,8 @@ describe("POST /api/lines/[lineId]/fulfill", () => {
 
     const data = await response.json()
     expect(data.error).toMatch(/pending swap/i)
+    const { abandonPendingTransaction } = await import("@/lib/stripe")
+    expect(abandonPendingTransaction).toHaveBeenCalledWith("txn-1", { offerOutcome: "expire" })
   })
 
   it("collects each purchase, reports the ones that couldn't be, and takes the served spot off the market", async () => {

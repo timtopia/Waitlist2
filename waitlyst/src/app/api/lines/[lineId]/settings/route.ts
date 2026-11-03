@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { countCapacityUsed } from "@/lib/capacity-server"
 import { setLineActive } from "@/lib/line-pause"
 import { abandonPendingTransaction } from "@/lib/stripe"
-import { validateString, validateNumber, validateUrl, validateImageUrl, cleanText } from "@/lib/validate"
+import { validateString, validateNumber, validateUrl, validateImageUrl, cleanText, MAX_CAPACITY } from "@/lib/validate"
 import { callDeadline } from "@/lib/call-deadline"
 
 export async function PATCH(
@@ -91,8 +91,8 @@ export async function PATCH(
       // Number, not parseInt: "100abc" or 150.5 is a mistake, not 100 or 150
       const cap = updates.maxCapacity === null ? null : Number(updates.maxCapacity)
       if (cap !== null) {
-        if (!Number.isInteger(cap) || cap < 1) {
-          return NextResponse.json({ error: "Capacity must be a positive whole number" }, { status: 400 })
+        if (!Number.isInteger(cap) || cap < 1 || cap > MAX_CAPACITY) {
+          return NextResponse.json({ error: "Capacity must be a whole number from 1 to 100,000 (leave it empty for no limit)" }, { status: 400 })
         }
         // Verify capacity is not less than the guests already in line
         const currentCount = await countCapacityUsed(result.line)
@@ -157,7 +157,7 @@ export async function PATCH(
       const productErr = updates.productName ? validateString(updates.productName, "Product name", { min: 0, max: 100 }) : null
       if (productErr) return NextResponse.json({ error: productErr }, { status: 400 })
       allowedUpdates.productName = typeof updates.productName === "string" && updates.productName.trim()
-        ? updates.productName.trim()
+        ? cleanText(updates.productName) || null
         : null
     }
     if (updates.productImage !== undefined) {

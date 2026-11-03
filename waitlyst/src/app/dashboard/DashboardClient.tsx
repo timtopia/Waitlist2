@@ -46,15 +46,22 @@ interface Position {
     name: string
     isActive: boolean
     createdAt: string
+    kind?: "STANDARD" | "RESTAURANT"
     _count: { positions: number }
   }
 }
 
-const phaseLabel: Record<MemberPhase, { text: (ahead: number) => string; className: string }> = {
-  called: { text: () => "Your turn. Head to the front", className: "text-accent font-semibold" },
+const phaseLabel: Record<MemberPhase, { text: (ahead: number, restaurant: boolean) => string; className: string }> = {
+  called: {
+    text: (_, restaurant) => (restaurant ? "Your table is ready. Head to the host stand" : "Your turn. Head to the front"),
+    className: "text-accent font-semibold",
+  },
   next: { text: () => "You're next", className: "text-green-700" },
-  served: { text: () => "Served", className: "text-green-700" },
-  waiting: { text: (ahead) => `${ahead} ahead of you`, className: "text-ink/60" },
+  served: { text: (_, restaurant) => (restaurant ? "Seated" : "Served"), className: "text-green-700" },
+  waiting: {
+    text: (ahead, restaurant) => `${ahead} ${restaurant ? (ahead === 1 ? "party" : "parties") + " " : ""}ahead of you`,
+    className: "text-ink/60",
+  },
 }
 
 type StatusFilter = "all" | "active" | "paused" | "closed"
@@ -68,6 +75,7 @@ interface LineStats {
   ownerFeePending?: number
   ownerFeeAwaitingPayout?: number
   kind?: "STANDARD" | "RESTAURANT"
+  ownerFeePercent?: number
   totalTransactions: number
   completedCount: number
   refundedCount: number
@@ -91,6 +99,8 @@ interface StatsModal {
   lineName: string
   stats: LineStats | null
   loading: boolean
+  /** The request failed: not the same as "no sales yet" */
+  failed?: boolean
 }
 
 interface DashboardClientProps {
@@ -469,6 +479,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
       lineName,
       stats: null,
       loading: true,
+      failed: false,
     })
 
     try {
@@ -477,10 +488,10 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
         const data = await res.json()
         setStatsModal(prev => prev ? { ...prev, stats: data, loading: false } : null)
       } else {
-        setStatsModal(prev => prev ? { ...prev, loading: false } : null)
+        setStatsModal(prev => prev ? { ...prev, loading: false, failed: true } : null)
       }
     } catch {
-      setStatsModal(prev => prev ? { ...prev, loading: false } : null)
+      setStatsModal(prev => prev ? { ...prev, loading: false, failed: true } : null)
     }
   }
 
@@ -603,6 +614,8 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                   )
                 })()}
 
+                {/* A 0% fee line has nothing to earn: a big green $0.00 reads as "no sales" */}
+                {((statsModal.stats.ownerFeePercent ?? 1) > 0 || (statsModal.stats.ownerFeeEarned ?? 0) > 0 || (statsModal.stats.ownerFeePending ?? 0) > 0) && (
                 <div className="border border-ink p-4 text-center">
                   <p className="font-mono text-3xl tabular-nums text-green-700">
                     {formatCurrency(statsModal.stats.ownerFeeEarned ?? 0)}
@@ -619,6 +632,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                     </p>
                   )}
                 </div>
+                )}
 
                 <p className="font-mono text-xs uppercase tracking-widest text-ink/60 pt-2">Swap volume (paid to sellers)</p>
                 <div className="grid grid-cols-2 divide-x divide-rule border border-rule">
@@ -661,6 +675,13 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                   Paid swaps: {statsModal.stats.completedCount + statsModal.stats.pendingSettlementCount + statsModal.stats.refundedCount}
                 </p>
               </div>
+            ) : statsModal.failed ? (
+              <div className="text-sm text-ink/60" role="alert">
+                <p>Couldn&apos;t load stats. Check your connection and try again.</p>
+                <Button size="sm" variant="secondary" className="mt-2" onClick={() => openStatsModal(statsModal.lineId, statsModal.lineName)}>
+                  Try again
+                </Button>
+              </div>
             ) : (
               <p className="text-sm text-ink/60">No transaction data available.</p>
             )}
@@ -683,6 +704,22 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                 </svg>
                 Export CSV
               </Button>
+              {(statsModal.stats?.totalTransactions ?? 0) > 0 && (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    const link = document.createElement("a")
+                    link.href = `/api/lines/${statsModal.lineId}/export?type=swaps`
+                    link.download = ""
+                    document.body.appendChild(link)
+                    link.click()
+                    document.body.removeChild(link)
+                  }}
+                  className="flex-1"
+                >
+                  Swaps CSV
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 onClick={() => setStatsModal(null)}
@@ -699,7 +736,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
       <ConfirmModal
         open={!!deleteConfirm}
         title="Delete Line"
-        message={`Delete "${deleteConfirm?.lineName || ""}"? Everyone in it is removed, any swap payment still on hold is refunded, and you lose access to its settlement page. Export it first if you need a record. This can't be undone.`}
+        message={`Delete "${deleteConfirm?.lineName || ""}"? Everyone in it is removed, any swap payment still on hold is refunded, and you lose access to its settlement page. Export the people list and the swaps CSV first if you need a record. This can't be undone.`}
         confirmLabel="Delete"
         variant="danger"
         isLoading={!!deleteConfirm && loadingAction === `delete-${deleteConfirm.lineId}`}
@@ -721,14 +758,14 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
 
       {/* Lines I'm In */}
       <Card className="mb-8">
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
           <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-ink/60">My Positions</h2>
           {positions.length > 0 && (
             <select
               value={positionsSort}
               onChange={(e) => setPositionsSort(e.target.value as SortOption)}
               aria-label="Sort my positions"
-              className="text-sm border border-rule px-2 py-1 bg-white text-ink/70 focus:outline-none focus:border-ink"
+              className="text-sm border border-rule px-2 py-1 min-h-11 sm:min-h-0 bg-white text-ink/70 focus:outline-none focus:border-ink"
             >
               <option value="newest">Newest first</option>
               <option value="oldest">Oldest first</option>
@@ -761,7 +798,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                       <h3 className="font-semibold tracking-tight">{pos.line.name}</h3>
                       <p className="text-sm">
                         <span className={phaseLabel[pos.phase].className}>
-                          {phaseLabel[pos.phase].text(pos.ahead)}
+                          {phaseLabel[pos.phase].text(pos.ahead, pos.line.kind === "RESTAURANT")}
                         </span>
                         <span className="text-ink/60">
                           {" · "}{pos.line._count.positions} in line
@@ -770,7 +807,11 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="font-mono text-lg tabular-nums">#{pos.phase === "served" ? pos.position : pos.ahead + 1}</p>
+                      <p className="font-mono text-lg tabular-nums">
+                        {pos.phase === "served"
+                          ? <span aria-label={pos.line.kind === "RESTAURANT" ? "Seated" : "Served"}>✓</span>
+                          : `#${pos.ahead + 1}`}
+                      </p>
                       {pos.askingPrice !== null && (
                         <p className="text-sm text-green-700">
                           Open to swap: {formatCurrency(Number(pos.askingPrice))}
@@ -787,15 +828,15 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
 
       {/* Lines I've Created */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
           <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-ink/60">Lines I Created</h2>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {lines.length > 0 && (
               <select
                 value={createdSort}
                 onChange={(e) => setCreatedSort(e.target.value as SortOption)}
                 aria-label="Sort lines I created"
-                className="text-sm border border-rule px-2 py-1 bg-white text-ink/70 focus:outline-none focus:border-ink"
+                className="text-sm border border-rule px-2 py-1 min-h-11 sm:min-h-0 bg-white text-ink/70 focus:outline-none focus:border-ink"
               >
                 <option value="newest">Newest first</option>
                 <option value="oldest">Oldest first</option>

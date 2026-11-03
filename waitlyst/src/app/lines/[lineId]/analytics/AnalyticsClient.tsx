@@ -63,11 +63,13 @@ export function AnalyticsClient({
   lineName,
   isRestaurant,
   allowResale,
+  ownerFeePercent = 0,
 }: {
   lineId: string
   lineName: string
   isRestaurant: boolean
   allowResale: boolean
+  ownerFeePercent?: number
 }) {
   const [data, setData] = useState<Data | null>(null)
   const [error, setError] = useState(false)
@@ -176,6 +178,10 @@ export function AnalyticsClient({
       sizes,
     }
   }, [data, isRestaurant])
+  // 0% fee lines: "$0.00 earned" and a flat chart read as a broken page;
+  // show what happened (paid swaps) instead. Fees from before a change to
+  // 0% still show the earnings view.
+  const noFee = ownerFeePercent === 0 && (view?.ownerFees ?? 0) === 0 && (view?.ownerFeesOnHold ?? 0) === 0
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
@@ -217,7 +223,14 @@ export function AnalyticsClient({
               value={view.noShowRate === null ? "--" : `${Math.round(view.noShowRate * 100)}%`}
               note={view.noShows > 0 ? `${view.noShows} no-show${view.noShows === 1 ? "" : "s"}` : undefined}
             />
-            {(allowResale || view.swapCount > 0) && (
+            {(allowResale || view.swapCount > 0) && noFee && (
+              <Stat
+                label="Paid swaps"
+                value={String(view.swapCount)}
+                note={view.swapCount > 0 ? `buyers paid ${formatCurrency(view.swapVolume)} · no fee` : "no fee on this line"}
+              />
+            )}
+            {(allowResale || view.swapCount > 0) && !noFee && (
               <Stat label="Swap fees earned" value={formatCurrency(view.ownerFees)} note={`${view.swapCount} swap${view.swapCount === 1 ? "" : "s"}${view.swapCount > 0 ? `, buyers paid ${formatCurrency(view.swapVolume)}` : ""}${view.ownerFeesOnHold > 0 ? ` (+ ${formatCurrency(view.ownerFeesOnHold)} on hold)` : ""}`} />
             )}
           </div>
@@ -262,7 +275,7 @@ export function AnalyticsClient({
                   formatTick={(v) => `${Math.round(v)}m`}
                 />
               )}
-              {(allowResale || view.swapCount > 0) && (
+              {(allowResale || view.swapCount > 0) && !noFee && (
                 <BarChart
                   title="Swap fees earned per day"
                   subtitle={`Your fee on paid swaps, last ${RECENT_DAYS} days`}

@@ -5,7 +5,7 @@ import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { rateLimit, lineCreateLimiter } from "@/lib/rate-limit"
 import { capacityView } from "@/lib/capacity"
-import { cleanText, validateString, validateNumber, validateUrl, validateImageUrl } from "@/lib/validate"
+import { cleanText, validateString, validateNumber, validateUrl, validateImageUrl, MAX_CAPACITY } from "@/lib/validate"
 
 const browseLimiter = rateLimit({ interval: 60_000, limit: 30 })
 
@@ -50,8 +50,8 @@ export async function POST(req: Request) {
 
     // Validate capacity (optional, positive integer)
     if (maxCapacity !== undefined && maxCapacity !== null) {
-      if (typeof maxCapacity !== "number" || maxCapacity < 1 || !Number.isInteger(maxCapacity)) {
-        return NextResponse.json({ error: "Capacity must be a positive whole number" }, { status: 400 })
+      if (typeof maxCapacity !== "number" || maxCapacity < 1 || !Number.isInteger(maxCapacity) || maxCapacity > MAX_CAPACITY) {
+        return NextResponse.json({ error: "Capacity must be a whole number from 1 to 100,000 (leave it empty for no limit)" }, { status: 400 })
       }
     }
 
@@ -59,6 +59,9 @@ export async function POST(req: Request) {
       if (value && isNaN(new Date(value).getTime())) {
         return NextResponse.json({ error: `${label} time isn't a valid date` }, { status: 400 })
       }
+    }
+    if (productImage !== undefined && productImage !== null && typeof productImage !== "string") {
+      return NextResponse.json({ error: "The product image link must be text" }, { status: 400 })
     }
     if (typeof productImage === "string" && productImage.trim()) {
       const imageErr = validateImageUrl(productImage.trim())
@@ -139,7 +142,8 @@ export async function POST(req: Request) {
         maxCapacity: maxCapacity || null,
         kind,
         ownerFeePercent: feePercent,
-        productName: productName?.trim() || null,
+        // Cleaned like the line name: a bidi override would spoof it on the page and embed
+        productName: typeof productName === "string" ? cleanText(productName) || null : null,
         productImage: productImage?.trim() || null,
         productPrice: productPrice || null,
         productUrl: productUrl?.trim() || null,

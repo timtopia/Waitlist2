@@ -132,8 +132,10 @@ export async function POST(
     const recentlyEmailed =
       !!frontPosition.calledAt && calledAt.getTime() - frontPosition.calledAt.getTime() < 2 * 60_000
     if (calledUser?.email && calledUser.emailNotifications && !recentlyEmailed) {
-      const { subject, html } = positionCalledEmail(userName, line.name, lineUrl, {
+      // "You're up, Next person!" for someone with no name on their account
+      const { subject, html } = positionCalledEmail(frontPosition.user?.name || "there", line.name, lineUrl, {
         isRestaurant: line.kind === "RESTAURANT",
+        recall: !!frontPosition.calledAt,
         // Walk-ins aren't skipped as no-shows, and a paused line holds the
         // show-up clock, so neither gets a deadline
         windowMinutes: calledUser.isWalkIn || !line.isActive ? null : line.responseWindowMinutes,

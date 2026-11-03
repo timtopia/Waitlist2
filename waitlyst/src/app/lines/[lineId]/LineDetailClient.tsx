@@ -17,10 +17,22 @@ import { useToast } from "@/components/ui/Toast"
 import { useLineUpdates, LineUpdateEvent } from "@/hooks/useLineUpdates"
 import { useNotifications } from "@/hooks/useNotifications"
 import { useWakeLock } from "@/hooks/useWakeLock"
+import { useInAppBrowser } from "@/hooks/useInAppBrowser"
 import { alertTurn, primeChime } from "@/lib/attention"
 import { MemberStatusCard, NotificationState } from "@/components/MemberStatusCard"
 import { OwnerConsole } from "@/components/OwnerConsole"
 import { formatCurrency, timeAgo } from "@/lib/format"
+import { callDeadline } from "@/lib/call-deadline"
+
+/** Start a download without leaving the page */
+function downloadFile(href: string) {
+  const link = document.createElement("a")
+  link.href = href
+  link.download = ""
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+}
 import { MAX_PARTY_SIZE, capacityUnit, guestCount } from "@/lib/capacity"
 import { getMemberStatus, diffMemberStatus, describeMemberEvent, memberTabTitle } from "@/lib/member-status"
 
@@ -112,7 +124,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [notificationPermission, setNotificationPermission] = useState<NotificationState>("unsupported")
   const notificationsEnabled = notificationPermission === "granted"
   // partySize is what they were in line as, so rejoining keeps the table size
-  const [departure, setDeparture] = useState<{ wasServed: boolean; wasCalled: boolean; partySize: number } | null>(null)
+  const [departure, setDeparture] = useState<{ wasServed: boolean; wasCalled: boolean; closed?: boolean; partySize: number } | null>(null)
   // Set when the viewer leaves from this tab, so the next poll isn't
   // reported as "you're no longer in line".
   const leftHereRef = useRef(false)
@@ -129,11 +141,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [stripeEnabled, setStripeEnabled] = useState(false)
   // Instagram/TikTok/Facebook webviews: Google refuses to sign in there
   // ("disallowed_useragent"), so a drop link tapped on social was a dead end
-  const [inAppBrowser, setInAppBrowser] = useState(false)
+  const inAppBrowser = useInAppBrowser()
   const [linkCopied, setLinkCopied] = useState(false)
-  useEffect(() => {
-    setInAppBrowser(/Instagram|FBAN|FBAV|TikTok|musical_ly|BytedanceWebview|Line\/|Snapchat|Twitter/i.test(navigator.userAgent))
-  }, [])
   const router = useRouter()
   const searchParams = useSearchParams()
   const { requestPermission, sendNotification } = useNotifications()
@@ -154,10 +163,10 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   useEffect(() => {
     const paymentStatus = searchParams.get("payment")
     if (paymentStatus === "cancelled") {
-      addToast("Payment was cancelled. No charges were made.", "info")
+      addToast("Payment was cancelled. No charges were made. Cancelling several purchases within a few hours pauses buying here for a while.", "info")
       router.replace(`/lines/${lineId}`, { scroll: false })
     } else if (paymentStatus === "offer_withdrawn") {
-      addToast("Payment was cancelled and your offer withdrawn. No charges were made.", "info")
+      addToast("Payment was cancelled and your offer withdrawn. No charges were made. Cancelling several purchases within a few hours pauses buying here for a while.", "info")
       router.replace(`/lines/${lineId}`, { scroll: false })
     } else if (paymentStatus === "error") {
       const reason = searchParams.get("reason")
@@ -167,6 +176,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         not_paid: "Payment was not completed.",
         no_transaction: "Transaction could not be found.",
         invalid_transaction: "Invalid transaction.",
+        unconfirmed: "We couldn't confirm your payment yet. If it went through, your new spot will show up in a minute -- don't pay again.",
         swap_failed: "The spot you were buying changed hands before the swap could finish (they moved, left, or were called), so it was cancelled. The hold on your card has been released.",
       }
       addToast(messages[reason || ""] || "Something went wrong with your payment.", "error")
@@ -340,6 +350,29 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         )
       }
     }
+    // Guests who left from their own phone (or another host device removed
+    // them): their row would otherwise just
+    // vanish while the host is still watching the door for them. The host's
+    // own removals refetched already, and parties the show-up timer skipped
+    // are OwnerConsole's to announce.
+    const stillHere = new Set(next.positions.map((p) => p.id))
+    const nowMs = Date.now()
+    const gone = prev.positions.filter((p) => {
+      if (stillHere.has(p.id) || p.fulfilled || p.user.isWalkIn) return false
+      if (!p.calledAt || !next.isActive || !next.responseWindowMinutes) return true
+      const deadline = callDeadline(p.calledAt, next.responseWindowMinutes, p.respondedAt, p.graceMinutes)
+      return !deadline || deadline.getTime() > nowMs
+    })
+    // Clearing the whole line (Close) isn't a wave of individual departures
+    const closedOut = !next.isActive && !next.positions.some((p) => !p.fulfilled)
+    if (gone.length > 0 && !closedOut) {
+      const party = next.kind === "RESTAURANT"
+      if (gone.length > 3) {
+        addToast(`${gone.length} ${party ? "parties are" : "people are"} no longer in line`, "info")
+      } else {
+        for (const p of gone) addToast(`${name(p)} is no longer in line${p.calledAt ? " (they'd been called)" : ""}`, "info")
+      }
+    }
   }, [addToast])
 
   const handleLineUpdate = useCallback((event: LineUpdateEvent) => {
@@ -374,7 +407,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       }
       if (change.kind === "removed") {
         const was = prev.positions.find((p) => p.user.id === session?.user?.id)
-        setDeparture({ wasServed: change.wasServed, wasCalled: change.wasCalled, partySize: was?.partySize ?? 1 })
+        setDeparture({ wasServed: change.wasServed, wasCalled: change.wasCalled, closed: change.closed, partySize: was?.partySize ?? 1 })
       }
       if (change.kind === "called" || change.kind === "next") setDeparture(null)
       if (change.kind === "called") alertTurn()
@@ -781,7 +814,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       <ConfirmModal
         open={showDeleteConfirm}
         title="Delete Line"
-        message={`Delete "${line.name}"? Everyone in it is removed, any swap payment still on hold is refunded, and you lose access to its settlement page. Export it first if you need a record. This can't be undone.`}
+        message={`Delete "${line.name}"? Everyone in it is removed, any swap payment still on hold is refunded, and you lose access to its settlement page. Export the people list and the swaps CSV first if you need a record. This can't be undone.`}
         confirmLabel="Delete Line"
         variant="danger"
         isLoading={deleting}
@@ -809,7 +842,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             )}
             <div className="flex-1 p-5 flex flex-col justify-center">
               {line.productName && (
-                <p className="text-xl font-semibold tracking-tight text-ink mb-1">
+                <p className="text-xl font-semibold tracking-tight text-ink mb-1 break-words">
                   {line.productName}
                 </p>
               )}
@@ -842,7 +875,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             <div className="min-w-0 flex-1 basis-60">
               <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-ink mb-2 break-words">{line.name}</h1>
               {line.description && (
-                <p className="text-ink/60">{line.description}</p>
+                <p className="text-ink/60 whitespace-pre-wrap break-words">{line.description}</p>
               )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -954,18 +987,16 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                       },
                       {
                         label: "Export CSV",
-                        onClick: () => {
-                          const link = document.createElement("a")
-                          link.href = `/api/lines/${lineId}/export`
-                          link.download = ""
-                          document.body.appendChild(link)
-                          link.click()
-                          document.body.removeChild(link)
-                        },
+                        onClick: () => downloadFile(`/api/lines/${lineId}/export`),
                       },
+                      // Swaps and fees live only on the settlement page otherwise,
+                      // which is gone once the line is deleted
+                      ...(line.allowResale || line.ownerFeePercent > 0
+                        ? [{ label: "Export swaps CSV", onClick: () => downloadFile(`/api/lines/${lineId}/export?type=swaps`) }]
+                        : []),
                       { label: "Delete Line", onClick: () => setShowDeleteConfirm(true), variant: "danger" },
                     ]}
-                    separatorBefore={[2]}
+                    separatorBefore={[line.allowResale || line.ownerFeePercent > 0 ? 3 : 2]}
                   />
                 </>
               )}
@@ -1045,6 +1076,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
           purchaseLimit={line.purchaseLimit}
           responseWindowMinutes={line.responseWindowMinutes}
           hasAnnouncement={!!line.announcement}
+          opensAt={line.opensAt}
+          closesAt={line.closesAt}
         />
       )}
 
@@ -1211,6 +1244,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
           isRestaurant={isRestaurant}
           allowResale={line.allowResale}
           totalPositions={line.positions.length}
+          capacityUsed={line.capacityUsed}
           askingPrice={userPosition.askingPrice}
           lineId={line.id}
           hideCapacity={!isCreator && line.hideCapacity}
@@ -1244,6 +1278,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                   ? isRestaurant
                     ? "The host seated you and cleared your spot. Thanks for waiting."
                     : "The organizer served you and cleared your spot. Thanks for waiting."
+                  : departure.closed
+                    ? `The ${isRestaurant ? "host" : "organizer"} closed the line for now, so everyone waiting was cleared.`
                   : departure.wasCalled
                     ? `You were called but didn't show up in time, so your place went to the next ${isRestaurant ? "party" : "person"} -- or the ${isRestaurant ? "host" : "organizer"} removed you.`
                     : `You left from another device, or the ${isRestaurant ? "host" : "organizer"} removed you.`}
@@ -1265,7 +1301,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                 </Button>
               )}
               {/* No button and no reason was a dead end */}
-              {!canJoin && !departure.wasServed && (lineFull || linePaused || lineClosed) && (
+              {!canJoin && !departure.wasServed && !departure.closed && (lineFull || linePaused || lineClosed) && (
                 <p className="text-sm text-ink/60 mt-2">
                   {lineClosed
                     ? "This line has closed to new joins."

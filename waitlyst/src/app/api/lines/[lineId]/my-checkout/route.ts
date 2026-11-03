@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
-import { abandonPendingTransaction, getStripe } from "@/lib/stripe"
+import {
+  abandonPendingTransaction,
+  getStripe,
+  isCheckoutAuthorized,
+  performPositionSwap,
+  recordPaymentIntent,
+} from "@/lib/stripe"
 
 /**
  * The signed-in buyer's own unpaid direct purchase on this line: the one
@@ -44,6 +50,15 @@ export async function GET(
     try {
       const session = await stripe.checkout.sessions.retrieve(txn.stripePaymentId)
       if (session.status === "open") url = session.url
+      // They paid but closed the tab before the return page loaded, and the
+      // webhook hasn't landed: "you haven't paid yet" plus a Cancel button
+      // would have them undo a purchase they already made. Finish it the
+      // way the return URL does (a no-op if already done).
+      if (session.status === "complete" && (await isCheckoutAuthorized(session))) {
+        await recordPaymentIntent(txn.id, session)
+        await performPositionSwap(txn.id)
+        return NextResponse.json({ pending: false, paid: true })
+      }
     } catch {
       // Gone or unreachable: they can still cancel
     }
@@ -63,6 +78,20 @@ export async function DELETE(
   const txn = await ownPendingPurchase(lineId, result.userId)
   if (!txn) {
     return NextResponse.json({ error: "You don't have a purchase waiting for payment here" }, { status: 404 })
+  }
+  const stripe = getStripe()
+  if (stripe && txn.stripePaymentId) {
+    try {
+      const session = await stripe.checkout.sessions.retrieve(txn.stripePaymentId)
+      if (session.status === "complete") {
+        return NextResponse.json(
+          { error: "Your payment already went through. Refresh in a moment to see your new spot." },
+          { status: 409 }
+        )
+      }
+    } catch {
+      // Unreachable: cancelling still expires the session below
+    }
   }
   await abandonPendingTransaction(txn.id, { byBuyer: true })
   return NextResponse.json({ success: true })
