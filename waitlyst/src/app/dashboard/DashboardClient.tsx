@@ -25,6 +25,9 @@ interface CreatedLine {
   kind?: "STANDARD" | "RESTAURANT"
   opensAt?: string | null
   closesAt?: string | null
+  maxCapacity?: number | null
+  /** Spots (or seats) taken against maxCapacity, served drop buyers included */
+  capacityUsed?: number | null
   _count: { positions: number }
   frontPerson: {
     id: string
@@ -644,14 +647,14 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                 </div>
                 )}
 
-                <p className="font-mono text-xs uppercase tracking-widest text-ink/60 pt-2">Swap volume (paid to sellers)</p>
+                <p className="font-mono text-xs uppercase tracking-widest text-ink/60 pt-2">Swap volume</p>
                 <div className="grid grid-cols-2 divide-x divide-rule border border-rule">
                   <div className="p-4 text-center">
                     <p className="font-mono text-2xl tabular-nums text-green-700">
                       {formatCurrency(statsModal.stats.totalCompleted)}
                     </p>
                     <p className="font-mono text-xs uppercase tracking-widest text-ink/60 mt-1">
-                      Settled ({statsModal.stats.completedCount})
+                      {statsModal.stats.kind === "RESTAURANT" ? "Settled" : "Collected"} ({statsModal.stats.completedCount})
                     </p>
                   </div>
                   <div className="p-4 text-center">
@@ -659,7 +662,8 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                       {formatCurrency(statsModal.stats.totalRefunded)}
                     </p>
                     <p className="font-mono text-xs uppercase tracking-widest text-ink/60 mt-1">
-                      Refunded ({statsModal.stats.refundedCount})
+                      {/* Includes holds cancelled before anyone was charged */}
+                      Refunded or released ({statsModal.stats.refundedCount})
                     </p>
                   </div>
                 </div>
@@ -670,7 +674,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                       {formatCurrency(statsModal.stats.pendingSettlement)}
                     </p>
                     <p className="font-mono text-xs uppercase tracking-widest text-ink/60 mt-1">
-                      Pending Settlement ({statsModal.stats.pendingSettlementCount})
+                      {statsModal.stats.kind === "RESTAURANT" ? "Pending Settlement" : "Not collected"} ({statsModal.stats.pendingSettlementCount})
                     </p>
                     <p className="text-xs text-ink/60 mt-1">
                       {statsModal.stats.kind === "RESTAURANT"
@@ -682,7 +686,8 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                 )}
 
                 <p className="text-sm text-ink/60 text-center">
-                  Paid swaps: {statsModal.stats.completedCount + statsModal.stats.pendingSettlementCount + statsModal.stats.refundedCount}
+                  {/* Same count as settlement: refunded and released swaps didn't go through */}
+                  Swaps that went through: {statsModal.stats.completedCount + statsModal.stats.pendingSettlementCount}
                 </p>
               </div>
             ) : statsModal.failed ? (
@@ -921,10 +926,17 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                             <span className={`w-1.5 h-1.5 ${line.isPublic ? "bg-green-600" : "bg-ink/30"}`} aria-hidden />
                             {line.isPublic ? "Public" : "Private"}
                           </span>
-                          {!line.isActive && (
+                          {/* Past its closing time it's Closed, paused or not (as on the embed) */}
+                          {!line.isActive && !(line.closesAt && new Date(line.closesAt) <= new Date()) && (
                             <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-amber-700 flex-shrink-0">
                               <span className="w-1.5 h-1.5 bg-amber-500" aria-hidden />
                               Paused
+                            </span>
+                          )}
+                          {line.maxCapacity != null && line.capacityUsed != null && line.capacityUsed >= line.maxCapacity && (
+                            <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-accent flex-shrink-0">
+                              <span className="w-1.5 h-1.5 bg-accent" aria-hidden />
+                              Full
                             </span>
                           )}
                           {/* A drop past its close time, or not open yet, isn't "live" */}
@@ -942,6 +954,11 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                         </div>
                         <p className="text-sm text-ink/60 mt-1">
                           {line._count.positions} waiting
+                          {line.maxCapacity != null && line.capacityUsed != null && (
+                            <span className="tabular-nums">
+                              {" · "}{line.capacityUsed}/{line.maxCapacity} {line.kind === "RESTAURANT" ? "seats" : "spots"}
+                            </span>
+                          )}
                           {line.frontPerson && (
                             <span>
                               {" · "} Next: {line.frontPerson.user.name || "Anonymous"}

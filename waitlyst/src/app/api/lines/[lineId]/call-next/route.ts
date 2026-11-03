@@ -157,8 +157,15 @@ export async function POST(
 
     // Give whoever is now on deck a heads-up, but only the first time the
     // person ahead is called -- re-calling them shouldn't email again. A party
-    // called out of order doesn't change who's on deck.
-    if (!frontPosition.calledAt && frontPosition.id === firstUnserved?.id) {
+    // called out of order doesn't change who's on deck. "Ahead" means still
+    // waiting to be called, as the guest's card counts it: calling #2 while #1
+    // is still at the stand makes #3 next, and their card says so.
+    const uncalledAhead = frontPosition.calledAt
+      ? 1
+      : await prisma.linePosition.count({
+          where: { lineId, fulfilled: false, calledAt: null, position: { lt: frontPosition.position } },
+        })
+    if (uncalledAhead === 0) {
       const onDeck = await prisma.linePosition.findFirst({
         // Skip parties already called out of order -- they've been told.
         where: { lineId, fulfilled: false, calledAt: null, position: { gt: frontPosition.position } },

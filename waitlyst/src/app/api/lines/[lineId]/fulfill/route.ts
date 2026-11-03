@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { abandonPendingTransaction, getBaseUrl, releaseAndSettle } from "@/lib/stripe"
 import { sendEmail } from "@/lib/email"
 import { fulfilledEmail } from "@/lib/email-templates"
+import { clearNowServing } from "@/lib/queue-exit"
 
 export async function POST(
   req: Request,
@@ -69,10 +70,7 @@ export async function POST(
       }
       // Once they're served, "Now serving" shouldn't keep showing them to
       // everyone until the owner clears served people.
-      await tx.line.updateMany({
-        where: { id: lineId, nowServingUserId: position.userId },
-        data: { nowServing: null, nowServingUserId: null, nowServingAt: null },
-      })
+      await clearNowServing(tx, lineId, position.userId)
       await tx.swapOffer.updateMany({
         where: {
           lineId,

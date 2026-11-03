@@ -98,7 +98,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       {/* Toast containers stay mounted so screen readers pick up new
           messages: errors interrupt, everything else waits its turn. */}
-      <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:max-w-sm z-[100] flex flex-col gap-2 pointer-events-none">
+      {/* toast-stack: lifted above the batch-select action bar (globals.css) */}
+      <div className="toast-stack fixed bottom-4 left-4 right-4 sm:left-auto sm:max-w-sm z-[100] flex flex-col gap-2 pointer-events-none">
         <div aria-live="polite" className="flex flex-col gap-2">
           {toasts.filter((t) => t.type !== "error").map(renderToast)}
         </div>

@@ -123,3 +123,9 @@ textarea:focus-visible {
     border: 1px solid ButtonText;
   }
 }
+
+/* The batch-select action bar sits at the bottom of the screen: keep toasts
+   above it, or they cover Remove All and Cancel on phones */
+body:has([data-action-bar]) .toast-stack {
+  bottom: calc(5rem + env(safe-area-inset-bottom));
+}

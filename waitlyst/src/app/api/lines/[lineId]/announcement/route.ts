@@ -45,11 +45,14 @@ export async function PATCH(
     // Update announcement
     const cleaned = typeof announcement === "string" ? cleanText(announcement) : ""
     const isClearing = cleaned === ""
+    // Saving the same text again (a second device, or Save pressed twice)
+    // mustn't stamp it as new: every guest would be alerted to it again
+    const unchanged = !isClearing && cleaned === result.line?.announcement
     const updatedLine = await prisma.line.update({
       where: { id: lineId },
       data: {
         announcement: isClearing ? null : cleaned,
-        announcementAt: isClearing ? null : new Date(),
+        announcementAt: isClearing ? null : unchanged ? undefined : new Date(),
       },
       include: {
         createdBy: { select: { id: true, name: true, image: true } },

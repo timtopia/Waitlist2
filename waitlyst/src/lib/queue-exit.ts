@@ -6,6 +6,7 @@ import { expireCheckoutSession, getBaseUrl, releaseAndSettle, returnBuyerFunds }
 import { runAfterResponse } from "./after-response"
 import { sendEmail } from "./email"
 import { buyerRefundedEmail, removedFromLineEmail, saleReversedEmail } from "./email-templates"
+import { servingLabel } from "./privacy"
 
 export class PositionNotFoundError extends Error {
   constructor() {
@@ -190,6 +191,34 @@ export function notifyBuyerRefunded(
  * shared lock two of these running at once can hand out the same position or
  * leave a gap.
  */
+/**
+ * The party shown as "Now serving" was seated or left. If the host called
+ * someone else out of order who's still on their way, show them instead:
+ * clearing the banner outright hid it from every guest while a party was
+ * still called.
+ */
+export async function clearNowServing(tx: Prisma.TransactionClient, lineId: string, userId: string) {
+  const cleared = await tx.line.updateMany({
+    where: { id: lineId, nowServingUserId: userId },
+    data: { nowServing: null, nowServingUserId: null, nowServingAt: null },
+  })
+  if (!cleared?.count) return
+  const stillCalled = await tx.linePosition.findFirst({
+    where: { lineId, fulfilled: false, calledAt: { not: null }, userId: { not: userId } },
+    orderBy: { calledAt: "desc" },
+    include: { user: { select: { name: true } }, line: { select: { kind: true } } },
+  })
+  if (!stillCalled?.calledAt) return
+  await tx.line.update({
+    where: { id: lineId },
+    data: {
+      nowServing: servingLabel(stillCalled.line.kind, stillCalled.user?.name, stillCalled.partySize),
+      nowServingUserId: stillCalled.userId,
+      nowServingAt: stillCalled.calledAt,
+    },
+  })
+}
+
 export async function lockLine(tx: Prisma.TransactionClient, lineId: string) {
   await tx.$queryRaw`SELECT id FROM "Line" WHERE id = ${lineId} FOR UPDATE`
 }
@@ -266,10 +295,7 @@ export async function exitQueue(
     })
   }
 
-  await tx.line.updateMany({
-    where: { id: lineId, nowServingUserId: userId },
-    data: { nowServing: null, nowServingUserId: null, nowServingAt: null },
-  })
+  await clearNowServing(tx, lineId, userId)
 
   await settleTransactionsForUser(tx, lineId, userId)
 

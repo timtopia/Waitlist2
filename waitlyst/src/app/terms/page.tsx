@@ -95,9 +95,10 @@ export default function TermsOfServicePage() {
             authorized, the swap happens straight away.
           </p>
           <p className="text-ink/70 leading-relaxed mb-3">
-            <strong>Standard lines:</strong> the payment is collected and paid
-            out to the person who gave up their position as soon as the swap
-            happens. These swaps are final and are not refunded, even if you
+            <strong>Standard lines:</strong> the payment is collected as soon as
+            the swap happens, and paid out to the person who gave up their
+            position once they have a payout account connected. These swaps are
+            final and are not refunded, even if you
             later leave or are removed from the line.
           </p>
           <p className="text-ink/70 leading-relaxed">

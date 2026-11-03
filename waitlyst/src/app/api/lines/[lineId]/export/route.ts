@@ -53,7 +53,9 @@ function swapStatus(txn: { status: string; holdExpiredAt: Date | null; capturedA
   switch (txn.status) {
     case "PENDING": return "Awaiting payment"
     case "FAILED": return "Failed"
-    case "REFUNDED": return "Refunded"
+    // A cancelled hold is marked REFUNDED too, but the buyer was never charged:
+    // "Refunded" sent owners hunting Stripe for refunds that don't exist
+    case "REFUNDED": return txn.capturedAt ? "Refunded" : "Hold released (not charged)"
     default:
       if (txn.capturedAt) return "Collected"
       return txn.settledAt ? "Released" : "Held"

@@ -24,11 +24,21 @@ interface Line {
   _count: { positions: number }
   // People still waiting (what the card shows)
   guestCount?: number
+  kind?: "STANDARD" | "RESTAURANT"
+  // Spots taken, served buyers included (what a capped drop's card shows)
+  capacityUsed?: number
   createdAt: string
 }
 
 type FilterStatus = "all" | "open" | "upcoming" | "closed"
 type SortOption = "newest" | "popular" | "ending-soon"
+
+/** The big number on a line's card (see LineCard) */
+function cardCount(line: Line): number {
+  return line.maxCapacity && line.kind !== "RESTAURANT"
+    ? line.capacityUsed ?? line.guestCount ?? line._count.positions
+    : line.guestCount ?? line._count.positions
+}
 
 const FILTERS: FilterStatus[] = ["all", "open", "upcoming", "closed"]
 const SORTS: SortOption[] = ["newest", "popular", "ending-soon"]
@@ -128,8 +138,8 @@ export default function BrowsePage() {
         case "newest":
           return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         case "popular":
-          // By the number on the card (still waiting), not everyone ever served
-          return (b.guestCount ?? b._count.positions) - (a.guestCount ?? a._count.positions)
+          // By the number on the card: still waiting, or spots filled on a capped drop
+          return cardCount(b) - cardCount(a)
         case "ending-soon": {
           const now = new Date()
           const aClose = a.closesAt ? new Date(a.closesAt) : null
@@ -245,7 +255,12 @@ export default function BrowsePage() {
             </>
           ) : (
             <>
-              <p className="text-ink/60 mb-2">Nothing matches your search.</p>
+              {/* A filter tab with no lines isn't a search the visitor got wrong */}
+              <p className="text-ink/60 mb-2">
+                {search.trim()
+                  ? "Nothing matches your search."
+                  : `No ${filter === "all" ? "" : `${filter} `}lines right now.`}
+              </p>
               <p className="text-sm text-ink/60 mb-2">Paused and private lines aren&apos;t listed. Ask the host for their link.</p>
               <button
                 onClick={() => { setSearch(""); setFilter("all"); setSortBy("newest") }}

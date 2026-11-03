@@ -116,6 +116,8 @@ export function OwnerConsole({
   const [walkInNote, setWalkInNote] = useState("")
   const [copied, setCopied] = useState(false)
   const walkInButtonRef = useRef<HTMLButtonElement>(null)
+  const walkInNameRef = useRef<HTMLInputElement>(null)
+  const [copyAnnounce, setCopyAnnounce] = useState("")
   // Hand focus back to "+ Add walk-in" when the form closes, not on first render
   const walkInWasOpen = useRef(false)
   useEffect(() => {
@@ -191,8 +193,10 @@ export function OwnerConsole({
       : []
     if (skipped.length > 0) {
       const names = skipped.map((p) => p.user.name || "A party").join(", ")
+      // All we know is they're gone and their time had run out: the timer,
+      // another device, the list below or the guest themselves may have done it
       addToast(
-        `${names} ran out of time to show up and ${skipped.length === 1 ? "was" : "were"} skipped as a no-show`,
+        `${names} ${skipped.length === 1 ? "is" : "are"} no longer in line (their time to show up had run out)`,
         "info"
       )
     }
@@ -338,9 +342,20 @@ export function OwnerConsole({
     removedByHost.current.add(target.id)
     setBusy(target.id === upNext?.id ? "no-show" : `no-show-${target.id}`)
     try {
-      const { ok, data } = await post("remove-position", { positionId: target.id, action: "payout", noShow: true })
+      const { ok, data } = await post("remove-position", {
+        positionId: target.id,
+        action: "payout",
+        noShow: true,
+        // The call they saw: refused if another device acted on it since
+        calledAt: target.calledAt ?? undefined,
+        graceMinutes: target.graceMinutes ?? 0,
+      })
       if (ok) addToast(`Marked ${target.user.name || "them"} as a no-show`, "success")
-      else addToast(data.error || "Couldn't mark as a no-show", "error")
+      else {
+        // Not removed after all (re-called, more time or seated elsewhere)
+        removedByHost.current.delete(target.id)
+        addToast(data.error || "Couldn't mark as a no-show", "error")
+      }
     } finally {
       await onChanged()
       setBusy(null)
@@ -413,10 +428,14 @@ export function OwnerConsole({
         action: "payout",
       })
       if (ok) {
+        // Another device may have cleared some already: that's done, not failed
+        const gone: number = data.alreadyGone ?? 0
+        const cleared: number = data.removed + gone
         addToast(
           data.failed > 0
-            ? `Cleared ${data.removed}, ${data.failed} could not be removed`
-            : `Cleared ${data.removed} ${servedWord} ${isRestaurant ? (data.removed === 1 ? "party" : "parties") : data.removed === 1 ? "person" : "people"} -- everyone else moved up`,
+            ? `Cleared ${cleared}, ${data.failed} could not be removed`
+            : // Restaurant numbers count waiting parties only, so nobody's changes
+              `Cleared ${cleared} ${servedWord} ${isRestaurant ? (cleared === 1 ? "party" : "parties") : cleared === 1 ? "person" : "people"}${isRestaurant ? "" : " -- everyone else moved up"}`,
           data.failed > 0 ? "info" : "success"
         )
       } else {
@@ -495,16 +514,18 @@ export function OwnerConsole({
         ...(isRestaurant && { partySize: walkInParty, note: walkInNote }),
       })
       if (ok) {
-        // Who's ahead is what the host quotes at the stand, not the raw #
-        const ahead = waiting.length
+        // Who's ahead is what the host quotes at the stand, not the raw #.
+        // The server counts it, so another tablet's walk-ins aren't missed.
+        const ahead: number = typeof data.ahead === "number" ? data.ahead : waiting.length
         addToast(
           `Added ${walkInName.trim()} at #${isRestaurant ? ahead + 1 : data.position} -- ${ahead === 0 ? "next up" : `${ahead} ${isRestaurant ? (ahead === 1 ? "party" : "parties") : ahead === 1 ? "person" : "people"} ahead`}`,
           "success"
         )
+        // Walk-ins come in groups: keep the form open for the next one
         setWalkInName("")
         setWalkInNote("")
         setWalkInSize(2)
-        setWalkInOpen(false)
+        walkInNameRef.current?.focus()
       } else {
         addToast(data.error || "Failed to add the walk-in", "error")
       }
@@ -538,7 +559,11 @@ export function OwnerConsole({
     try {
       await navigator.clipboard.writeText(`${window.location.origin}/lines/${lineId}`)
       setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      setCopyAnnounce("Link copied to clipboard")
+      setTimeout(() => {
+        setCopied(false)
+        setCopyAnnounce("")
+      }, 2000)
     } catch {
       addToast("Couldn't copy -- select the link and copy it yourself", "error")
     }
@@ -555,7 +580,7 @@ export function OwnerConsole({
       <ConfirmModal
         open={showClearConfirm}
         title={`Clear ${servedWord} ${isRestaurant ? "parties" : "people"}`}
-        message={`Remove the ${served.length} ${isRestaurant ? (served.length === 1 ? "party" : "parties") : served.length === 1 ? "person" : "people"} you've already ${servedWord} from the line? Everyone still waiting moves up. Their payments stay final.`}
+        message={`Remove the ${served.length} ${isRestaurant ? (served.length === 1 ? "party" : "parties") : served.length === 1 ? "person" : "people"} you've already ${servedWord} from the line? ${isRestaurant ? "No one's place in line changes." : "Everyone still waiting moves up."} Their payments stay final.`}
         confirmLabel={isRestaurant ? "Clear Seated" : "Clear Served"}
         isLoading={busy === "clear"}
         onConfirm={handleClearServed}
@@ -650,6 +675,8 @@ export function OwnerConsole({
                 <Button size="sm" onClick={handleCopyLink}>
                   {copied ? "Copied!" : "Copy Link"}
                 </Button>
+                {/* A focused button's text change isn't reliably read out */}
+                <p className="sr-only" aria-live="polite">{copyAnnounce}</p>
               </div>
               <p className="text-xs text-ink/60 mt-1.5">
                 Use Share above for a printable QR code or a website embed.
@@ -711,7 +738,7 @@ export function OwnerConsole({
               </p>
               {/* What the host needs to match a table: size, how long they've waited, requests */}
               {(isRestaurant || upNext.joinedAt) && (
-                <p className="text-xs text-ink/60">
+                <p className="text-xs text-ink/60 break-words">
                   {[
                     isRestaurant && `Party of ${upNext.partySize ?? 1}`,
                     upNext.user.isWalkIn && "Walk-in",
@@ -742,7 +769,7 @@ export function OwnerConsole({
                           onClick={() => handleGiveMoreTime(upNext)}
                           disabled={!!busy}
                           aria-label={`Give ${upNext.user.name || "this party"} 5 more minutes`}
-                          className="font-mono uppercase tracking-widest text-accent hover:underline underline-offset-4 disabled:opacity-50"
+                          className="inline-flex items-center min-h-11 px-2 -my-3 pointer-fine:min-h-0 pointer-fine:px-0 pointer-fine:my-0 font-mono uppercase tracking-widest text-accent hover:underline underline-offset-4 disabled:opacity-50"
                         >
                           +5 min
                         </button>
@@ -848,7 +875,7 @@ export function OwnerConsole({
                           onClick={() => handleGiveMoreTime(p)}
                           disabled={!!busy}
                           aria-label={`Give ${name} 5 more minutes`}
-                          className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4 disabled:opacity-50"
+                          className="inline-flex items-center min-h-11 px-2 -my-3 pointer-fine:min-h-0 pointer-fine:px-0 pointer-fine:my-0 font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4 disabled:opacity-50"
                         >
                           +5 min
                         </button>
@@ -894,7 +921,7 @@ export function OwnerConsole({
             {pace && (pace.servedLastHour > 0 || pace.medianWaitMinutes !== null) && (
               <span>
                 {pace.servedLastHour} {isRestaurant ? "seated" : "served"} in the last hour
-                {pace.medianWaitMinutes !== null && <>, typical wait lately {Math.round(pace.medianWaitMinutes)} min</>}
+                {pace.medianWaitMinutes !== null && <>, typical wait lately {formatWaited(Math.round(pace.medianWaitMinutes))}</>}
               </span>
             )}
           </p>
@@ -905,12 +932,15 @@ export function OwnerConsole({
             <label className="flex flex-col text-xs text-ink/60">
               Name
               <input
+                ref={walkInNameRef}
                 autoFocus
+                autoComplete="off"
+                enterKeyHint="done"
                 value={walkInName}
                 onChange={(e) => setWalkInName(e.target.value)}
                 maxLength={50}
                 required
-                className="mt-1 border border-rule bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-ink"
+                className="mt-1 border border-rule bg-white px-2 py-1.5 min-h-11 pointer-fine:min-h-0 text-base sm:text-sm text-ink focus:outline-none focus:border-ink"
               />
             </label>
             {isRestaurant && (
@@ -920,7 +950,7 @@ export function OwnerConsole({
                   <select
                     value={walkInParty}
                     onChange={(e) => setWalkInSize(Number(e.target.value))}
-                    className="mt-1 border border-rule bg-white px-2 py-1.5 text-sm text-ink"
+                    className="mt-1 border border-rule bg-white px-2 py-1.5 min-h-11 pointer-fine:min-h-0 text-base sm:text-sm text-ink"
                   >
                     {/* Only sizes that fit, so a 6-top isn't refused after typing the name */}
                     {Array.from({ length: walkInMax }, (_, i) => i + 1).map((n) => (
@@ -935,7 +965,7 @@ export function OwnerConsole({
                     onChange={(e) => setWalkInNote(e.target.value)}
                     maxLength={140}
                     placeholder="high chair, patio..."
-                    className="mt-1 border border-rule bg-white px-2 py-1.5 text-sm text-ink placeholder:text-ink/60 focus:outline-none focus:border-ink"
+                    className="mt-1 border border-rule bg-white px-2 py-1.5 min-h-11 pointer-fine:min-h-0 text-base sm:text-sm text-ink placeholder:text-ink/60 focus:outline-none focus:border-ink"
                   />
                 </label>
               </>
@@ -947,7 +977,7 @@ export function OwnerConsole({
               <p className="w-full text-xs text-accent" role="status">The line is full. Seat or remove someone to make room.</p>
             )}
             <Button size="sm" variant="ghost" type="button" onClick={() => setWalkInOpen(false)}>
-              Cancel
+              Done
             </Button>
           </form>
         ) : (

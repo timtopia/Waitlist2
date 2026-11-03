@@ -718,12 +718,21 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       addToast(NO_CONNECTION, "error")
       return
     }
+    // Drop lines have an organizer, not a host
+    const who = isRestaurant ? "the host" : "the organizer"
     if (res.ok) {
-      addToast(response === "ON_MY_WAY" ? "Told the host you're on your way" : "Told the host you're running late", "success")
+      const data = await res.json().catch(() => ({}))
+      addToast(
+        response === "ON_MY_WAY"
+          // Only the first "on my way" for a call buys extra time
+          ? `Told ${who} you're on your way${data.extended ? " -- you have a few more minutes" : ""}`
+          : `Told ${who} you're running late`,
+        "success"
+      )
       refreshAll()
     } else {
       const data = await res.json().catch(() => ({}))
-      addToast(data.error || "Couldn't send that to the host", "error")
+      addToast(data.error || `Couldn't send that to ${who}`, "error")
       // Seated, skipped or re-called meanwhile: show where they really stand
       refreshAll()
     }
@@ -954,7 +963,14 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                   maxLength={140}
                   placeholder="Note for the host (optional)"
                   aria-label="Note for the host"
-                  className="border border-rule bg-white px-2 py-2 text-sm text-ink placeholder:text-ink/60 w-48"
+                  // Return on the phone keyboard joins, like the button next to it
+                  enterKeyHint="go"
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter" || joining || status === "loading" || (inAppBrowser && !session)) return
+                    e.preventDefault()
+                    handleJoin()
+                  }}
+                  className="border border-rule bg-white px-2 py-2 text-base sm:text-sm text-ink placeholder:text-ink/60 w-48"
                 />
               )}
               {!session && status !== "loading" && inAppBrowser && (canJoin || lineNotYetOpen) && (

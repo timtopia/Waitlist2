@@ -233,7 +233,8 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
             ? isDrop ? "Payment collected" : "Payment captured successfully"
             : wasStuck
             ? "Stuck checkout cancelled -- positions unlocked"
-            : isDrop ? "Payment returned to the buyer" : "Authorization cancelled, hold released",
+            // An uncollected payment is cancelled, not refunded: nothing was charged
+            : isDrop ? "Payment cancelled -- the buyer wasn't charged" : "Authorization cancelled, hold released",
           "success"
         )
         // Payouts waiting on a seller's setup (and changes made from another
@@ -310,12 +311,14 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
       if (res.ok) {
         const result = await res.json()
         const failed = result.failedCount > 0
-          ? ` ${result.failedCount} couldn't be ${action === "capture-all" ? "collected" : "returned"} and are still listed.`
+          ? ` ${result.failedCount} couldn't be ${action === "capture-all" ? "collected" : isDrop ? "cancelled" : "released"} and are still listed.`
           : ""
         addToast(
           (action === "capture-all"
             ? `${isDrop ? "Collected" : "Captured"} ${result.count} payment${result.count === 1 ? "" : "s"}.`
-            : `Returned ${result.count} payment${result.count === 1 ? "" : "s"} to buyers.`) + failed,
+            : isDrop
+            ? `Cancelled ${result.count} uncollected payment${result.count === 1 ? "" : "s"}. Those buyers weren't charged.`
+            : `Released ${result.count} card hold${result.count === 1 ? "" : "s"}. Those buyers weren't charged.`) + failed,
           result.failedCount > 0 ? "info" : "success"
         )
         // Refresh to get accurate server state
@@ -465,9 +468,9 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
             variant="secondary"
             onClick={() => setCancelConfirm(txn)}
             isLoading={isLoading}
-            aria-label={`Release ${txn.buyerName}'s ${isDrop ? "payment" : "card hold"}`}
+            aria-label={isDrop ? `Cancel ${txn.buyerName}'s payment` : `Release ${txn.buyerName}'s card hold`}
           >
-            {isDrop ? "Release" : "Cancel (Release)"}
+            {isDrop ? "Cancel payment" : "Cancel (Release)"}
           </Button>
         )}
       </div>
@@ -550,9 +553,11 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
       />
       <ConfirmModal
         open={bulkConfirm === "cancel-all-unfulfilled"}
-        title="Release Holds for Buyers Not Served"
-        message={`This will release the payment hold for ${releasableCount} transaction(s) awaiting capture whose buyer left without being served. They will not be charged. Buyers still in line aren't affected.`}
-        confirmLabel="Release All Not Served"
+        title={isDrop ? "Cancel uncollected payments for buyers who left" : "Release Holds for Buyers Not Seated"}
+        message={isDrop
+          ? `This cancels ${releasableCount} uncollected payment${releasableCount === 1 ? "" : "s"} from buyers who left without being served. They won't be charged. Buyers still in line aren't affected.`
+          : `This releases the card hold for ${releasableCount} payment${releasableCount === 1 ? "" : "s"} whose buyer left without being seated. They won't be charged. Parties still in line aren't affected.`}
+        confirmLabel={isDrop ? "Cancel All" : "Release All Not Seated"}
         variant="danger"
         isLoading={actionLoading === "cancel-all-unfulfilled"}
         onConfirm={() => handleBulkAction("cancel-all-unfulfilled")}
@@ -701,7 +706,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
                 {summary.expiringCount} payment hold{summary.expiringCount === 1 ? "" : "s"} expire{summary.expiringCount === 1 ? "s" : ""} within 48 hours
               </p>
               <p className="text-xs text-ink/60 mt-0.5">
-                Card holds only last about a week. Capture or release these before their deadline, or the money can&apos;t be collected.
+                Card holds only last about a week. {isDrop ? "Collect or cancel" : "Capture or release"} these before their deadline, or the money can&apos;t be collected.
               </p>
             </div>
           )}
@@ -746,7 +751,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
               onClick={() => setBulkConfirm("cancel-all-unfulfilled")}
               disabled={actionLoading !== null}
             >
-              Release All Not Served ({releasableCount})
+              {isDrop ? "Cancel Payments for Buyers Who Left" : "Release All Not Seated"} ({releasableCount})
             </Button>
           )}
         </div>
