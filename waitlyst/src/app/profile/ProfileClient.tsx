@@ -1,6 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
+import { useSession } from "next-auth/react"
+import { useToast } from "@/components/ui/Toast"
 import Image from "next/image"
 import Link from "next/link"
 import { useSearchParams, useRouter } from "next/navigation"
@@ -76,6 +78,11 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
   const awaitingSetup = (stats.sellerAwaitingSetup ?? 0) + (stats.ownerAwaitingSetup ?? 0)
   const [connectMessage, setConnectMessage] = useState<{ text: string; type: "success" | "info" | "error" } | null>(null)
   const [emailNotifs, setEmailNotifs] = useState(emailNotifications)
+  const { update: updateSession } = useSession()
+  const { addToast } = useToast()
+  // Save/Cancel unmount the input; put focus back where editing started
+  const editButtonRef = useRef<HTMLButtonElement>(null)
+  const refocusEdit = () => requestAnimationFrame(() => editButtonRef.current?.focus())
   const [emailNotifsLoading, setEmailNotifsLoading] = useState(false)
   const [emailNotifsError, setEmailNotifsError] = useState<string | null>(null)
   const [visibleCount, setVisibleCount] = useState(5)
@@ -114,16 +121,21 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
         body: JSON.stringify({ name: trimmed }),
       })
 
+      // A proxy error page isn't JSON; don't show the parser's message
+      const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || "Failed to update name")
+        setError(data.error || "Couldn't update your name. Try again.")
+        return
       }
 
-      const updated = await res.json()
-      setDisplayName(updated.name || "Anonymous")
+      setDisplayName(data.name || "Anonymous")
       setIsEditing(false)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update name")
+      refocusEdit()
+      addToast("Name updated", "success")
+      // The header reads the session; refresh it so it shows the new name
+      updateSession().catch(() => {})
+    } catch {
+      setError("No connection -- your name wasn't saved. Try again.")
     } finally {
       setIsSaving(false)
     }
@@ -133,6 +145,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
     setEditValue(displayName === "Anonymous" ? "" : displayName)
     setError(null)
     setIsEditing(false)
+    refocusEdit()
   }
 
   function handleStartEdit() {
@@ -219,10 +232,10 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
             <p className="text-sm font-medium">{connectMessage.text}</p>
             <button
               onClick={() => setConnectMessage(null)}
-              className="ml-4 text-current opacity-50 hover:opacity-75"
+              className="ml-4 text-current p-2.5 -m-2.5 inline-flex hover:opacity-75"
               aria-label="Dismiss"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg aria-hidden="true" className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -260,6 +273,8 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                         if (e.key === "Escape") handleCancel()
                       }}
                       maxLength={50}
+                      aria-invalid={!!error}
+                      aria-describedby={error ? "name-error" : undefined}
                       aria-label="Display name"
                       autoFocus
                       className="text-2xl font-semibold tracking-tight bg-white border border-rule px-2 py-1 focus:outline-none focus:border-ink w-full max-w-xs"
@@ -267,7 +282,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                     <button
                       onClick={handleSave}
                       disabled={isSaving}
-                      className="p-1.5 text-green-700 hover:bg-ink/5 disabled:opacity-50"
+                      className="p-1.5 min-h-11 min-w-11 pointer-fine:min-h-0 pointer-fine:min-w-0 inline-flex items-center justify-center text-green-700 hover:bg-ink/5 disabled:opacity-50"
                       title="Save"
                       aria-label="Save name"
                     >
@@ -285,7 +300,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                     <button
                       onClick={handleCancel}
                       disabled={isSaving}
-                      className="p-1.5 text-ink/60 hover:bg-ink/5 disabled:opacity-50"
+                      className="p-1.5 min-h-11 min-w-11 pointer-fine:min-h-0 pointer-fine:min-w-0 inline-flex items-center justify-center text-ink/60 hover:bg-ink/5 disabled:opacity-50"
                       title="Cancel"
                       aria-label="Cancel editing name"
                     >
@@ -295,13 +310,14 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                     </button>
                   </div>
                   {error && (
-                    <p className="text-xs text-accent mt-1" role="alert">{error}</p>
+                    <p id="name-error" className="text-xs text-accent mt-1" role="alert">{error}</p>
                   )}
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
                   <h1 className="text-2xl font-semibold tracking-tight">{displayName}</h1>
                   <button
+                    ref={editButtonRef}
                     onClick={handleStartEdit}
                     className="p-1 text-ink/60 hover:text-ink hover:bg-ink/5"
                     title="Edit name"
@@ -527,7 +543,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
             <div>
               <p className="text-sm font-medium">Email Notifications</p>
               <p className="text-xs text-ink/60 mt-0.5">
-                Receive emails when you&apos;re called, get swap offers, or are fulfilled
+                Emails when you&apos;re called or served, get swap offers, a sale or refund goes through, or a line you asked about opens
               </p>
             </div>
             <button
@@ -613,7 +629,10 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
                         {tx.role === "buyer" ? "Bought a spot" : "Sold your spot"}
                         {tx.lineName && <span className="text-ink/60 font-normal"> in {tx.lineName}</span>}
                       </p>
-                      <p className="font-mono text-xs text-ink/60">{formatDateTime(tx.createdAt)}</p>
+                      <p className="font-mono text-xs text-ink/60">
+                        {formatDateTime(tx.createdAt)}
+                        {tx.settledAt && tx.status === "REFUNDED" && ` · refunded ${formatDateTime(tx.settledAt)}`}
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">

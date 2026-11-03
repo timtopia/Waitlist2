@@ -52,6 +52,17 @@ function CreateLineForm() {
   const [responseWindow, setResponseWindow] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Which field the error is about, so it's marked, described and focused
+  const [errorField, setErrorField] = useState<string | null>(null)
+  const failField = (id: string, message: string) => {
+    setError(message)
+    setErrorField(id)
+    requestAnimationFrame(() => document.getElementById(id)?.focus())
+  }
+  const fieldA11y = (id: string, hintId?: string) => ({
+    "aria-invalid": errorField === id || undefined,
+    "aria-describedby": [hintId, errorField === id ? "form-error" : null].filter(Boolean).join(" ") || undefined,
+  })
   const [selectedTemplate, setSelectedTemplate] = useState<string>("custom")
   const nameRef = useRef<HTMLInputElement>(null)
 
@@ -60,6 +71,8 @@ function CreateLineForm() {
   const templateDescriptions = [
     "Join the waitlist and we'll let you know when your table is ready.",
     "Limited release drop",
+    "Event waitlist. If your plans change, you can sell your spot to the person behind you.",
+    // Older wording, still recognised as a template blurb
     "Event waitlist. If your plans change, you can swap spots with the person next to you.",
   ]
   function setTemplateDescription(text: string) {
@@ -102,7 +115,7 @@ function CreateLineForm() {
       id: "event-waitlist",
       icon: "\uD83D\uDCCB",
       name: "Event Waitlist",
-      desc: "Capped list, guests can swap spots",
+      desc: "Capped list, guests can sell their spot",
       apply: () => {
         setMaxCapacity("200")
         setOwnerFeePercent("0")
@@ -253,6 +266,7 @@ function CreateLineForm() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    setErrorField(null)
 
     if (!name.trim()) {
       setError("Name is required")
@@ -264,23 +278,23 @@ function CreateLineForm() {
     // nobody can ever join -- easy to do with a datetime picker on drop day.
     if (enableSchedule && closesAt) {
       if (new Date(closesAt) <= new Date()) {
-        setError("The closing time has already passed. Pick a later time, or leave it empty for no end time.")
+        failField("closesAt", "The closing time has already passed. Pick a later time, or leave it empty for no end time.")
         return
       }
       if (opensAt && new Date(closesAt) <= new Date(opensAt)) {
-        setError("The line must close after it opens.")
+        failField("closesAt", "The line must close after it opens.")
         return
       }
     }
 
     // parseInt quietly turned "150.5" into 150 and "2.5" minutes into 2
-    for (const [value, label] of [
-      [maxCapacity, "Capacity"],
-      [purchaseLimit, "Purchase limit"],
-      [responseWindow, "Time to show up"],
+    for (const [value, label, id] of [
+      [maxCapacity, "Capacity", "maxCapacity"],
+      [purchaseLimit, "Limit per customer", "purchaseLimit"],
+      [responseWindow, "Time to show up", "responseWindow"],
     ] as const) {
       if (value && !Number.isInteger(Number(value))) {
-        setError(`${label} must be a whole number`)
+        failField(id, `${label} must be a whole number`)
         return
       }
     }
@@ -427,7 +441,11 @@ function CreateLineForm() {
               <input
                 type="checkbox"
                 checked={kind === "RESTAURANT"}
-                onChange={(e) => setKind(e.target.checked ? "RESTAURANT" : "STANDARD")}
+                onChange={(e) => {
+                  setKind(e.target.checked ? "RESTAURANT" : "STANDARD")
+                  // The template no longer describes this line
+                  setSelectedTemplate("custom")
+                }}
                 className="w-4 h-4 mt-0.5 accent-ink"
               />
               <span>
@@ -447,6 +465,7 @@ function CreateLineForm() {
               </label>
               <input
                 id="maxCapacity"
+                {...fieldA11y("maxCapacity", "maxCapacity-hint")}
                 type="number"
                 min="1"
                 placeholder="Unlimited"
@@ -454,7 +473,7 @@ function CreateLineForm() {
                 onChange={(e) => setMaxCapacity(e.target.value)}
                 className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
               />
-              <p className="text-xs text-ink/60 mt-1">
+              <p id="maxCapacity-hint" className="text-xs text-ink/60 mt-1">
                 {kind === "RESTAURANT" ? "Total guests across all parties. Leave empty for no limit" : "Leave empty for unlimited spots"}
               </p>
               {maxCapacity && (
@@ -484,6 +503,7 @@ function CreateLineForm() {
                   </label>
                   <input
                     id="purchaseLimit"
+                    {...fieldA11y("purchaseLimit", "purchaseLimit-hint")}
                     type="number"
                     min="1"
                     max="99"
@@ -492,7 +512,7 @@ function CreateLineForm() {
                     onChange={(e) => setPurchaseLimit(e.target.value)}
                     className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                   />
-                  <p className="text-xs text-ink/60 mt-1">e.g. 1 per person. Shown on the line page and when someone is called.</p>
+                  <p id="purchaseLimit-hint" className="text-xs text-ink/60 mt-1">e.g. 1 per person. Shown on the line page and when someone is called.</p>
                 </div>
               )}
               <div>
@@ -501,6 +521,7 @@ function CreateLineForm() {
                 </label>
                 <input
                   id="responseWindow"
+                  {...fieldA11y("responseWindow", "responseWindow-hint")}
                   type="number"
                   min="1"
                   max="60"
@@ -509,7 +530,7 @@ function CreateLineForm() {
                   onChange={(e) => setResponseWindow(e.target.value)}
                   className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                 />
-                <p className="text-xs text-ink/60 mt-1">
+                <p id="responseWindow-hint" className="text-xs text-ink/60 mt-1">
                   Minutes. Anyone who doesn&apos;t show up in time is skipped as a no-show and the next person moves up. Tapping &ldquo;On my way&rdquo; gives them one more window.
                 </p>
               </div>
@@ -555,7 +576,7 @@ function CreateLineForm() {
                   </label>
                   <input
                     id="opensAt"
-                    aria-describedby="opensAt-hint"
+                    {...fieldA11y("opensAt", "opensAt-hint")}
                     type="datetime-local"
                     value={opensAt}
                     onChange={(e) => setOpensAt(e.target.value)}
@@ -571,7 +592,7 @@ function CreateLineForm() {
                   </label>
                   <input
                     id="closesAt"
-                    aria-describedby="closesAt-hint"
+                    {...fieldA11y("closesAt", "closesAt-hint")}
                     type="datetime-local"
                     value={closesAt}
                     onChange={(e) => setClosesAt(e.target.value)}
@@ -707,14 +728,14 @@ function CreateLineForm() {
                       </label>
                       <p id="sw-allow-position-swapping-hint" className="text-xs text-ink/60">
                         {allowResale
-                          ? "People can swap their positions with the person next to them"
+                          ? "People can sell their spot to the person right behind them, for a price they set"
                           : "Swapping is disabled — no one can swap positions"}
                       </p>
                       {allowResale && (
                         <p className="text-xs text-ink/60 mt-1">
                           {kind === "RESTAURANT"
                             ? "Paid swaps are held until the buyer is seated. Seating them collects the payment; before then you can release it."
-                            : "Paid swaps are final: the buyer is charged and the seller is paid out right away, with no refunds later."}
+                            : "Paid swaps are final: the buyer is charged and the seller is paid as soon as they have a payout account connected. No refunds later."}
                         </p>
                       )}
                     </div>
@@ -756,7 +777,7 @@ function CreateLineForm() {
                           type="number"
                           min="0"
                           max="50"
-                          step="0.5"
+                          step="any"
                           placeholder="0"
                           value={ownerFeePercent}
                           onChange={(e) => setOwnerFeePercent(e.target.value)}
@@ -793,7 +814,7 @@ function CreateLineForm() {
             </div>
 
             {error && name.trim() && (
-              <p role="alert" className="text-sm text-accent">{error}</p>
+              <p id="form-error" role="alert" className="text-sm text-accent">{error}</p>
             )}
 
             <div className="flex justify-end space-x-3">

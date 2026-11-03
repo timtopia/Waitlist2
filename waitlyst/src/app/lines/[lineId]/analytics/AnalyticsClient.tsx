@@ -72,14 +72,21 @@ export function AnalyticsClient({
   ownerFeePercent?: number
 }) {
   const [data, setData] = useState<Data | null>(null)
-  const [error, setError] = useState(false)
+  // The HTTP status of a failed load (0 = no connection), so a deleted line
+  // and a busy server don't read the same
+  const [error, setError] = useState<number | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     fetch(`/api/lines/${lineId}/analytics`)
-      .then((res) => (res.ok ? res.json() : Promise.reject()))
-      .then(setData)
-      .catch(() => setError(true))
-  }, [lineId])
+      .then(async (res) => {
+        const json = res.ok ? await res.json().catch(() => null) : null
+        if (!json) throw res.status || 500
+        return json
+      })
+      .then((json) => { setData(json); setError(null) })
+      .catch((status) => setError(typeof status === "number" ? status : 0))
+  }, [lineId, reloadKey])
 
   const view = useMemo(() => {
     if (!data) return null
@@ -197,8 +204,28 @@ export function AnalyticsClient({
         The last {data?.days ?? 90} days, in {data ? Intl.DateTimeFormat().resolvedOptions().timeZone.replace(/_/g, " ") : "your time zone"}.
       </p>
 
-      {error && <p className="text-sm text-accent" role="alert">Couldn&apos;t load analytics. Please refresh to try again.</p>}
-      {!data && !error && <p className="text-sm text-ink/60">Loading…</p>}
+      {error !== null && (
+        <div role="alert">
+          <p className="text-sm text-accent">
+            {error === 404
+              ? "This line no longer exists."
+              : error === 429
+                ? "Too many requests right now. Wait a moment and try again."
+                : error === 0
+                  ? "No connection. Couldn't load analytics."
+                  : "Couldn't load analytics."}
+          </p>
+          {error !== 404 && (
+            <button
+              onClick={() => { setError(null); setReloadKey((k) => k + 1) }}
+              className="mt-2 font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4 min-h-11 pointer-fine:min-h-0"
+            >
+              Try again
+            </button>
+          )}
+        </div>
+      )}
+      {!data && error === null && <p className="text-sm text-ink/60" role="status">Loading…</p>}
 
       {view && (
         <div className="space-y-6">

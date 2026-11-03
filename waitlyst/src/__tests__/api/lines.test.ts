@@ -632,7 +632,7 @@ describe("Join Line API", () => {
       const response = await joinAs("guest-1", { partySize: 4 })
 
       expect(response.status).toBe(400)
-      expect((await response.json()).error).toBe("There's only room for 3 more guests in this line")
+      expect((await response.json()).error).toBe("There's only room for 3 more guests in this line. Ask the host at the stand.")
       expect(mockPrisma.linePosition.create).not.toHaveBeenCalled()
     })
 

@@ -155,6 +155,9 @@ export function removedFromLineEmail(
       : reason === "closed"
         ? `<strong>${safeLine}</strong> has closed its line for now, so you're no longer in it. Sorry for the wait.`
         : `The ${organizer} of <strong>${safeLine}</strong> removed you from the line.`}</p>
+    ${reason === "missed" && isRestaurant
+      ? `<p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">Already at the host stand? Tell the host and they can add you back. Otherwise you can rejoin at the back of the line.</p>`
+      : ""}
     <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">${money.refundFailed
       ? `The ${organizer} chose to refund your payment, but it couldn't be processed yet, so your money hasn't been returned. The ${organizer} will follow up.`
       : refunded
@@ -170,15 +173,22 @@ export function swapOfferEmail(
   userName: string,
   lineName: string,
   offerAmount: number,
-  lineUrl: string
+  lineUrl: string,
+  /** The same person raising their pending offer, not a second bidder */
+  raisedFrom?: number
 ): { subject: string; html: string } {
   const safeName = escapeHtml(userName)
   const safeLine = escapeHtml(lineName)
-  const formattedAmount = offerAmount.toLocaleString("en-US", { style: "currency", currency: "USD" })
-  const subject = `New swap offer: ${formattedAmount} in ${lineName}`
+  const usd = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" })
+  const formattedAmount = usd(offerAmount)
+  const subject = raisedFrom != null
+    ? `Offer raised to ${formattedAmount} (was ${usd(raisedFrom)}) in ${lineName}`
+    : `New swap offer: ${formattedAmount} in ${lineName}`
   const body = `
-    <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">New swap offer, ${safeName}!</h2>
-    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">Someone offered <strong>${formattedAmount}</strong> to swap positions with you in <strong>${safeLine}</strong>.</p>
+    <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">${raisedFrom != null ? `Your offer was raised, ${safeName}` : `New swap offer, ${safeName}!`}</h2>
+    <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">${raisedFrom != null
+      ? `The person behind you in <strong>${safeLine}</strong> raised their offer from ${usd(raisedFrom)} to <strong>${formattedAmount}</strong>.`
+      : `Someone offered <strong>${formattedAmount}</strong> to swap positions with you in <strong>${safeLine}</strong>.`} If you accept, you'd receive ${formattedAmount} and move back one spot.</p>
     <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Accept or decline it within ${OFFER_TTL_MS / 3_600_000} hours -- after that it expires and nothing changes. It also lapses if either of you is called first.</p>
   `
   return { subject, html: wrapTemplate(subject, body, "View Offer", lineUrl) }

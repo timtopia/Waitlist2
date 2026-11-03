@@ -104,6 +104,7 @@ interface RemovalModal {
   loading: boolean
   /** Walk-in, or nothing ever bought or sold: no money panel to show */
   noPayments?: boolean
+  fulfilled?: boolean
   partySize?: number
 }
 
@@ -735,7 +736,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
     userId: string,
     userName: string | null,
     canNoShow: boolean,
-    opts: { isWalkIn?: boolean; partySize?: number } = {}
+    opts: { isWalkIn?: boolean; partySize?: number; fulfilled?: boolean } = {}
   ) {
     // A walk-in has no account to have paid with: skip the spinner and the
     // "$0.00 (0 purchases)" panel, which only reads as a money problem
@@ -749,6 +750,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
       loading: !skipFetch,
       noPayments: skipFetch,
       partySize: opts.partySize,
+      fulfilled: opts.fulfilled,
     })
     if (skipFetch) return
 
@@ -867,7 +869,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
         await onRefresh()
       } else {
         const data = await res.json().catch(() => ({}))
-        addToast(data.error || "Failed to update your party size", "error")
+        addToast(data.error || (positionId ? "Failed to update the party size" : "Failed to update your party size"), "error")
       }
     } catch {
       addToast(NO_CONNECTION, "error")
@@ -1028,10 +1030,16 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
               </div>
             ) : removalModal.noPayments ? (
               <p className="text-sm text-ink/60 mb-4">
-                {isRestaurant && removalModal.partySize
-                  ? `They're a party of ${removalModal.partySize}. `
-                  : ""}
-                Everyone behind them moves up.
+                {removalModal.fulfilled
+                  ? isRestaurant
+                    ? "Takes them off the list. Their table isn't affected."
+                    : "Takes them off the list. They've already been served."
+                  : <>
+                      {isRestaurant && removalModal.partySize
+                        ? `They're a party of ${removalModal.partySize}. `
+                        : ""}
+                      Everyone behind them moves up.
+                    </>}
               </p>
             ) : removalModal.transactionInfo ? (
               <div className="space-y-3 mb-4">
@@ -1149,7 +1157,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div ref={buyDialogRef} className="bg-white border border-ink p-6 max-w-sm w-full mx-4" role="dialog" aria-modal="true" aria-labelledby="buy-confirm-title" aria-describedby="buy-confirm-desc buy-confirm-total">
               <h3 id="buy-confirm-title" className="text-lg font-semibold tracking-tight text-ink mb-2">
-                Buy spot #{buyConfirm.position}?
+                {isRestaurant ? "Buy the spot ahead of you?" : `Buy spot #${buyConfirm.position}?`}
               </h3>
               <p id="buy-confirm-desc" className="text-sm text-ink/60 mb-4">
                 You&apos;ll swap places with {buyConfirm.sellerName || "the person in front of you"}.
@@ -1452,7 +1460,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                           position would disagree with "You're #3" on the card */}
                       {isRestaurant
                         ? pos.fulfilled
-                          ? <span aria-label="Seated">✓</span>
+                          ? <span role="img" aria-label="Seated">✓</span>
                           : unservedAhead + 1
                         : pos.position}
                     </div>
@@ -1583,7 +1591,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                             >
                               {/* Sizes the line can't fit only failed after picking */}
                               {Array.from(
-                                { length: roomLeft != null ? Math.max(pos.partySize ?? 1, Math.min(MAX_PARTY_SIZE, (pos.partySize ?? 1) + roomLeft)) : MAX_PARTY_SIZE },
+                                { length: roomLeft != null && isCurrentUser ? Math.max(pos.partySize ?? 1, Math.min(MAX_PARTY_SIZE, (pos.partySize ?? 1) + roomLeft)) : MAX_PARTY_SIZE },
                                 (_, i) => i + 1
                               ).map((n) => (
                                 <option key={n} value={n}>{n}</option>
@@ -1599,7 +1607,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                       )}
                       {isRestaurant && !pos.fulfilled && (isCurrentUser || isCreator) && (
                         <NoteField
-                          key={`${pos.id}-${pos.note ?? ""}`}
+                          key={pos.id}
                           initial={pos.note ?? ""}
                           label={isCurrentUser ? "Note for the host" : `Note for ${pos.user.name || "this party"}`}
                           saving={loadingAction === (isCurrentUser ? "note" : `note-${pos.id}`)}
@@ -1686,7 +1694,13 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                       )}
                       {isCreator && !isCurrentUser && !pos.fulfilled && (
                         <button
-                          onClick={() => setFulfillConfirm({ positionId: pos.id, name: pos.user.name || (isRestaurant ? "this party" : "this person") })}
+                          onClick={() => {
+                            const name = pos.user.name || (isRestaurant ? "this party" : "this person")
+                            // Same as the console: someone already called (or a walk-in at the
+                            // stand) is seated in one tap; only an uncalled online party asks first
+                            if (isRestaurant && (pos.calledAt || pos.user.isWalkIn)) handleFulfill(pos.id, name)
+                            else setFulfillConfirm({ positionId: pos.id, name })
+                          }}
                           // A swap in progress can't be seated until it settles (the server refuses too)
                           disabled={loadingAction === `fulfill-${pos.id}` || !!isLocked}
                           className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[2.25rem] font-mono text-xs uppercase tracking-widest text-green-700 border border-rule hover:border-green-700 transition-colors disabled:opacity-50"
@@ -1703,7 +1717,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                         <Button
                           size="sm"
                           variant="danger"
-                          onClick={() => openRemovalModal(pos.id, pos.user.id, pos.user.name, !!pos.calledAt && !pos.fulfilled, { isWalkIn: pos.user.isWalkIn, partySize: pos.partySize })}
+                          onClick={() => openRemovalModal(pos.id, pos.user.id, pos.user.name, !!pos.calledAt && !pos.fulfilled, { isWalkIn: pos.user.isWalkIn, partySize: pos.partySize, fulfilled: !!pos.fulfilled })}
                           aria-label={`Remove ${pos.user.name || (isRestaurant ? "this party" : "this person")}`}
                           isLoading={loadingAction === `remove-${pos.id}`}
                         >
@@ -1934,7 +1948,10 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                 {/* Shown even while the spot is locked: once the person in front
                     accepts, both spots lock, and the buyer still has to be able
                     to reach their payment link -- even if the line pauses. */}
-                {isDirectlyInFront && !isCurrentUser && allowResale && (!isPaused || payingForOffer) && !selectMode &&
+                {isDirectlyInFront && !isCurrentUser && allowResale && !selectMode && pos.user.isWalkIn && !offMarket(pos) && (
+                  <p className="mt-3 text-xs text-ink/60">Added by the host at the stand -- this spot can&apos;t be bought or offered on.</p>
+                )}
+                {isDirectlyInFront && !isCurrentUser && allowResale && (!isPaused || payingForOffer) && !selectMode && !pos.user.isWalkIn &&
                   !offMarket(pos) && !(currentUserPosition && offMarket(currentUserPosition)) && (
                   <div className="mt-3 space-y-2">
                     {pos.askingPrice != null && !isLocked && !myLockActive && !isPaused && (
@@ -2173,26 +2190,57 @@ function NoteField({
   onSave: (note: string) => void
 }) {
   const [value, setValue] = useState(initial)
-  const save = () => {
-    if (value.trim() !== initial.trim()) onSave(value)
+  const [focused, setFocused] = useState(false)
+  // Pick up the other side's edit, but never wipe a draft being typed
+  const [seenInitial, setSeenInitial] = useState(initial)
+  if (initial !== seenInitial && !focused) {
+    setSeenInitial(initial)
+    setValue(initial)
   }
+  const dirty = value.trim() !== initial.trim()
+  const save = () => {
+    if (dirty) onSave(value)
+  }
+  // Locking the phone or switching apps often skips blur; save the draft then too
+  const saveRef = useRef(save)
+  useEffect(() => { saveRef.current = save })
+  useEffect(() => {
+    const onHide = () => { if (document.visibilityState === "hidden") saveRef.current() }
+    document.addEventListener("visibilitychange", onHide)
+    return () => document.removeEventListener("visibilitychange", onHide)
+  }, [])
   return (
-    <input
-      type="text"
-      value={value}
-      maxLength={140}
-      placeholder="Add a note (high chair, patio...)"
-      aria-label={label}
-      disabled={saving}
-      onChange={(e) => setValue(e.target.value)}
-      onBlur={save}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          e.preventDefault()
-          ;(e.target as HTMLInputElement).blur()
-        }
-      }}
-      className="mt-1 w-full max-w-xs border border-rule bg-white px-2 py-1 text-xs text-ink placeholder:text-ink/60 focus:outline-none focus:border-ink disabled:opacity-50"
-    />
+    <div className="mt-1 flex items-center gap-2 max-w-xs">
+      <input
+        type="text"
+        value={value}
+        maxLength={140}
+        placeholder="Add a note (high chair, patio...)"
+        aria-label={label}
+        disabled={saving}
+        onChange={(e) => setValue(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => { setFocused(false); save() }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault()
+            ;(e.target as HTMLInputElement).blur()
+          }
+        }}
+        className="w-full border border-rule bg-white px-2 py-1 text-xs text-ink placeholder:text-ink/60 focus:outline-none focus:border-ink disabled:opacity-50"
+      />
+      {dirty && (
+        <button
+          type="button"
+          // Keep the tap from blurring first and saving twice
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={save}
+          disabled={saving}
+          className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4 min-h-11 pointer-fine:min-h-0 disabled:opacity-50"
+        >
+          Save
+        </button>
+      )}
+    </div>
   )
 }

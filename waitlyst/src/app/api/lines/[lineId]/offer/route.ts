@@ -272,7 +272,8 @@ export async function POST(
         toUser.name || "there",
         line.name,
         amount,
-        lineUrl
+        lineUrl,
+        raising ? existingOffer!.amount : undefined
       )
       runAfterResponse(() => sendEmail(toUser.email!, subject, html))
     }

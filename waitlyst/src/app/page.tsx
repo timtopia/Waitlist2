@@ -50,13 +50,13 @@ const features = [
 ]
 
 export default async function HomePage() {
+  // What a visitor will actually find on Browse: public lines still open
+  const openPublicLine = { isActive: true, isPublic: true, OR: [{ closesAt: null }, { closesAt: { gt: new Date() } }] }
   const [session, activeLines, peopleInQueues, swapsCompleted] = await Promise.all([
     auth(),
-    // What a visitor will actually find on Browse: public lines still open
-    prisma.line.count({
-      where: { isActive: true, isPublic: true, OR: [{ closesAt: null }, { closesAt: { gt: new Date() } }] },
-    }),
-    prisma.linePosition.count({ where: { fulfilled: false } }),
+    prisma.line.count({ where: openPublicLine }),
+    // Same lines as the count beside it, or "0 lines · 340 people" reads as broken
+    prisma.linePosition.count({ where: { fulfilled: false, line: openPublicLine } }),
     prisma.transaction.count({ where: { status: "COMPLETED" } }),
   ])
 

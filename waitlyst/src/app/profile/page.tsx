@@ -164,13 +164,14 @@ export default async function ProfilePage() {
         status: t.status,
         // Where the money actually is, not just "completed"
         statusLabel: t.status === "REFUNDED"
-          ? "Refunded"
+          // A hold that was never charged isn't a refund on their statement
+          ? t.buyerId === userId && !t.capturedAt ? "Hold released" : "Refunded"
           : t.buyerId === userId
             ? t.capturedAt || t.settledAt ? "Charged" : "Card on hold"
             : t.sellerPaidAt
               ? "Paid"
               : t.capturedAt
-                ? "Awaiting payout setup"
+                ? user.stripeConnectOnboarded ? "Payout retrying" : "Awaiting payout setup"
                 : t.settledAt ? "Paid" : "Buyer's card on hold",
         role: t.buyerId === userId ? "buyer" : "seller",
         createdAt: t.createdAt.toISOString(),

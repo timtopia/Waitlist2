@@ -75,16 +75,17 @@ function getLineStatus(
 ): LineStatus {
   const now = new Date()
 
+  // Past its closing time it's closed, paused or not
+  if (closesAt && now > new Date(closesAt)) {
+    return { state: "closed" }
+  }
+
   if (!isActive) {
     return { state: "paused" }
   }
 
   if (opensAt && now < new Date(opensAt)) {
     return { state: "not_yet_open", opensAt: new Date(opensAt) }
-  }
-
-  if (closesAt && now > new Date(closesAt)) {
-    return { state: "closed" }
   }
 
   if (isFull) {
@@ -365,7 +366,7 @@ export function EmbedWidgetClient({
               </p>
             )}
           </div>
-        ) : status.state !== "closed" && hideCapacity ? (
+        ) : status.state !== "closed" && status.state !== "full" && hideCapacity ? (
           <div className="mb-3">
             <p className="text-xs text-ink/60">Limited spots available</p>
           </div>

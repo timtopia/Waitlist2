@@ -22,6 +22,8 @@ interface Line {
   productUrl: string | null
   createdBy: { name: string | null; image: string | null }
   _count: { positions: number }
+  // People still waiting (what the card shows)
+  guestCount?: number
   createdAt: string
 }
 
@@ -126,7 +128,8 @@ export default function BrowsePage() {
         case "newest":
           return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         case "popular":
-          return b._count.positions - a._count.positions
+          // By the number on the card (still waiting), not everyone ever served
+          return (b.guestCount ?? b._count.positions) - (a.guestCount ?? a._count.positions)
         case "ending-soon": {
           const now = new Date()
           const aClose = a.closesAt ? new Date(a.closesAt) : null
@@ -153,7 +156,7 @@ export default function BrowsePage() {
           <p className="font-mono text-xs uppercase tracking-[0.25em] text-ink/60 mb-3">
             The board
           </p>
-          <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight">Open lines</h1>
+          <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight">Lines</h1>
           <p className="mt-3 text-sm text-ink/60 max-w-xl">
             Public lines anyone can join. Looking for a specific restaurant or
             shop? Open the link or scan the QR code they shared; private lines
@@ -243,6 +246,7 @@ export default function BrowsePage() {
           ) : (
             <>
               <p className="text-ink/60 mb-2">Nothing matches your search.</p>
+              <p className="text-sm text-ink/60 mb-2">Paused and private lines aren&apos;t listed. Ask the host for their link.</p>
               <button
                 onClick={() => { setSearch(""); setFilter("all"); setSortBy("newest") }}
                 className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"

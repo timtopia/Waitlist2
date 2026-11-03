@@ -350,8 +350,15 @@ export function ShareLine({ lineId, lineName, canEmbed = false }: ShareLineProps
                       dangerouslySetInnerHTML={{ __html: qrSvg }}
                     />
                   ) : (
-                    <div className="w-[200px] h-[200px] bg-paper border border-rule flex items-center justify-center text-sm text-ink/60">
-                      Failed to load
+                    <div className="w-[200px] h-[200px] bg-paper border border-rule flex flex-col items-center justify-center gap-2 text-sm text-ink/60" role="alert">
+                      Couldn&apos;t load the QR code.
+                      <button
+                        type="button"
+                        onClick={fetchQrCode}
+                        className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4 min-h-11 pointer-fine:min-h-0"
+                      >
+                        Try again
+                      </button>
                     </div>
                   )}
                 </div>
