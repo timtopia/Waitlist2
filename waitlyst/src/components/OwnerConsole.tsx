@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "./ui/Button"
 import { ConfirmModal } from "./ui/ConfirmModal"
 import { useToast } from "./ui/Toast"
-import { formatCurrency, formatDateTime } from "@/lib/format"
+import { formatCurrency, formatDateTime, formatWaited } from "@/lib/format"
 import { callDeadline, timeLeft } from "@/lib/call-deadline"
 import { MAX_PARTY_SIZE } from "@/lib/capacity"
 
@@ -48,6 +48,8 @@ interface OwnerConsoleProps {
   /** Scheduled opening/closing times; joins are refused outside them */
   opensAt?: string | null
   closesAt?: string | null
+  /** Guests (or spots) still free on a capped line; null when uncapped */
+  roomLeft?: number | null
 }
 
 interface Earnings {
@@ -90,6 +92,7 @@ export function OwnerConsole({
   hasAnnouncement = false,
   opensAt = null,
   closesAt = null,
+  roomLeft = null,
 }: OwnerConsoleProps) {
   const nowMs = Date.now()
   const notYetOpen = !!opensAt && new Date(opensAt).getTime() > nowMs
@@ -108,6 +111,8 @@ export function OwnerConsole({
   const [walkInOpen, setWalkInOpen] = useState(false)
   const [walkInName, setWalkInName] = useState("")
   const [walkInSize, setWalkInSize] = useState(2)
+  const walkInMax = Math.max(1, Math.min(MAX_PARTY_SIZE, roomLeft ?? MAX_PARTY_SIZE))
+  const walkInParty = Math.min(walkInSize, walkInMax)
   const [walkInNote, setWalkInNote] = useState("")
   const [copied, setCopied] = useState(false)
   const walkInButtonRef = useRef<HTMLButtonElement>(null)
@@ -155,7 +160,7 @@ export function OwnerConsole({
   function calledAgo(p: ConsolePosition): string | null {
     if (!p.calledAt) return null
     const minutes = Math.floor((clock - new Date(p.calledAt).getTime()) / 60_000)
-    return minutes < 1 ? "called just now" : `called ${minutes} min ago`
+    return minutes < 1 ? "called just now" : `called ${formatWaited(minutes)} ago`
   }
 
   /** Their show-up timer exists but is frozen because the line is paused */
@@ -379,7 +384,7 @@ export function OwnerConsole({
             ? closedBySchedule
               ? "Line resumed, but it's past its closing time -- change the closing time in Edit to let people join"
               : notYetOpen && opensAt
-                ? `Line resumed -- people can join from ${formatDateTime(opensAt)}`
+                ? `Line resumed -- people can join from ${formatDateTime(opensAt, { withZone: true })}`
                 : "Line resumed -- people can join again"
             : isRestaurant
               ? `Line paused -- no online joins${allowResale ? " or swaps" : ""} until you resume. Walk-ins and calls still work.`
@@ -483,7 +488,7 @@ export function OwnerConsole({
     try {
       const { ok, data } = await post("walk-in", {
         name: walkInName.trim(),
-        ...(isRestaurant && { partySize: walkInSize, note: walkInNote }),
+        ...(isRestaurant && { partySize: walkInParty, note: walkInNote }),
       })
       if (ok) {
         // Who's ahead is what the host quotes at the stand, not the raw #
@@ -581,13 +586,14 @@ export function OwnerConsole({
             ref={closeDialogRef}
             role="dialog"
             aria-modal="true"
-            aria-label="Close the line"
+            aria-labelledby="close-line-title"
+            aria-describedby="close-line-desc"
             className="bg-white border border-ink max-w-md w-full p-6 max-h-[calc(100dvh-2rem)] overflow-y-auto"
           >
-            <h3 className="text-lg font-semibold tracking-tight text-ink mb-2">
+            <h3 id="close-line-title" className="text-lg font-semibold tracking-tight text-ink mb-2">
               {isRestaurant ? "Close for the night?" : "Close the line?"}
             </h3>
-            <p className="text-sm text-ink/60 mb-4">
+            <p id="close-line-desc" className="text-sm text-ink/60 mb-4">
               This pauses the line so no one new can join, and clears the list
               {waiting.length > 0 && (
                 <>
@@ -626,7 +632,7 @@ export function OwnerConsole({
             <div className="min-w-0 flex-1">
               <p className="font-semibold text-ink">
                 {notYetOpen && opensAt
-                  ? `Your line opens ${formatDateTime(opensAt)}. Share the link now -- people can ask to be emailed when it opens.`
+                  ? `Your line opens ${formatDateTime(opensAt, { withZone: true })}. Share the link now -- people can ask to be emailed when it opens.`
                   : "Your line is live. Share the link so people can join."}
               </p>
               <div className="flex items-center gap-2 mt-2">
@@ -665,7 +671,7 @@ export function OwnerConsole({
           <p className="font-mono text-xs uppercase tracking-[0.2em] text-ink/60">Run your line</p>
           <span className={`inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest ${isActive && !notYetOpen && !closedBySchedule ? "text-green-700" : "text-amber-700"}`}>
             <span className={`w-1.5 h-1.5 ${isActive && !notYetOpen && !closedBySchedule ? "bg-green-600" : "bg-amber-500"}`} aria-hidden />
-            {!isActive ? "Paused" : closedBySchedule ? "Past closing time" : notYetOpen && opensAt ? `Opens ${formatDateTime(opensAt)}` : "Open"}
+            {!isActive ? "Paused" : closedBySchedule ? "Past closing time" : notYetOpen && opensAt ? `Opens ${formatDateTime(opensAt, { withZone: true })}` : "Open"}
           </span>
         </div>
         <div className="flex items-center gap-1">
@@ -705,7 +711,7 @@ export function OwnerConsole({
                   {[
                     isRestaurant && `Party of ${upNext.partySize ?? 1}`,
                     upNext.user.isWalkIn && "Walk-in",
-                    upNext.joinedAt && `waiting ${Math.max(0, Math.floor((clock - new Date(upNext.joinedAt).getTime()) / 60_000))} min`,
+                    upNext.joinedAt && `waiting ${formatWaited(Math.max(0, Math.floor((clock - new Date(upNext.joinedAt).getTime()) / 60_000)))}`,
                     isRestaurant && upNext.note,
                   ].filter(Boolean).join(" · ")}
                 </p>
@@ -908,11 +914,12 @@ export function OwnerConsole({
                 <label className="flex flex-col text-xs text-ink/60">
                   Party of
                   <select
-                    value={walkInSize}
+                    value={walkInParty}
                     onChange={(e) => setWalkInSize(Number(e.target.value))}
                     className="mt-1 border border-rule bg-white px-2 py-1.5 text-sm text-ink"
                   >
-                    {Array.from({ length: MAX_PARTY_SIZE }, (_, i) => i + 1).map((n) => (
+                    {/* Only sizes that fit, so a 6-top isn't refused after typing the name */}
+                    {Array.from({ length: walkInMax }, (_, i) => i + 1).map((n) => (
                       <option key={n} value={n}>{n}</option>
                     ))}
                   </select>
@@ -929,9 +936,12 @@ export function OwnerConsole({
                 </label>
               </>
             )}
-            <Button size="sm" type="submit" isLoading={busy === "walk-in"} disabled={!walkInName.trim()}>
+            <Button size="sm" type="submit" isLoading={busy === "walk-in"} disabled={!walkInName.trim() || roomLeft === 0}>
               Add to line
             </Button>
+            {roomLeft === 0 && (
+              <p className="w-full text-xs text-accent" role="status">The line is full. Seat or remove someone to make room.</p>
+            )}
             <Button size="sm" variant="ghost" type="button" onClick={() => setWalkInOpen(false)}>
               Cancel
             </Button>
@@ -940,7 +950,7 @@ export function OwnerConsole({
           <button
             ref={walkInButtonRef}
             onClick={() => setWalkInOpen(true)}
-            className="mt-3 font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"
+            className="mt-3 inline-flex items-center min-h-11 pointer-fine:min-h-0 font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"
           >
             + Add walk-in
           </button>
@@ -954,14 +964,14 @@ export function OwnerConsole({
             <button
               onClick={() => setShowClearConfirm(true)}
               disabled={!!busy}
-              className="text-accent hover:underline underline-offset-4 disabled:opacity-50"
+              className="inline-flex items-center min-h-11 pointer-fine:min-h-0 text-accent hover:underline underline-offset-4 disabled:opacity-50"
             >
               Clear {servedWord}
             </button>
           )}
           <Link
             href={`/lines/${lineId}/analytics`}
-            className="ml-auto text-accent hover:underline underline-offset-4"
+            className="ml-auto inline-flex items-center min-h-11 pointer-fine:min-h-0 text-accent hover:underline underline-offset-4"
           >
             Analytics &rarr;
           </Link>
@@ -991,7 +1001,7 @@ export function OwnerConsole({
             )}
             <Link
               href={`/lines/${lineId}/settlement`}
-              className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"
+              className="inline-flex items-center min-h-11 pointer-fine:min-h-0 font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"
             >
               Settlement &rarr;
             </Link>

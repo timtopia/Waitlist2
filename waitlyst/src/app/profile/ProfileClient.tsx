@@ -53,6 +53,8 @@ interface ProfileClientProps {
   emailNotifications: boolean
   /** Hide the email setting until the server can actually send email */
   emailEnabled?: boolean
+  /** No payments on this site yet: "Set Up Payouts" would only error */
+  stripeEnabled?: boolean
 }
 
 const statusColors: Record<string, string> = {
@@ -62,7 +64,7 @@ const statusColors: Record<string, string> = {
   REFUNDED: "text-ink/60",
 }
 
-export function ProfileClient({ user, stats, recentTransactions, stripeConnectOnboarded, emailNotifications, emailEnabled = true }: ProfileClientProps) {
+export function ProfileClient({ user, stats, recentTransactions, stripeConnectOnboarded, emailNotifications, emailEnabled = true, stripeEnabled = true }: ProfileClientProps) {
   const [displayName, setDisplayName] = useState(user.name || "Anonymous")
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(user.name || "")
@@ -471,6 +473,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
       </Card>
 
       {/* Payout Settings */}
+      {(stripeEnabled || connectOnboarded) && (
       <Card className="mb-6">
         <CardContent className="py-5">
           <h2 className="font-mono text-xs uppercase tracking-widest text-ink/60 mb-3">Payout Settings</h2>
@@ -494,7 +497,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
           ) : (
             <div className="flex items-center justify-between">
               <p className="text-sm text-ink/60">
-                Connect a payout account to receive earnings from swapping positions and line owner fees.
+                Only needed if you sell your spot in a line or charge a fee on lines you run.
               </p>
               <Button
                 size="sm"
@@ -509,10 +512,11 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
             </div>
           )}
           {connectError && (
-            <p className="text-xs text-accent mt-2">{connectError}</p>
+            <p className="text-xs text-accent mt-2" role="alert">{connectError}</p>
           )}
         </CardContent>
       </Card>
+      )}
 
       {/* Notification Settings */}
       {emailEnabled && (

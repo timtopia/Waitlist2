@@ -63,7 +63,9 @@ export async function POST(
         },
       })
       if (marked.count === 0) {
-        throw new Error("Position already fulfilled")
+        // Either a co-host just seated them, or they left the line meanwhile.
+        const still = await tx.linePosition.findUnique({ where: { id: positionId }, select: { id: true } })
+        throw new Error(still ? "Position already fulfilled" : "Position not found")
       }
       // Once they're served, "Now serving" shouldn't keep showing them to
       // everyone until the owner clears served people.

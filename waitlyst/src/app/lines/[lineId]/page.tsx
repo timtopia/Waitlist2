@@ -33,9 +33,12 @@ async function servedAndCleared(line: PageLine) {
 function buildDescription(line: PageLine, cleared: number) {
   // Seated and served guests aren't in line any more
   const positionCount = guestCount(line.positions.filter((p) => !p.fulfilled))
-  const { maxCapacity, isFull } = capacityView(line, capacityUsed(line.kind, line.positions, cleared))
+  const used = capacityUsed(line.kind, line.positions, cleared)
+  const { maxCapacity, isFull } = capacityView(line, used)
+  // "N/M filled" counts the same spots "Full" does (on drops, served buyers
+  // still hold theirs), so a preview never reads "Full · 10/100 filled"
   const capacityText = maxCapacity
-    ? `${positionCount}/${maxCapacity} ${capacityUnit(line.kind, maxCapacity)} filled`
+    ? `${used}/${maxCapacity} ${capacityUnit(line.kind, maxCapacity)} filled`
     : `${positionCount} ${positionCount === 1 ? "person" : "people"} in line`
 
   let statusText = ""

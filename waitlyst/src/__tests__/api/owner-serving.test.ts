@@ -9,6 +9,7 @@ const mockPrisma = {
     findFirst: vi.fn(),
     count: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     findMany: vi.fn().mockResolvedValue([]),
   },
   transaction: {
@@ -20,7 +21,8 @@ const mockPrisma = {
   swapOffer: {
     updateMany: vi.fn(),
   },
-  $transaction: vi.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
+  $transaction: vi.fn((ops: unknown): Promise<unknown> =>
+    typeof ops === "function" ? ops(mockPrisma) : Promise.all(ops as Promise<unknown>[])),
 }
 
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }))
@@ -76,8 +78,8 @@ describe("POST /api/lines/[lineId]/call-next", () => {
       expect.objectContaining({ data: expect.objectContaining({ nowServing: "Bob", nowServingUserId: "bob" }) })
     )
     // Their spot is at the counter now: listing down, offers expired
-    expect(mockPrisma.linePosition.update).toHaveBeenCalledWith({
-      where: { id: "pos-2" },
+    expect(mockPrisma.linePosition.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({ id: "pos-2", fulfilled: false }),
       data: { calledAt: expect.any(Date), askingPrice: null, response: null, respondedAt: null, graceMinutes: 0 },
     })
     expect(mockPrisma.swapOffer.updateMany).toHaveBeenCalledWith({
@@ -136,7 +138,24 @@ describe("POST /api/lines/[lineId]/call-next", () => {
     expect(res.status).toBe(409)
     expect((await res.json()).code).toBe("ALREADY_CALLED")
     // Their "On my way" and clock are left alone
-    expect(mockPrisma.linePosition.update).not.toHaveBeenCalled()
+    expect(mockPrisma.linePosition.updateMany).not.toHaveBeenCalled()
+  })
+
+  it("refuses a second tablet's call that lost the race instead of calling twice", async () => {
+    asOwner()
+    mockPrisma.linePosition.findFirst.mockResolvedValue({
+      id: "pos-1", userId: "ann", position: 1, lockedBy: null, lockedUntil: null, calledAt: null,
+      user: { name: "Ann", email: "ann@x", emailNotifications: true },
+    })
+    mockPrisma.linePosition.updateMany.mockResolvedValueOnce({ count: 0 })
+
+    const { POST } = await import("@/app/api/lines/[lineId]/call-next/route")
+    const res = await POST(new Request("http://localhost/api/lines/line-1/call-next", { method: "POST" }), params)
+
+    expect(res.status).toBe(409)
+    expect((await res.json()).code).toBe("ALREADY_CALLED")
+    expect(mockPrisma.line.update).not.toHaveBeenCalled()
+    expect(sendEmail).not.toHaveBeenCalled()
   })
 
   it("calls off a swap still on the payment page so the called person isn't pushed back", async () => {
@@ -223,7 +242,7 @@ describe("POST /api/lines/[lineId]/call-next -- restaurant hosts calling a party
       expect.objectContaining({ data: expect.objectContaining({ nowServing: "Bob (party of 2)", nowServingUserId: "bob" }) })
     )
     // Ann keeps her place and isn't told she's "next" because of it
-    expect(mockPrisma.linePosition.update).toHaveBeenCalledTimes(1)
+    expect(mockPrisma.linePosition.updateMany).toHaveBeenCalledTimes(1)
     expect(sendEmail).toHaveBeenCalledTimes(1)
     expect(sendEmail.mock.calls[0][0]).toBe("bob@x")
   })

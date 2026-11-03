@@ -28,6 +28,8 @@ interface LineCardProps {
     kind?: "STANDARD" | "RESTAURANT"
     /** Guests in line; differs from the number of spots on restaurant lines */
     guestCount?: number
+    /** Spots taken, matching "Full"; on drops served buyers still hold theirs */
+    capacityUsed?: number
     createdAt: string
   }
 }
@@ -63,13 +65,15 @@ export function LineCard({ line }: LineCardProps) {
         {/* Count */}
         <div className="text-left">
           <div className="font-mono text-2xl sm:text-3xl tabular-nums leading-none">
-            {line.guestCount ?? line._count.positions}
+            {line.maxCapacity && line.kind !== "RESTAURANT"
+              ? line.capacityUsed ?? line.guestCount ?? line._count.positions
+              : line.guestCount ?? line._count.positions}
             {line.maxCapacity ? (
               <span className="text-ink/60 text-base sm:text-lg">/{line.maxCapacity}</span>
             ) : null}
           </div>
-          <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink/60 mt-1.5">
-            {line.kind === "RESTAURANT" ? "Guests waiting" : "In line"}
+          <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-ink/70 mt-1.5">
+            {line.kind === "RESTAURANT" ? "Guests waiting" : line.maxCapacity ? "Spots filled" : "In line"}
           </div>
         </div>
 

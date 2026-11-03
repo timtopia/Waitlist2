@@ -37,10 +37,17 @@ export async function POST(
     )
   }
 
-  const updated = await prisma.linePosition.update({
-    where: { id: position.id },
+  // Conditional on the value we checked, so two devices tapping at once
+  // can't both add time (or push past the cap).
+  const updated = await prisma.linePosition.updateMany({
+    where: { id: position.id, fulfilled: false, graceMinutes: position.graceMinutes },
     data: { graceMinutes: { increment: GRACE_STEP_MINUTES } },
-    select: { graceMinutes: true },
   })
-  return NextResponse.json({ graceMinutes: updated.graceMinutes })
+  if (updated.count === 0) {
+    return NextResponse.json(
+      { error: "Someone just changed their time (maybe from another device). Refresh to see it." },
+      { status: 409 }
+    )
+  }
+  return NextResponse.json({ graceMinutes: position.graceMinutes + GRACE_STEP_MINUTES })
 }

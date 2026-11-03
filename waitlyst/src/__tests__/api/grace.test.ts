@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const mockPrisma = {
   line: { findUnique: vi.fn() },
-  linePosition: { findFirst: vi.fn(), update: vi.fn() },
+  linePosition: { findFirst: vi.fn(), updateMany: vi.fn() },
 }
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }))
 const mockAuth = vi.fn()
@@ -25,31 +25,37 @@ describe("POST /api/lines/[lineId]/grace", () => {
 
   it("gives a called party five more minutes without re-calling them", async () => {
     mockPrisma.linePosition.findFirst.mockResolvedValue({ id: "pos-1", graceMinutes: 0 })
-    mockPrisma.linePosition.update.mockResolvedValue({ graceMinutes: 5 })
+    mockPrisma.linePosition.updateMany.mockResolvedValue({ count: 1 })
 
     const res = await give()
 
     expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ graceMinutes: 5 })
     expect(mockPrisma.linePosition.findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: "pos-1", lineId: "line-1", fulfilled: false, calledAt: { not: null } },
     }))
-    expect(mockPrisma.linePosition.update).toHaveBeenCalledWith({
-      where: { id: "pos-1" },
+    expect(mockPrisma.linePosition.updateMany).toHaveBeenCalledWith({
+      where: { id: "pos-1", fulfilled: false, graceMinutes: 0 },
       data: { graceMinutes: { increment: 5 } },
-      select: { graceMinutes: true },
     })
+  })
+
+  it("doesn't add time twice when two devices tap at once", async () => {
+    mockPrisma.linePosition.findFirst.mockResolvedValue({ id: "pos-1", graceMinutes: 55 })
+    mockPrisma.linePosition.updateMany.mockResolvedValue({ count: 0 })
+    expect((await give()).status).toBe(409)
   })
 
   it("is for the host only", async () => {
     mockAuth.mockResolvedValue({ user: { id: "guest-1" } })
     expect((await give()).status).toBe(403)
-    expect(mockPrisma.linePosition.update).not.toHaveBeenCalled()
+    expect(mockPrisma.linePosition.updateMany).not.toHaveBeenCalled()
   })
 
   it("caps the extra time", async () => {
     mockPrisma.linePosition.findFirst.mockResolvedValue({ id: "pos-1", graceMinutes: 60 })
     expect((await give()).status).toBe(400)
-    expect(mockPrisma.linePosition.update).not.toHaveBeenCalled()
+    expect(mockPrisma.linePosition.updateMany).not.toHaveBeenCalled()
   })
 
   it("refuses a party that isn't waiting on a call", async () => {

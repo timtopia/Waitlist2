@@ -43,8 +43,16 @@ describe("expireMissedCalls", () => {
 
     expect(await expireMissedCalls("line-1", 10, NOW)).toBe(1)
     // A no-show that keeps purchases, emailed as a missed call
-    expect(removeByOrganizer).toHaveBeenCalledWith("line-1", "late", "payout", true, true)
+    expect(removeByOrganizer).toHaveBeenCalledWith("line-1", "late", "payout", true, true, false, expect.any(Function))
     expect(removeByOrganizer).toHaveBeenCalledTimes(1)
+    // Re-checked under the lock: seated, re-called or given more time since
+    // the sweep read them means they're left alone
+    const stillApplies = removeByOrganizer.mock.calls[0][6] as (p: object) => boolean
+    const base = { fulfilled: false, calledAt: minutesAgo(12), respondedAt: null, graceMinutes: 0 }
+    expect(stillApplies(base)).toBe(true)
+    expect(stillApplies({ ...base, fulfilled: true })).toBe(false)
+    expect(stillApplies({ ...base, calledAt: minutesAgo(1) })).toBe(false)
+    expect(stillApplies({ ...base, graceMinutes: 5 })).toBe(false)
   })
 
   it("never skips walk-ins, and nobody while the line is paused", async () => {
@@ -66,8 +74,16 @@ describe("POST /respond", () => {
     vi.clearAllMocks()
     vi.useFakeTimers({ toFake: ["Date"] })
     vi.setSystemTime(NOW)
+    mockPrisma.linePosition.updateMany.mockResolvedValue({ count: 1 })
   })
   afterEach(() => vi.useRealTimers())
+
+  it("tells a guest whose call changed meanwhile to refresh, rather than a 500", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "guest-1" } })
+    mockPrisma.linePosition.findFirst.mockResolvedValue(called())
+    mockPrisma.linePosition.updateMany.mockResolvedValue({ count: 0 })
+    expect((await respond("ON_MY_WAY")).status).toBe(409)
+  })
 
   const respond = async (response: string) => {
     const { POST } = await import("@/app/api/lines/[lineId]/respond/route")
@@ -94,8 +110,8 @@ describe("POST /respond", () => {
     expect(mockPrisma.linePosition.findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: { lineId: "line-1", userId: "guest-1", fulfilled: false, calledAt: { not: null } },
     }))
-    expect(mockPrisma.linePosition.update).toHaveBeenCalledWith({
-      where: { id: "pos-1" },
+    expect(mockPrisma.linePosition.updateMany).toHaveBeenCalledWith({
+      where: { id: "pos-1", fulfilled: false, calledAt: minutesAgo(3) },
       data: { response: "ON_MY_WAY", respondedAt: NOW },
     })
   })
@@ -105,11 +121,11 @@ describe("POST /respond", () => {
     mockPrisma.linePosition.findFirst.mockResolvedValue(called({ calledAt: minutesAgo(12), respondedAt: minutesAgo(4) }))
 
     expect((await respond("ON_MY_WAY")).status).toBe(200)
-    expect(mockPrisma.linePosition.update).toHaveBeenLastCalledWith({ where: { id: "pos-1" }, data: { response: "ON_MY_WAY" } })
+    expect(mockPrisma.linePosition.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({ data: { response: "ON_MY_WAY" } }))
 
     // Past the original window, but still inside the "on my way" extension
     expect((await respond("RUNNING_LATE")).status).toBe(200)
-    expect(mockPrisma.linePosition.update).toHaveBeenLastCalledWith({ where: { id: "pos-1" }, data: { response: "RUNNING_LATE" } })
+    expect(mockPrisma.linePosition.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({ data: { response: "RUNNING_LATE" } }))
   })
 
   it("refuses a reply once the time to show up has run out", async () => {
@@ -117,7 +133,7 @@ describe("POST /respond", () => {
     mockPrisma.linePosition.findFirst.mockResolvedValue(called({ calledAt: minutesAgo(11) }))
 
     expect((await respond("ON_MY_WAY")).status).toBe(409)
-    expect(mockPrisma.linePosition.update).not.toHaveBeenCalled()
+    expect(mockPrisma.linePosition.updateMany).not.toHaveBeenCalled()
   })
 
   it("refuses someone who hasn't been called", async () => {

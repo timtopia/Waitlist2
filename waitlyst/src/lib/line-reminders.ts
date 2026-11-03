@@ -2,6 +2,7 @@ import { prisma } from "./prisma"
 import { emailEnabled, sendEmail } from "./email"
 import { lineOpeningEmail } from "./email-templates"
 import { getBaseUrl } from "./stripe"
+import { countCapacityUsed } from "./capacity-server"
 
 /**
  * Email everyone who asked to hear when a line opens, for lines whose
@@ -21,11 +22,24 @@ export async function sendDueLineReminders(lineId?: string): Promise<number> {
       line: { isActive: true, opensAt: { lte: now } },
     },
     include: {
-      line: { select: { id: true, name: true, closesAt: true } },
+      line: { select: { id: true, name: true, closesAt: true, kind: true, maxCapacity: true } },
       user: { select: { name: true, email: true, emailNotifications: true } },
     },
     take: 200,
   })
+
+  // A hyped drop can fill before every batch of "it's open, join now" goes
+  // out; telling people to join a full line only sends them to a dead end.
+  const fullByLine = new Map<string, boolean>()
+  const isFull = async (line: (typeof due)[number]["line"]) => {
+    if (line.maxCapacity == null) return false
+    let full = fullByLine.get(line.id)
+    if (full === undefined) {
+      full = (await countCapacityUsed(line)) >= line.maxCapacity
+      fullByLine.set(line.id, full)
+    }
+    return full
+  }
 
   let sent = 0
   for (const reminder of due) {
@@ -44,6 +58,7 @@ export async function sendDueLineReminders(lineId?: string): Promise<number> {
       select: { id: true },
     })
     if (joined) continue
+    if (await isFull(reminder.line)) continue
 
     const { subject, html } = lineOpeningEmail(
       reminder.user.name || "there",

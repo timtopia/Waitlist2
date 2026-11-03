@@ -49,12 +49,20 @@ export async function POST(
   // respondedAt marks the first "on my way" for this call: the one extension
   // it buys is kept if they later say they're running late, and saying it
   // again doesn't buy more.
-  await prisma.linePosition.update({
-    where: { id: position.id },
+  // Conditional on the same call: the host may have seated or removed them,
+  // or called them again, since we read the row.
+  const updated = await prisma.linePosition.updateMany({
+    where: { id: position.id, fulfilled: false, calledAt: position.calledAt },
     data: {
       response: body.response,
       ...(body.response === "ON_MY_WAY" && !position.respondedAt ? { respondedAt: now } : {}),
     },
   })
+  if (updated.count === 0) {
+    return NextResponse.json(
+      { error: "You're no longer waiting on that call. Refresh to see where you stand." },
+      { status: 409 }
+    )
+  }
   return NextResponse.json({ response: body.response })
 }

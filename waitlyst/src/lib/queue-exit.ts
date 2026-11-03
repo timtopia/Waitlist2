@@ -42,7 +42,13 @@ export async function removeByOrganizer(
   /** Skipped automatically for not showing up in time (changes the email) */
   missedCall = false,
   /** Cleared because the host closed the line (changes the email) */
-  closing = false
+  closing = false,
+  /**
+   * Re-checked on the row under the line lock; returning false aborts as if
+   * they'd already gone. The no-show sweep uses it so a party the host just
+   * seated, re-called or gave more time isn't removed from a stale read.
+   */
+  stillApplies?: (current: LinePosition) => boolean
 ): Promise<RemovalResult> {
   const position = await prisma.linePosition.findUnique({ where: { id: positionId, lineId } })
   if (!position) throw new PositionNotFoundError()
@@ -59,7 +65,7 @@ export async function removeByOrganizer(
   const { abandonedSessionId } = await prisma.$transaction(async (tx) => {
     await lockLine(tx, lineId)
     const current = await tx.linePosition.findUnique({ where: { id: positionId, lineId } })
-    if (!current) throw new PositionNotFoundError()
+    if (!current || (stillApplies && !stillApplies(current))) throw new PositionNotFoundError()
     return exitQueue(tx, current, noShow ? "NO_SHOW" : "REMOVED")
   })
   await expireCheckoutSession(abandonedSessionId)

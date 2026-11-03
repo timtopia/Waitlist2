@@ -14,6 +14,29 @@ function escapeCsvField(value: string): string {
   return value
 }
 
+/**
+ * "2026-11-03 19:00:00" in UTC: spreadsheets read it as a date/time (raw ISO
+ * with a "T" and "Z" stays text), and the column headers say it's UTC.
+ */
+function ts(value: Date | string | null | undefined): string {
+  if (!value) return ""
+  return new Date(value).toISOString().slice(0, 19).replace("T", " ")
+}
+
+/**
+ * A byte-order mark so Excel reads the file as UTF-8 -- otherwise names like
+ * José or 王 come out garbled.
+ */
+function csvResponse(csv: string, fileName: string): Response {
+  return new Response(String.fromCharCode(0xfeff) + csv, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${fileName}"`,
+    },
+  })
+}
+
 function money(value: number): string {
   return `$${value.toFixed(2)}`
 }
@@ -56,13 +79,13 @@ async function exportSwaps(lineId: string, lineName: string): Promise<Response> 
   const nameOf = new Map(users.map((u) => [u.id, u.name || "Anonymous"]))
 
   const headers = [
-    "Date", "Buyer", "Seller", "Amount", "Your Fee", "Platform Fee",
-    "Buyer Paid", "Status", "Collected At", "Fee Paid Out", "Fee Earned",
+    "Date (UTC)", "Buyer", "Seller", "Amount", "Your Fee", "Platform Fee",
+    "Buyer Paid", "Status", "Collected At (UTC)", "Fee Paid Out (UTC)", "Fee Earned",
   ]
   const rows = transactions.map((txn) => {
     const status = swapStatus(txn)
     return [
-    txn.createdAt.toISOString(),
+    ts(txn.createdAt),
     escapeCsvField(nameOf.get(txn.buyerId) || "Anonymous"),
     escapeCsvField(nameOf.get(txn.sellerId) || "Anonymous"),
     money(txn.amount),
@@ -70,8 +93,8 @@ async function exportSwaps(lineId: string, lineName: string): Promise<Response> 
     money(txn.platformFee),
     money(buyerTotal(txn)),
     status,
-    txn.capturedAt ? txn.capturedAt.toISOString() : "",
-    txn.ownerPaidAt ? txn.ownerPaidAt.toISOString() : "",
+    ts(txn.capturedAt),
+    ts(txn.ownerPaidAt),
     // "Your Fee" is what the swap was quoted at; only a collected swap
     // actually earned it, so summing this column matches your payouts
     money(status === "Collected" ? txn.ownerFee : 0),
@@ -79,13 +102,7 @@ async function exportSwaps(lineId: string, lineName: string): Promise<Response> 
   })
 
   const csv = [headers.join(","), ...rows].join("\n")
-  return new Response(csv, {
-    status: 200,
-    headers: {
-      "Content-Type": "text/csv",
-      "Content-Disposition": `attachment; filename="${safeFileName(lineName)}-swaps.csv"`,
-    },
-  })
+  return csvResponse(csv, `${safeFileName(lineName)}-swaps.csv`)
 }
 
 // Export line positions as CSV (owner only). ?type=swaps exports the line's
@@ -119,13 +136,13 @@ export async function GET(
     const isRestaurant = result.line.kind === "RESTAURANT"
     const headers = [
       "Position", "Name", "Email", ...(isRestaurant ? ["Party Size", "Note"] : []),
-      "Joined At", "Called At", "Served At", "Asking Price", "Status",
+      "Joined At (UTC)", "Called At (UTC)", `${isRestaurant ? "Seated" : "Served"} At (UTC)`, "Asking Price", "Status",
     ]
     const rows = positions.map((pos) => {
       const name = pos.user.name || "Anonymous"
       // Walk-ins were added by the host and have no email
       const email = pos.user.isWalkIn ? "(walk-in)" : pos.user.email || ""
-      const joinedAt = new Date(pos.joinedAt).toISOString()
+      const joinedAt = ts(pos.joinedAt)
       const askingPrice = pos.askingPrice !== null ? `$${pos.askingPrice.toFixed(2)}` : ""
       const isLocked = pos.lockedUntil && new Date(pos.lockedUntil) > new Date()
       const status = pos.fulfilled
@@ -142,8 +159,8 @@ export async function GET(
         escapeCsvField(email),
         ...(isRestaurant ? [String(pos.partySize), escapeCsvField(pos.note ?? "")] : []),
         joinedAt,
-        pos.calledAt ? new Date(pos.calledAt).toISOString() : "",
-        pos.fulfilledAt ? new Date(pos.fulfilledAt).toISOString() : "",
+        ts(pos.calledAt),
+        ts(pos.fulfilledAt),
         askingPrice,
         status,
       ].join(",")
@@ -168,9 +185,9 @@ export async function GET(
       escapeCsvField(v.user.name || "Anonymous"),
       escapeCsvField(v.user.isWalkIn ? "(walk-in)" : v.user.email || ""),
       ...(isRestaurant ? [String(v.partySize), ""] : []),
-      v.joinedAt.toISOString(),
-      v.calledAt ? v.calledAt.toISOString() : "",
-      v.servedAt ? v.servedAt.toISOString() : "",
+      ts(v.joinedAt),
+      ts(v.calledAt),
+      ts(v.servedAt),
       "",
       `${outcomeLabel[v.outcome]} (no longer in line)`,
     ].join(","))
@@ -180,13 +197,7 @@ export async function GET(
     // Sanitize line name for filename
     const safeName = safeFileName(result.line.name)
 
-    return new Response(csv, {
-      status: 200,
-      headers: {
-        "Content-Type": "text/csv",
-        "Content-Disposition": `attachment; filename="${safeName}-export.csv"`,
-      },
-    })
+    return csvResponse(csv, `${safeName}-export.csv`)
   } catch (error) {
     console.error("Export error:", error)
     return new Response("Something went wrong while exporting. Please try again.", {

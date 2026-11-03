@@ -765,7 +765,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
               value={positionsSort}
               onChange={(e) => setPositionsSort(e.target.value as SortOption)}
               aria-label="Sort my positions"
-              className="text-sm border border-rule px-2 py-1 min-h-11 sm:min-h-0 bg-white text-ink/70 focus:outline-none focus:border-ink"
+              className="text-sm border border-rule px-2 py-1 min-h-11 pointer-fine:min-h-0 bg-white text-ink/70 focus:outline-none focus:border-ink"
             >
               <option value="newest">Newest first</option>
               <option value="oldest">Oldest first</option>
@@ -836,7 +836,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                 value={createdSort}
                 onChange={(e) => setCreatedSort(e.target.value as SortOption)}
                 aria-label="Sort lines I created"
-                className="text-sm border border-rule px-2 py-1 min-h-11 sm:min-h-0 bg-white text-ink/70 focus:outline-none focus:border-ink"
+                className="text-sm border border-rule px-2 py-1 min-h-11 pointer-fine:min-h-0 bg-white text-ink/70 focus:outline-none focus:border-ink"
               >
                 <option value="newest">Newest first</option>
                 <option value="oldest">Oldest first</option>

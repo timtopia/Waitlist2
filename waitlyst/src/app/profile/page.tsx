@@ -6,7 +6,7 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { ProfileClient } from "./ProfileClient"
 import { runAfterResponse } from "@/lib/after-response"
-import { payOutstandingPayouts } from "@/lib/stripe"
+import { getStripe, payOutstandingPayouts } from "@/lib/stripe"
 
 export const metadata: Metadata = {
   title: "Profile",
@@ -140,6 +140,7 @@ export default async function ProfilePage() {
       stripeConnectOnboarded={user.stripeConnectOnboarded}
       emailNotifications={user.emailNotifications}
       emailEnabled={emailEnabled()}
+      stripeEnabled={!!getStripe()}
       stats={{
         linesCreated: ownedLineIds.length,
         activePositions,

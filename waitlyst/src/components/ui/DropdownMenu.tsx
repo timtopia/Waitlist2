@@ -72,7 +72,7 @@ export function DropdownMenu({ items, separatorBefore = [], label = "More action
           e.preventDefault()
           setOpen(!open)
         }}
-        className="p-2 min-w-11 min-h-11 sm:min-w-0 sm:min-h-0 inline-flex items-center justify-center text-ink/60 hover:text-ink hover:bg-ink/5 transition-colors"
+        className="p-2 min-w-11 min-h-11 sm:min-w-0 pointer-fine:min-h-0 inline-flex items-center justify-center text-ink/60 hover:text-ink hover:bg-ink/5 transition-colors"
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -105,7 +105,7 @@ export function DropdownMenu({ items, separatorBefore = [], label = "More action
                   }}
                   disabled={item.disabled}
                   tabIndex={-1}
-                  className={`w-full text-left px-4 py-2 min-h-11 sm:min-h-0 text-sm disabled:opacity-50 ${
+                  className={`w-full text-left px-4 py-2 min-h-11 pointer-fine:min-h-0 text-sm disabled:opacity-50 ${
                     item.variant === "danger"
                       ? "text-accent hover:bg-accent/5"
                       : "text-ink/80 hover:bg-ink/5"

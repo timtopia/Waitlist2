@@ -3,7 +3,7 @@ import { countCapacityUsed } from "@/lib/capacity-server"
 import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { lockLine } from "@/lib/queue-exit"
-import { parsePartySize, roomLeftMessage } from "@/lib/capacity"
+import { parsePartySize } from "@/lib/capacity"
 import { parseNote } from "@/lib/validate"
 import { servingLabel } from "@/lib/privacy"
 
@@ -71,8 +71,12 @@ export async function PATCH(
       if (!byHost && line.maxCapacity && partySize > mine.partySize) {
         const left = line.maxCapacity - await countCapacityUsed(line, tx)
         if (partySize - mine.partySize > left) {
+          // Unlike a join, they already have a place: say it's safe
+          const unit = mine.partySize === 1 ? "guest" : "guests"
           throw new PartyRefusedError(
-            left > 0 ? roomLeftMessage(line, left) : "This line is full, so your party can't grow"
+            left > 0 && !line.hideCapacity
+              ? `There's only room for ${left} more ${left === 1 ? "guest" : "guests"} right now. You're still in line with ${mine.partySize} ${unit}; ask the host at the stand.`
+              : `There isn't room for a bigger party right now. You're still in line with ${mine.partySize} ${unit}; ask the host at the stand.`
           )
         }
       }

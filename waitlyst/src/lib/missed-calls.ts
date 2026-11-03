@@ -44,10 +44,17 @@ export async function expireMissedCalls(lineId: string, windowMinutes: number, n
   for (const p of called) {
     if (responseDeadline(p.calledAt!, windowMinutes, p.respondedAt, p.graceMinutes ?? 0) > now) continue
     try {
-      await removeByOrganizer(lineId, p.id, "payout", true, true)
+      // Checked again under the lock: earlier removals in this loop collect
+      // payments and can take seconds, and meanwhile the host may have seated
+      // them, called them again or given more time, or they said "on my way".
+      await removeByOrganizer(lineId, p.id, "payout", true, true, false, (current) =>
+        !current.fulfilled &&
+        !!current.calledAt &&
+        responseDeadline(current.calledAt, windowMinutes, current.respondedAt, current.graceMinutes ?? 0) <= now
+      )
       skipped++
     } catch (error) {
-      // Another request skipped them first, or they left
+      // Another request skipped them first, they left, or they're no longer overdue
       if (!(error instanceof PositionNotFoundError)) throw error
     }
   }
