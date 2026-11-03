@@ -309,8 +309,8 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
           : ""
         addToast(
           (action === "capture-all"
-            ? `Captured ${result.count} transaction(s).`
-            : `Returned ${result.count} payment(s) to buyers.`) + failed,
+            ? `${isDrop ? "Collected" : "Captured"} ${result.count} payment${result.count === 1 ? "" : "s"}.`
+            : `Returned ${result.count} payment${result.count === 1 ? "" : "s"} to buyers.`) + failed,
           result.failedCount > 0 ? "info" : "success"
         )
         // Refresh to get accurate server state

@@ -5,7 +5,7 @@ import { buyerTotal } from "./fees"
 import { expireCheckoutSession, getBaseUrl, releaseAndSettle, returnBuyerFunds } from "./stripe"
 import { runAfterResponse } from "./after-response"
 import { sendEmail } from "./email"
-import { removedFromLineEmail, saleReversedEmail } from "./email-templates"
+import { buyerRefundedEmail, removedFromLineEmail, saleReversedEmail } from "./email-templates"
 
 export class PositionNotFoundError extends Error {
   constructor() {
@@ -140,6 +140,40 @@ export function notifySaleReversed(purchases: Pick<Transaction, "sellerId" | "am
         line.kind === "RESTAURANT"
       )
       await sendEmail(seller.email, subject, html)
+    }
+  })
+}
+
+/**
+ * Tell each buyer whose payment the organizer returned from the settlement
+ * page. (Buyers removed from the line hear about it in their removal email.)
+ */
+export function notifyBuyerRefunded(
+  purchases: Pick<Transaction, "buyerId" | "amount" | "ownerFee" | "platformFee">[],
+  lineId: string
+) {
+  if (purchases.length === 0) return
+  runAfterResponse(async () => {
+    const [line, buyers] = await Promise.all([
+      prisma.line.findUnique({ where: { id: lineId }, select: { name: true, kind: true } }),
+      prisma.user.findMany({
+        where: { id: { in: purchases.map((p) => p.buyerId) } },
+        select: { id: true, name: true, email: true, emailNotifications: true },
+      }),
+    ])
+    if (!line) return
+    const byId = new Map(buyers.map((b) => [b.id, b]))
+    for (const p of purchases) {
+      const buyer = byId.get(p.buyerId)
+      if (!buyer?.email || !buyer.emailNotifications) continue
+      const { subject, html } = buyerRefundedEmail(
+        buyer.name || "there",
+        line.name,
+        buyerTotal(p),
+        `${getBaseUrl()}/lines/${lineId}`,
+        line.kind === "RESTAURANT"
+      )
+      await sendEmail(buyer.email, subject, html)
     }
   })
 }

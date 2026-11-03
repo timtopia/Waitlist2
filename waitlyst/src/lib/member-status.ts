@@ -82,7 +82,7 @@ export type MemberEvent =
   /** The host gave a called party more time to show up */
   | { kind: "grace"; minutes: number }
   /** wasCalled: they'd been called (most often skipped as a no-show) */
-  | { kind: "removed"; wasServed: boolean; wasCalled: boolean }
+  | { kind: "removed"; wasServed: boolean; wasCalled: boolean; closed?: boolean }
   | { kind: "announcement"; text: string }
   | { kind: "paused" }
   | { kind: "resumed" }
@@ -96,7 +96,11 @@ export function diffMemberStatus(prev: StatusLine, next: StatusLine, userId: str
   if (before && !after) {
     // Only being served counts as done; a called no-show who is then
     // removed was not served.
-    return [{ kind: "removed", wasServed: before.phase === "served", wasCalled: before.phase === "called" }]
+    const wasServed = before.phase === "served"
+    // "Close for the night" pauses the line and clears everyone waiting: say
+    // so, instead of "you left from another device, or the host removed you"
+    const closed = !wasServed && !next.isActive && !next.positions.some((p) => !p.fulfilled)
+    return [{ kind: "removed", wasServed, wasCalled: before.phase === "called", ...(closed && { closed: true }) }]
   }
   if (!after) return []
 
@@ -200,6 +204,8 @@ export function describeMemberEvent(
         ? { title: "All done", body: `You've left ${lineName} after being ${isRestaurant ? "seated" : "served"}.`, toast: true, tone: "info" }
         // Leaving from this tab is handled by the caller; reaching here means
         // it happened elsewhere -- another device, or the organizer.
+        : event.closed
+          ? { title: "Line closed", body: `${isRestaurant ? "The host" : "The organizer"} closed ${lineName} for now, so everyone waiting was cleared.`, toast: true, tone: "warning" }
         : event.wasCalled
           ? { title: "You're no longer in line", body: `You were called in ${lineName} but didn't show up in time, so your place went to the next ${isRestaurant ? "party" : "person"} -- or ${organizer} removed you.`, toast: true, tone: "warning" }
           : { title: "You're no longer in line", body: `You're no longer in ${lineName}. You left from another device, or ${organizer} removed you.`, toast: true, tone: "warning" }

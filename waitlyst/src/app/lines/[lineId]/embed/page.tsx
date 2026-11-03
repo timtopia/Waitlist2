@@ -25,9 +25,11 @@ export default async function EmbedPage({ params }: Props) {
 
   if (!line) {
     return (
-      <div className="flex items-center justify-center h-screen p-4">
-        <p className="text-ink/60 text-sm">Line not found</p>
-      </div>
+      // Same wording as the widget when a line goes away while it's open:
+      // "Line not found" on a restaurant's own site read like their site broke
+      <main className="flex items-center justify-center h-screen bg-white p-4">
+        <p className="text-sm text-ink/60" role="status">This line is no longer available.</p>
+      </main>
     )
   }
 

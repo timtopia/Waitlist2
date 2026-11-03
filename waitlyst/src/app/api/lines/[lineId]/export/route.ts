@@ -57,9 +57,11 @@ async function exportSwaps(lineId: string, lineName: string): Promise<Response> 
 
   const headers = [
     "Date", "Buyer", "Seller", "Amount", "Your Fee", "Platform Fee",
-    "Buyer Paid", "Status", "Collected At", "Fee Paid Out",
+    "Buyer Paid", "Status", "Collected At", "Fee Paid Out", "Fee Earned",
   ]
-  const rows = transactions.map((txn) => [
+  const rows = transactions.map((txn) => {
+    const status = swapStatus(txn)
+    return [
     txn.createdAt.toISOString(),
     escapeCsvField(nameOf.get(txn.buyerId) || "Anonymous"),
     escapeCsvField(nameOf.get(txn.sellerId) || "Anonymous"),
@@ -67,10 +69,14 @@ async function exportSwaps(lineId: string, lineName: string): Promise<Response> 
     money(txn.ownerFee),
     money(txn.platformFee),
     money(buyerTotal(txn)),
-    swapStatus(txn),
+    status,
     txn.capturedAt ? txn.capturedAt.toISOString() : "",
     txn.ownerPaidAt ? txn.ownerPaidAt.toISOString() : "",
-  ].join(","))
+    // "Your Fee" is what the swap was quoted at; only a collected swap
+    // actually earned it, so summing this column matches your payouts
+    money(status === "Collected" ? txn.ownerFee : 0),
+  ].join(",")
+  })
 
   const csv = [headers.join(","), ...rows].join("\n")
   return new Response(csv, {

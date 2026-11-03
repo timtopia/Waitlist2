@@ -3,7 +3,7 @@
 import Link from "next/link"
 import Image from "next/image"
 import { useSession, signOut } from "next-auth/react"
-import { Button } from "./ui/Button"
+import { buttonClasses } from "./ui/buttonStyles"
 import { useEffect, useRef, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 
@@ -172,9 +172,11 @@ export function Header() {
                 </div>
               </>
             ) : (
-              <Link href={signInHref} onClick={goToSignIn} className="hidden md:inline-flex">
-                <Button size="sm" tabIndex={-1}>Sign in with Google</Button>
-              </Link>
+              <span className="hidden md:inline-flex">
+                <Link href={signInHref} onClick={goToSignIn} className={buttonClasses({ size: "sm" })}>
+                  Sign in with Google
+                </Link>
+              </span>
             )}
 
             {/* Mobile hamburger button */}
@@ -241,7 +243,8 @@ export function Header() {
                   {session.user?.image ? (
                     <Image
                       src={session.user.image}
-                      alt={session.user.name || "User"}
+                      // The name is right beside it; don't read it twice
+                      alt=""
                       width={36}
                       height={36}
                     />
@@ -266,8 +269,8 @@ export function Header() {
                 </button>
               </div>
             ) : (
-              <Link href={signInHref} onClick={(e) => { setMobileMenuOpen(false); goToSignIn(e) }} className="block">
-                <Button className="w-full" tabIndex={-1}>Sign in with Google</Button>
+              <Link href={signInHref} onClick={(e) => { setMobileMenuOpen(false); goToSignIn(e) }} className={buttonClasses({ className: "w-full" })}>
+                Sign in with Google
               </Link>
             )}
           </div>

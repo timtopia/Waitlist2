@@ -10,9 +10,13 @@ const mockAuth = vi.fn()
 vi.mock("@/auth", () => ({ auth: () => mockAuth() }))
 const abandonPendingTransaction = vi.fn()
 const sessionsRetrieve = vi.fn()
+const performPositionSwap = vi.fn()
 vi.mock("@/lib/stripe", () => ({
   abandonPendingTransaction: (...args: unknown[]) => abandonPendingTransaction(...args),
   getStripe: () => ({ checkout: { sessions: { retrieve: sessionsRetrieve } } }),
+  isCheckoutAuthorized: async () => true,
+  recordPaymentIntent: async () => {},
+  performPositionSwap: (...args: unknown[]) => performPositionSwap(...args),
 }))
 
 const ctx = { params: Promise.resolve({ lineId: "line-1" }) }
@@ -39,6 +43,30 @@ describe("/api/lines/[lineId]/my-checkout", () => {
     })
   })
 
+  it("finishes a purchase that was paid but whose return page never loaded", async () => {
+    mockPrisma.linePosition.findUnique.mockResolvedValue(locked())
+    mockPrisma.transaction.findFirst.mockResolvedValue({ id: "txn-1", stripePaymentId: "cs_1" })
+    sessionsRetrieve.mockResolvedValue({ status: "complete", url: null })
+    const { GET } = await import("@/app/api/lines/[lineId]/my-checkout/route")
+
+    const data = await (await GET(new Request("http://localhost/x"), ctx)).json()
+
+    expect(data).toEqual({ pending: false, paid: true })
+    expect(performPositionSwap).toHaveBeenCalledWith("txn-1")
+  })
+
+  it("won't cancel a purchase that was already paid for", async () => {
+    mockPrisma.linePosition.findUnique.mockResolvedValue(locked())
+    mockPrisma.transaction.findFirst.mockResolvedValue({ id: "txn-1", stripePaymentId: "cs_1" })
+    sessionsRetrieve.mockResolvedValue({ status: "complete", url: null })
+    const { DELETE } = await import("@/app/api/lines/[lineId]/my-checkout/route")
+
+    const res = await DELETE(new Request("http://localhost/x", { method: "DELETE" }), ctx)
+
+    expect(res.status).toBe(409)
+    expect(abandonPendingTransaction).not.toHaveBeenCalled()
+  })
+
   it("offers nothing to a seller whose spot someone else is paying for, or for an accepted offer", async () => {
     mockPrisma.linePosition.findUnique.mockResolvedValue(locked())
     mockPrisma.transaction.findFirst.mockResolvedValue(null)
@@ -52,6 +80,7 @@ describe("/api/lines/[lineId]/my-checkout", () => {
 
   it("cancels the buyer's own purchase, counting it as theirs", async () => {
     mockPrisma.linePosition.findUnique.mockResolvedValue(locked())
+    sessionsRetrieve.mockResolvedValue({ status: "open", url: "https://stripe.test/cs_1" })
     mockPrisma.transaction.findFirst.mockResolvedValue({ id: "txn-1", stripePaymentId: "cs_1" })
     const { DELETE } = await import("@/app/api/lines/[lineId]/my-checkout/route")
 

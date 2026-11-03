@@ -341,7 +341,9 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
 
   // A buy they started but never finished (closed the Stripe tab, pressed
   // Back) keeps both spots locked; let them pick it up again or call it off.
-  const [myCheckout, setMyCheckout] = useState<{ pending: boolean; url: string | null } | null>(null)
+  const [myCheckout, setMyCheckout] = useState<{ pending: boolean; url: string | null; paid?: boolean } | null>(null)
+  // Cancelling counts toward the walk-away limit, so it's confirmed like Back Out
+  const [cancelCheckoutConfirm, setCancelCheckoutConfirm] = useState(false)
   const myLockUntil = currentUserPosition?.lockedUntil ?? null
   useEffect(() => {
     if (!myLockUntil || new Date(myLockUntil) <= new Date()) {
@@ -352,13 +354,19 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
     fetch(`/api/lines/${lineId}/my-checkout`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (!cancelled) setMyCheckout(data)
+        if (cancelled) return
+        setMyCheckout(data)
+        // The payment had gone through; the server just finished the swap
+        if (data?.paid) {
+          addToast("Your payment went through -- the spot is yours.", "success")
+          onRefresh()
+        }
       })
       .catch(() => {})
     return () => {
       cancelled = true
     }
-  }, [lineId, myLockUntil])
+  }, [lineId, myLockUntil, addToast, onRefresh])
 
   /** A mutation's reply never arrived (Wi-Fi to cellular, a 502 page...) */
   function lostConnection() {
@@ -367,7 +375,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
     onRefresh()
   }
 
-  async function handleGiveMoreTime(positionId: string) {
+  async function handleGiveMoreTime(positionId: string, name?: string | null) {
     setLoadingAction(`grace-${positionId}`)
     try {
       const res = await fetch(`/api/lines/${lineId}/grace`, {
@@ -376,7 +384,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
         body: JSON.stringify({ positionId }),
       })
       const data = await res.json().catch(() => ({}))
-      if (res.ok) addToast("Gave them 5 more minutes", "success")
+      if (res.ok) addToast(`Gave ${name || "them"} 5 more minutes${data.graceMinutes > 5 ? ` (${data.graceMinutes} extra in all)` : ""}`, "success")
       else addToast(data.error || "Couldn't give more time", "error")
       onRefresh()
     } catch {
@@ -751,14 +759,14 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
         } else if (data.refundedCount > 0) {
           addToast(`Removed and refunded ${formatCurrency(data.refundedAmount)} to the buyer`, "success")
         } else {
-          addToast(noShow ? "Marked as a no-show and removed" : "Person removed from line", "success")
+          addToast(noShow ? "Marked as a no-show and removed" : isRestaurant ? "Party removed from the line" : "Person removed from line", "success")
         }
         setRemovalModal(null)
         focusListSoon()
         onRefresh()
       } else {
         const data = await res.json().catch(() => ({}))
-        addToast(data.error || "Failed to remove person", "error")
+        addToast(data.error || (isRestaurant ? "Couldn't remove the party" : "Failed to remove person"), "error")
       }
     } catch {
       addToast(NO_CONNECTION, "error")
@@ -940,7 +948,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
         const data = await res.json().catch(() => ({}))
         let msg = data.failed > 0
           ? `Removed ${data.removed}, ${data.failed} failed.`
-          : `Removed ${data.removed} ${data.removed === 1 ? "person" : "people"} from line.`
+          : `Removed ${data.removed} ${isRestaurant ? (data.removed === 1 ? "party" : "parties") : (data.removed === 1 ? "person" : "people")} from line.`
         if (data.refundedCount > 0) msg += ` Refunded ${formatCurrency(data.refundedAmount)}.`
         const moneyProblems = (data.refundFailedCount ?? 0) + (data.collectFailedCount ?? 0)
         if (moneyProblems > 0) msg += ` ${moneyProblems} payment(s) need attention on the settlement page.`
@@ -964,9 +972,9 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
       {/* Removal Modal */}
       {removalModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div ref={removalDialogRef} className="bg-white border border-ink p-6 max-w-md w-full mx-4" role="dialog" aria-modal="true" aria-label={`Remove ${removalModal.userName || "this person"}`}>
+          <div ref={removalDialogRef} className="bg-white border border-ink p-6 max-w-md w-full mx-4" role="dialog" aria-modal="true" aria-label={`Remove ${removalModal.userName || (isRestaurant ? "this party" : "this person")}`}>
             <h3 className="text-lg font-semibold tracking-tight text-ink mb-4">
-              Remove {removalModal.userName || "this person"}?
+              Remove {removalModal.userName || (isRestaurant ? "this party" : "this person")}?
             </h3>
 
             {removalModal.loading ? (
@@ -1165,6 +1173,21 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
         onCancel={() => setRecallConfirm(null)}
       />
 
+      <ConfirmModal
+        open={cancelCheckoutConfirm}
+        title="Cancel this purchase?"
+        message="Both spots are released and you won't be charged. It counts as a cancelled payment -- several of those and you can't buy or make offers here for a while."
+        confirmLabel="Cancel Purchase"
+        cancelLabel="Keep It"
+        variant="danger"
+        isLoading={loadingAction === "cancel-checkout"}
+        onConfirm={async () => {
+          await handleCancelMyCheckout()
+          setCancelCheckoutConfirm(false)
+        }}
+        onCancel={() => setCancelCheckoutConfirm(false)}
+      />
+
       {/* Withdraw / back-out confirmation */}
       <ConfirmModal
         open={!!withdrawConfirm}
@@ -1260,7 +1283,9 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
       {positions.length === 0 ? (
         <p className="text-center text-ink/60 py-8">
           {isCreator
-            ? "No one in line yet. Share the line's link so people can join."
+            ? isPaused
+              ? "No one in line, and the line is paused. Resume it so people can join online."
+              : "No one in line yet. Share the line's link so people can join."
             : isPaused
             ? "No one in line yet."
             : "No one in line yet — be the first."}
@@ -1436,7 +1461,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                               {left} left to show up{" "}
                               {/* Running late and the host is happy to wait: more time without re-calling */}
                               <button
-                                onClick={() => handleGiveMoreTime(pos.id)}
+                                onClick={() => handleGiveMoreTime(pos.id, pos.user.name)}
                                 disabled={loadingAction === `grace-${pos.id}`}
                                 aria-label={`Give ${pos.user.name || "this party"} 5 more minutes`}
                                 className="inline-flex items-center min-h-11 px-2 -my-3 font-mono uppercase tracking-widest text-accent hover:underline underline-offset-4 disabled:opacity-50"
@@ -1514,7 +1539,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                         />
                       )}
                       {isRestaurant && pos.fulfilled && pos.note && (isCurrentUser || isCreator) && (
-                        <p className="text-xs text-ink/60 mt-0.5">Note: {pos.note}</p>
+                        <p className="text-xs text-ink/60 mt-0.5 break-words">Note: {pos.note}</p>
                       )}
                       {isCreator && !isCurrentUser && !pos.fulfilled && (
                         <label className="flex items-center gap-1.5 text-xs text-ink/60 mt-0.5">
@@ -1546,7 +1571,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                           Swap pending
                         </p>
                       )}
-                      {!isFront && !pos.fulfilled && !isCurrentUser && waitTimeData?.estimatedMinutesPerPerson != null && (
+                      {!isFront && !pos.fulfilled && !pos.calledAt && !isCurrentUser && waitTimeData?.estimatedMinutesPerPerson != null && (
                         <p className="text-xs text-ink/60">
                           Est. wait: {formatWaitTime(waitTimeData.estimatedMinutesPerPerson * unservedAhead)}
                         </p>
@@ -1703,7 +1728,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                           </a>
                         )}
                         <button
-                          onClick={handleCancelMyCheckout}
+                          onClick={() => setCancelCheckoutConfirm(true)}
                           disabled={loadingAction === "cancel-checkout"}
                           className="font-mono text-xs uppercase tracking-widest text-ink/60 hover:text-ink underline underline-offset-4 disabled:opacity-50"
                         >

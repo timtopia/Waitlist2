@@ -349,15 +349,16 @@ function CreateLineForm() {
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Quick-start templates */}
             <div>
-              <label className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
+              <p id="tpl-label" className="block font-mono text-xs uppercase tracking-widest text-ink/60 mb-2">
                 Quick Start
-              </label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2" role="group" aria-labelledby="tpl-label">
                 {templates.map((tpl) => (
                   <button
                     key={tpl.id}
                     type="button"
                     onClick={() => applyTemplate(tpl.id)}
+                    aria-pressed={selectedTemplate === tpl.id}
                     className={`flex flex-col items-start text-left border-2 p-3 transition-colors ${
                       selectedTemplate === tpl.id
                         ? "border-accent bg-white"
@@ -394,10 +395,12 @@ function CreateLineForm() {
               <button
                 type="button"
                 role="switch"
+                id="sw-public-line"
                 aria-checked={isPublic}
                 aria-label="Public line"
+                aria-describedby="sw-public-line-hint"
                 onClick={() => setIsPublic(!isPublic)}
-                className={`relative inline-flex h-6 w-11 items-center transition-colors ${
+                className={`relative inline-flex h-6 w-11 items-center transition-colors before:absolute before:-inset-y-2.5 before:inset-x-0 before:content-[''] ${
                   isPublic ? "bg-ink" : "bg-ink/20"
                 }`}
               >
@@ -408,10 +411,10 @@ function CreateLineForm() {
                 />
               </button>
               <div>
-                <label className="font-mono text-xs uppercase tracking-widest text-ink/60">
+                <label htmlFor="sw-public-line" className="font-mono text-xs uppercase tracking-widest text-ink/60 cursor-pointer">
                   Public Line
                 </label>
-                <p className="text-xs text-ink/60">
+                <p id="sw-public-line-hint" className="text-xs text-ink/60">
                   {isPublic
                     ? "Anyone can find this line in Browse"
                     : "Only people with the link can join"}
@@ -517,10 +520,12 @@ function CreateLineForm() {
               <button
                 type="button"
                 role="switch"
+                id="sw-schedule-opening-and-closing-times"
                 aria-checked={enableSchedule}
                 aria-label="Schedule opening and closing times"
+                aria-describedby="sw-schedule-opening-and-closing-times-hint"
                 onClick={() => setEnableSchedule(!enableSchedule)}
-                className={`relative inline-flex h-6 w-11 items-center transition-colors ${
+                className={`relative inline-flex h-6 w-11 items-center transition-colors before:absolute before:-inset-y-2.5 before:inset-x-0 before:content-[''] ${
                   enableSchedule ? "bg-ink" : "bg-ink/20"
                 }`}
               >
@@ -531,10 +536,10 @@ function CreateLineForm() {
                 />
               </button>
               <div>
-                <label className="font-mono text-xs uppercase tracking-widest text-ink/60">
+                <label htmlFor="sw-schedule-opening-and-closing-times" className="font-mono text-xs uppercase tracking-widest text-ink/60 cursor-pointer">
                   Schedule Open/Close Times
                 </label>
-                <p className="text-xs text-ink/60">
+                <p id="sw-schedule-opening-and-closing-times-hint" className="text-xs text-ink/60">
                   {enableSchedule
                     ? "Line will only accept joins during the scheduled window"
                     : "Line is open immediately with no end time"}
@@ -550,12 +555,13 @@ function CreateLineForm() {
                   </label>
                   <input
                     id="opensAt"
+                    aria-describedby="opensAt-hint"
                     type="datetime-local"
                     value={opensAt}
                     onChange={(e) => setOpensAt(e.target.value)}
                     className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                   />
-                  <p className="text-xs text-ink/60 mt-1">
+                  <p id="opensAt-hint" className="text-xs text-ink/60 mt-1">
                     Leave empty to open immediately. Times are in your time zone ({Intl.DateTimeFormat().resolvedOptions().timeZone}).
                   </p>
                 </div>
@@ -565,13 +571,14 @@ function CreateLineForm() {
                   </label>
                   <input
                     id="closesAt"
+                    aria-describedby="closesAt-hint"
                     type="datetime-local"
                     value={closesAt}
                     onChange={(e) => setClosesAt(e.target.value)}
                     min={opensAt || undefined}
                     className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                   />
-                  <p className="text-xs text-ink/60 mt-1">
+                  <p id="closesAt-hint" className="text-xs text-ink/60 mt-1">
                     Leave empty for no end time
                   </p>
                 </div>
@@ -679,10 +686,12 @@ function CreateLineForm() {
                     <button
                       type="button"
                       role="switch"
+                id="sw-allow-position-swapping"
                       aria-checked={allowResale}
                       aria-label="Allow position swapping"
+                aria-describedby="sw-allow-position-swapping-hint"
                       onClick={() => setAllowResale(!allowResale)}
-                      className={`relative inline-flex h-6 w-11 items-center transition-colors ${
+                      className={`relative inline-flex h-6 w-11 items-center transition-colors before:absolute before:-inset-y-2.5 before:inset-x-0 before:content-[''] ${
                         allowResale ? "bg-ink" : "bg-ink/20"
                       }`}
                     >
@@ -693,10 +702,10 @@ function CreateLineForm() {
                       />
                     </button>
                     <div>
-                      <label className="font-mono text-xs uppercase tracking-widest text-ink/60">
+                      <label htmlFor="sw-allow-position-swapping" className="font-mono text-xs uppercase tracking-widest text-ink/60 cursor-pointer">
                         Allow position swapping
                       </label>
-                      <p className="text-xs text-ink/60">
+                      <p id="sw-allow-position-swapping-hint" className="text-xs text-ink/60">
                         {allowResale
                           ? "People can swap their positions with the person next to them"
                           : "Swapping is disabled — no one can swap positions"}

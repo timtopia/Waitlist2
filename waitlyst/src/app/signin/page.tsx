@@ -1,7 +1,9 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import { redirect } from "next/navigation"
+import { cookies } from "next/headers"
 import { auth } from "@/auth"
+import { prisma } from "@/lib/prisma"
 import { Card, CardContent } from "@/components/ui/Card"
 import { SignInButton } from "./SignInButton"
 
@@ -32,7 +34,7 @@ function safeCallback(raw: string | undefined): string {
 function destinationLabel(path: string): string | null {
   if (path.startsWith("/dashboard")) return "your dashboard"
   if (path.startsWith("/profile")) return "your profile"
-  if (path.startsWith("/lines/new")) return "start a line"
+  if (path.startsWith("/lines/new")) return "create your line"
   if (/^\/lines\/[^/]+\/(edit|analytics|settlement)/.test(path)) return "manage this line"
   if (path.startsWith("/lines/")) return "this line"
   return null
@@ -40,12 +42,26 @@ function destinationLabel(path: string): string | null {
 
 export default async function SignInPage({ searchParams }: Props) {
   const { callbackUrl, error } = await searchParams
-  const destination = safeCallback(callbackUrl)
+  // Cancelling at Google's account picker comes back as ?error=... with no
+  // callbackUrl; Auth.js still has the destination in its cookie, so the
+  // line (and ?join=1, party size) they were joining isn't lost
+  const jar = await cookies()
+  const fromCookie = jar.get("__Secure-authjs.callback-url")?.value ?? jar.get("authjs.callback-url")?.value
+  const destination = safeCallback(callbackUrl ?? fromCookie)
 
   const session = await auth()
   if (session?.user) redirect(destination)
 
-  const label = destinationLabel(destination)
+  let label = destinationLabel(destination)
+  // Name the line: "this line" means nothing to someone who just scanned a QR code
+  const lineMatch = destination.match(/^\/lines\/([^/?#]+)(?:[?#]|$)/)
+  if (lineMatch && lineMatch[1] !== "new") {
+    const line = await prisma.line
+      .findUnique({ where: { id: lineMatch[1] }, select: { name: true } })
+      .catch(() => null)
+    if (line) label = line.name
+  }
+  const toLine = !!lineMatch && lineMatch[1] !== "new"
 
   return (
     <div className="min-h-[70vh] flex items-center justify-center px-4 py-12">
@@ -61,6 +77,7 @@ export default async function SignInPage({ searchParams }: Props) {
             An account lets you hold a spot in line, get a heads-up when it&apos;s
             your turn, and run lines of your own. There&apos;s no password: we use
             your Google account.
+            {toLine && " You'll come straight back to the line."}
           </p>
           {error && (
             <p className="text-sm text-accent mb-4" role="alert">

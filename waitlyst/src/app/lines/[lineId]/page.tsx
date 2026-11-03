@@ -89,13 +89,15 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       description,
       type: "website",
       siteName: "Waitlyst",
-      ...(line.productImage && { images: [line.productImage] }),
+      // Setting openGraph here replaces the root's, image and all: without a
+      // fallback, restaurant links pasted in iMessage showed no picture
+      images: [line.productImage ?? "/opengraph-image"],
     },
     twitter: {
       card: "summary_large_image",
       title: `${line.name} - Waitlyst`,
       description,
-      ...(line.productImage && { images: [line.productImage] }),
+      images: [line.productImage ?? "/opengraph-image"],
     },
   }
 }

@@ -72,6 +72,8 @@ export async function GET(
     return NextResponse.redirect(`${baseUrl}/lines/${lineId}?payment=success`)
   } catch (error) {
     console.error("Complete payment error:", error)
-    return NextResponse.redirect(`${baseUrl}/lines/${lineId}?payment=error`)
+    // The card may well have been authorized and the webhook will finish the
+    // swap: "something went wrong with your payment" had buyers paying twice
+    return NextResponse.redirect(`${baseUrl}/lines/${lineId}?payment=error&reason=unconfirmed`)
   }
 }

@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "./ui/Button"
 import { ConfirmModal } from "./ui/ConfirmModal"
 import { useToast } from "./ui/Toast"
-import { formatCurrency } from "@/lib/format"
+import { formatCurrency, formatDateTime } from "@/lib/format"
 import { callDeadline, timeLeft } from "@/lib/call-deadline"
 import { MAX_PARTY_SIZE } from "@/lib/capacity"
 
@@ -45,6 +45,9 @@ interface OwnerConsoleProps {
   responseWindowMinutes?: number | null
   /** An announcement is posted; closing the line clears it */
   hasAnnouncement?: boolean
+  /** Scheduled opening/closing times; joins are refused outside them */
+  opensAt?: string | null
+  closesAt?: string | null
 }
 
 interface Earnings {
@@ -85,7 +88,12 @@ export function OwnerConsole({
   isRestaurant = false,
   responseWindowMinutes = null,
   hasAnnouncement = false,
+  opensAt = null,
+  closesAt = null,
 }: OwnerConsoleProps) {
+  const nowMs = Date.now()
+  const notYetOpen = !!opensAt && new Date(opensAt).getTime() > nowMs
+  const closedBySchedule = !!closesAt && new Date(closesAt).getTime() <= nowMs
   const { addToast } = useToast()
   const [busy, setBusy] = useState<string | null>(null)
   const [earnings, setEarnings] = useState<Earnings | null>(null)
@@ -368,7 +376,11 @@ export function OwnerConsole({
       if (ok) {
         addToast(
           data.isActive
-            ? "Line resumed -- people can join again"
+            ? closedBySchedule
+              ? "Line resumed, but it's past its closing time -- change the closing time in Edit to let people join"
+              : notYetOpen && opensAt
+                ? `Line resumed -- people can join from ${formatDateTime(opensAt)}`
+                : "Line resumed -- people can join again"
             : isRestaurant
               ? `Line paused -- no online joins${allowResale ? " or swaps" : ""} until you resume. Walk-ins and calls still work.`
               : "Line paused -- no new joins or swaps, and it's hidden from Browse until you resume",
@@ -612,7 +624,11 @@ export function OwnerConsole({
         <div className="border-b border-rule bg-paper px-4 py-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <p className="font-semibold text-ink">Your line is live. Share the link so people can join.</p>
+              <p className="font-semibold text-ink">
+                {notYetOpen && opensAt
+                  ? `Your line opens ${formatDateTime(opensAt)}. Share the link now -- people can ask to be emailed when it opens.`
+                  : "Your line is live. Share the link so people can join."}
+              </p>
               <div className="flex items-center gap-2 mt-2">
                 <input
                   readOnly
@@ -647,9 +663,9 @@ export function OwnerConsole({
       <div className="px-4 py-3 flex items-center justify-between gap-3 border-b border-rule">
         <div className="flex items-center gap-3">
           <p className="font-mono text-xs uppercase tracking-[0.2em] text-ink/60">Run your line</p>
-          <span className={`inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest ${isActive ? "text-green-700" : "text-amber-700"}`}>
-            <span className={`w-1.5 h-1.5 ${isActive ? "bg-green-600" : "bg-amber-500"}`} aria-hidden />
-            {isActive ? "Open" : "Paused"}
+          <span className={`inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest ${isActive && !notYetOpen && !closedBySchedule ? "text-green-700" : "text-amber-700"}`}>
+            <span className={`w-1.5 h-1.5 ${isActive && !notYetOpen && !closedBySchedule ? "bg-green-600" : "bg-amber-500"}`} aria-hidden />
+            {!isActive ? "Paused" : closedBySchedule ? "Past closing time" : notYetOpen && opensAt ? `Opens ${formatDateTime(opensAt)}` : "Open"}
           </span>
         </div>
         <div className="flex items-center gap-1">
@@ -668,7 +684,9 @@ export function OwnerConsole({
         {!upNext ? (
           <p className="text-sm text-ink/60">
             {positions.length === 0
-              ? "No one in line yet. Share the link to get people in."
+              ? !isActive
+                ? "No one in line, and the line is paused -- tap Resume so people can join online."
+                : "No one in line yet. Share the link to get people in."
               : `Everyone in line has been ${servedWord}.`}
           </p>
         ) : (

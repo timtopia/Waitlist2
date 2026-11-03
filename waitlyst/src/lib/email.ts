@@ -69,12 +69,18 @@ export async function sendEmail(
   try {
     // The client reports API errors (unverified domain, bad address) in the
     // result rather than throwing
+    // Gmail and Yahoo show an "Unsubscribe" button only with this header;
+    // without it, someone tired of a big drop's emails hits "Report spam",
+    // which hurts delivery of everyone's "You're up" emails
+    const base = process.env.NEXTAUTH_URL || process.env.AUTH_URL || process.env.NEXT_PUBLIC_APP_URL ||
+      (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : null)
     const payload = {
       from: process.env.EMAIL_FROM!,
       to,
       subject,
       html,
       text: htmlToText(html),
+      ...(base && { headers: { "List-Unsubscribe": `<${base.replace(/\/$/, "")}/profile>` } }),
     }
     const { error } = idempotencyKey
       ? await resend.emails.send(payload, { idempotencyKey })

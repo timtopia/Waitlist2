@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { runAfterResponse } from "@/lib/after-response"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
-import { getBaseUrl, releaseAndSettle } from "@/lib/stripe"
+import { abandonPendingTransaction, getBaseUrl, releaseAndSettle } from "@/lib/stripe"
 import { sendEmail } from "@/lib/email"
 import { fulfilledEmail } from "@/lib/email-templates"
 
@@ -22,6 +22,18 @@ export async function POST(
   if (authResult instanceof NextResponse) return authResult
 
   try {
+    // Someone mid-checkout to buy this spot (or this party buying ahead)
+    // kept the host from seating them for up to half an hour. Being served
+    // takes the spot off the market anyway, so call that swap off first --
+    // the same as calling them up does (the buyer's hold is released).
+    const lock = await prisma.linePosition.findUnique({
+      where: { id: positionId, lineId },
+      select: { lockedBy: true, lockedUntil: true, fulfilled: true },
+    })
+    if (lock && !lock.fulfilled && lock.lockedBy && lock.lockedUntil && lock.lockedUntil > new Date()) {
+      await abandonPendingTransaction(lock.lockedBy, { offerOutcome: "expire" })
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       // Get the position to fulfill
       const position = await tx.linePosition.findUnique({

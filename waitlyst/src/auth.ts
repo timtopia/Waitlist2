@@ -2,6 +2,7 @@ import NextAuth from "next-auth"
 import Google from "next-auth/providers/google"
 import { PrismaAdapter } from "@auth/prisma-adapter"
 import { prisma } from "@/lib/prisma"
+import { cleanDisplayName, cleanText } from "@/lib/validate"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -13,6 +14,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         params: {
           prompt: "select_account",
         },
+      },
+      // The Google name lands in the queue list, "Now serving" and other
+      // people's emails. Clean it like names edited on the profile page, so a
+      // bidi override or an 80-character name can't garble those.
+      profile(p) {
+        const cleaned = cleanDisplayName(cleanText(p.name ?? "").slice(0, 50))
+        return {
+          id: p.sub,
+          name: typeof cleaned === "string" ? cleaned : null,
+          email: p.email,
+          image: p.picture,
+        }
       },
     }),
   ],
