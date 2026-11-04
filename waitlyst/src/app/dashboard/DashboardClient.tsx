@@ -319,7 +319,10 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
         addToast(data.error || "Failed to call next person", "error")
       }
     } catch {
-      addToast("No connection -- that didn't go through. Try again.", "error")
+      // The request may have landed before the reply was lost: retrying
+      // Duplicate blind made a second copy. Show the real state first.
+      addToast("Connection dropped -- that may have gone through. Check before trying again.", "error")
+      router.refresh()
     } finally {
       setLoadingAction(null)
     }
@@ -341,7 +344,10 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
         addToast(data.error || `Failed to mark as ${servedWord}`, "error")
       }
     } catch {
-      addToast("No connection -- that didn't go through. Try again.", "error")
+      // The request may have landed before the reply was lost: retrying
+      // Duplicate blind made a second copy. Show the real state first.
+      addToast("Connection dropped -- that may have gone through. Check before trying again.", "error")
+      router.refresh()
     } finally {
       setLoadingAction(null)
     }
@@ -364,7 +370,10 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
         addToast(data.error || "Failed to remove person", "error")
       }
     } catch {
-      addToast("No connection -- that didn't go through. Try again.", "error")
+      // The request may have landed before the reply was lost: retrying
+      // Duplicate blind made a second copy. Show the real state first.
+      addToast("Connection dropped -- that may have gone through. Check before trying again.", "error")
+      router.refresh()
     } finally {
       setLoadingAction(null)
     }
@@ -385,7 +394,10 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
         addToast(data.error || "Failed to duplicate line", "error")
       }
     } catch {
-      addToast("No connection -- that didn't go through. Try again.", "error")
+      // The request may have landed before the reply was lost: retrying
+      // Duplicate blind made a second copy. Show the real state first.
+      addToast("Connection dropped -- that may have gone through. Check before trying again.", "error")
+      router.refresh()
     } finally {
       setLoadingAction(null)
     }
@@ -415,7 +427,10 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
         addToast(data.error || "Failed to delete line", "error")
       }
     } catch {
-      addToast("No connection -- that didn't go through. Try again.", "error")
+      // The request may have landed before the reply was lost: retrying
+      // Duplicate blind made a second copy. Show the real state first.
+      addToast("Connection dropped -- that may have gone through. Check before trying again.", "error")
+      router.refresh()
     } finally {
       setLoadingAction(null)
     }
@@ -441,7 +456,10 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
         addToast(data.error || "Failed to update", "error")
       }
     } catch {
-      addToast("No connection -- that didn't go through. Try again.", "error")
+      // The request may have landed before the reply was lost: retrying
+      // Duplicate blind made a second copy. Show the real state first.
+      addToast("Connection dropped -- that may have gone through. Check before trying again.", "error")
+      router.refresh()
     } finally {
       setLoadingAction(null)
     }
@@ -465,7 +483,10 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
         addToast(data.error || "Failed to update", "error")
       }
     } catch {
-      addToast("No connection -- that didn't go through. Try again.", "error")
+      // The request may have landed before the reply was lost: retrying
+      // Duplicate blind made a second copy. Show the real state first.
+      addToast("Connection dropped -- that may have gone through. Check before trying again.", "error")
+      router.refresh()
     } finally {
       setLoadingAction(null)
     }

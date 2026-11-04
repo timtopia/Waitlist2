@@ -23,6 +23,7 @@ import { MemberStatusCard, NotificationState } from "@/components/MemberStatusCa
 import { OwnerConsole } from "@/components/OwnerConsole"
 import { formatCurrency, timeAgo } from "@/lib/format"
 import { callDeadline } from "@/lib/call-deadline"
+import { timeoutSignal } from "@/lib/timeout-signal"
 
 /** Start a download without leaving the page */
 function downloadFile(href: string) {
@@ -153,6 +154,11 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   // ("disallowed_useragent"), so a drop link tapped on social was a dead end
   const inAppBrowser = useInAppBrowser()
   const [linkCopied, setLinkCopied] = useState(false)
+  // In-app browsers often block the clipboard: show the link to copy by hand
+  const [linkCopyFailed, setLinkCopyFailed] = useState(false)
+  // Party size and note can't be carried into Safari, so don't collect them
+  // where there's no Join button
+  const joinFormHidden = inAppBrowser && !session
   const router = useRouter()
   const searchParams = useSearchParams()
   const { requestPermission, sendNotification } = useNotifications()
@@ -222,6 +228,9 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       setHasPayoutSetup(true)
       addToast("Payout account connected -- you'll now get paid for swaps.", "success")
       router.replace(`/lines/${lineId}`, { scroll: false })
+    } else if (connectStatus === "pending") {
+      addToast("Stripe is verifying your details -- usually minutes, sometimes a day or two. Anything you earn meanwhile is held and paid out automatically once it's approved.", "info")
+      router.replace(`/lines/${lineId}`, { scroll: false })
     } else if (connectStatus === "incomplete") {
       addToast("Payout setup isn't finished yet. Pick it back up whenever you're ready.", "info")
       router.replace(`/lines/${lineId}`, { scroll: false })
@@ -271,7 +280,9 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
 
   const fetchLine = useCallback(async () => {
     try {
-      const res = await fetch(`/api/lines/${lineId}`)
+      // A refresh stuck on a dead connection kept the host console's
+      // buttons disabled (actions await it) until the browser gave up
+      const res = await fetch(`/api/lines/${lineId}`, { signal: timeoutSignal(10_000) })
       if (res.ok) {
         const data = await res.json()
         setLine(data)
@@ -319,7 +330,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   // Fetch line-specific activity feed
   const fetchActivity = useCallback(async () => {
     try {
-      const res = await fetch(`/api/lines/${lineId}/activity`)
+      const res = await fetch(`/api/lines/${lineId}/activity`, { signal: timeoutSignal(10_000) })
       if (res.ok) {
         const data = await res.json()
         if (Array.isArray(data)) {
@@ -947,7 +958,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <ShareLine lineId={line.id} lineName={line.name} canEmbed={isCreator} />
-              {canJoin && line.kind === "RESTAURANT" && (
+              {canJoin && !joinFormHidden && line.kind === "RESTAURANT" && (
                 <label className="flex items-center gap-2 text-sm text-ink/60">
                   <span className="whitespace-nowrap">Party of</span>
                   <select
@@ -964,12 +975,12 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                   </select>
                 </label>
               )}
-              {canJoin && isRestaurant && line.maxCapacity != null && maxPartySize < MAX_PARTY_SIZE && (
+              {canJoin && !joinFormHidden && isRestaurant && line.maxCapacity != null && maxPartySize < MAX_PARTY_SIZE && (
                 <span className="text-xs text-ink/60">
                   Room for {maxPartySize} more guest{maxPartySize === 1 ? "" : "s"}. Bigger party? Ask the host.
                 </span>
               )}
-              {canJoin && line.kind === "RESTAURANT" && (
+              {canJoin && !joinFormHidden && line.kind === "RESTAURANT" && (
                 <input
                   value={joinNote}
                   onChange={(e) => setJoinNote(e.target.value)}
@@ -998,13 +1009,25 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                         await navigator.clipboard.writeText(window.location.href)
                         setLinkCopied(true)
                       } catch {
-                        addToast("Couldn't copy -- use the app's menu to open in your browser", "error")
+                        setLinkCopyFailed(true)
                       }
                     }}
                     className="mt-2 font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4 min-h-11 pointer-fine:min-h-0"
                   >
                     {linkCopied ? "Link copied" : "Copy link"}
                   </button>
+                  {linkCopyFailed && (
+                    <>
+                      <p className="mt-2 text-xs text-ink/70" role="status">Couldn&apos;t copy. Press and hold the link to copy it:</p>
+                      <input
+                        readOnly
+                        aria-label="Link to open in your browser"
+                        value={window.location.href}
+                        onFocus={(e) => e.target.select()}
+                        className="mt-1 w-full font-mono text-base sm:text-xs px-2 py-2 bg-white border border-rule text-ink/70"
+                      />
+                    </>
+                  )}
                 </div>
               )}
               {canJoin && !(inAppBrowser && !session) && (

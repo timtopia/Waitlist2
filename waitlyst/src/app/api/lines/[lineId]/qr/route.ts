@@ -37,7 +37,9 @@ export async function GET(
     const svg = await QRCode.toString(lineUrl, {
       type: "svg",
       width: size,
-      margin: 2,
+      // The standard 4-module quiet zone: on a coloured poster or a trimmed
+      // print, 2 left cheap phone cameras missing it
+      margin: 4,
       color: {
         dark: darkColor,
         light: lightColor,

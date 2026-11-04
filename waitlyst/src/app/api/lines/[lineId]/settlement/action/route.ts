@@ -176,10 +176,18 @@ export async function POST(
           where: { lineId, userId: transaction.buyerId, fulfilled: false },
           select: { id: true },
         })
+        // A served buyer's row only offers Collect, so "cancel it instead"
+        // sent the owner looking for a button that isn't there
+        const buyerServed = !buyerWaiting && await prisma.linePosition.findFirst({
+          where: { lineId, userId: transaction.buyerId, fulfilled: true },
+          select: { id: true },
+        })
         return NextResponse.json(
           { error: buyerWaiting
             ? "Couldn't collect this payment. The buyer is still in line: remove them with a refund from the line page, or try collecting again later."
-            : `Couldn't collect this payment -- the card hold may have expired. ${authResult.line.kind === "RESTAURANT" ? "You can release it instead." : "You can cancel the payment instead."}` },
+            : buyerServed
+              ? "Couldn't collect this payment -- the card hold may have expired. If it has, this row switches to \"Hold expired\" on its own; otherwise try again later or check it in Stripe."
+              : `Couldn't collect this payment -- the card hold may have expired. ${authResult.line.kind === "RESTAURANT" ? "You can release it instead." : "You can cancel the payment instead."}` },
           { status: 402 }
         )
       }

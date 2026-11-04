@@ -67,7 +67,7 @@ export function ShareLine({ lineId, lineName, canEmbed = false }: ShareLineProps
 
   // title names the frame for screen readers on the restaurant's own site
   const embedTitle = `${lineName} waitlist`.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")
-  const embedCode = `<iframe src="${embedUrl}" title="${embedTitle}" width="350" height="450" frameborder="0" style="border:1px solid #d8d4ca;"></iframe>`
+  const embedCode = `<iframe src="${embedUrl}" title="${embedTitle}" width="100%" height="520" frameborder="0" style="max-width:350px;border:1px solid #d8d4ca;"></iframe>`
   const directLink = `<a href="${url}">Join the line on Waitlyst</a>`
 
   async function copyText(text: string): Promise<boolean> {
@@ -152,8 +152,9 @@ export function ShareLine({ lineId, lineName, canEmbed = false }: ShareLineProps
     if (!ctx) return
 
     // A sign for the counter: the code, the line's name and what to do
-    const pngSize = 600
-    const captionHeight = 120
+    // 1200px so a sign printed 6 inches wide stays sharp
+    const pngSize = 1200
+    const captionHeight = 240
     canvas.width = pngSize
     canvas.height = pngSize + captionHeight
 
@@ -167,12 +168,13 @@ export function ShareLine({ lineId, lineName, canEmbed = false }: ShareLineProps
       ctx.drawImage(img, 0, 0, pngSize, pngSize)
       ctx.fillStyle = "#111111"
       ctx.textAlign = "center"
-      ctx.font = "bold 34px sans-serif"
+      ctx.font = "bold 68px sans-serif"
       const title = lineName.length > 32 ? `${lineName.slice(0, 31)}…` : lineName
-      ctx.fillText(title, pngSize / 2, pngSize + 40)
-      ctx.font = "24px sans-serif"
+      // maxWidth squeezes a long name instead of clipping both ends
+      ctx.fillText(title, pngSize / 2, pngSize + 80, pngSize - 96)
+      ctx.font = "48px sans-serif"
       ctx.fillStyle = "#555555"
-      ctx.fillText("Scan to join the line", pngSize / 2, pngSize + 85)
+      ctx.fillText("Scan to join the line", pngSize / 2, pngSize + 170, pngSize - 96)
       URL.revokeObjectURL(svgUrl)
 
       canvas.toBlob((blob) => {

@@ -100,6 +100,9 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
       setConnectOnboarded(true)
       addToast("Payout account connected -- fees from this line will now be paid out.", "success")
       router.replace(pathname, { scroll: false })
+    } else if (connectStatus === "pending") {
+      addToast("Stripe is verifying your details -- usually minutes, sometimes a day or two. Anything you earn meanwhile is held and paid out automatically once it's approved.", "info")
+      router.replace(pathname, { scroll: false })
     } else if (connectStatus === "incomplete") {
       addToast("Payout setup isn't finished yet. Pick it back up whenever you're ready.", "info")
       router.replace(pathname, { scroll: false })

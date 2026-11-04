@@ -326,7 +326,7 @@ describe("POST /api/lines/[lineId]/fulfill", () => {
     expect(response.status).toBe(409)
 
     const data = await response.json()
-    expect(data.error).toMatch(/pending swap/i)
+    expect(data.error).toMatch(/swap for this spot is still going through/i)
     const { abandonPendingTransaction } = await import("@/lib/stripe")
     expect(abandonPendingTransaction).toHaveBeenCalledWith("txn-1", { offerOutcome: "expire" })
   })

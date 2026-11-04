@@ -138,7 +138,7 @@ export function EditLineClient({
     }
 
     if (maxCapacity && Number(maxCapacity) < line.capacityUsed) {
-      failField("maxCapacity", `Capacity cannot be less than the ${line.capacityUsed} ${isRestaurant ? "guests waiting" : "spots already taken"}`)
+      failField("maxCapacity", `Capacity cannot be less than the ${line.capacityUsed} ${isRestaurant ? "guests waiting" : "spots already handed out or taken, served people included"}`)
       return
     }
 
@@ -405,7 +405,7 @@ export function EditLineClient({
               />
               <p id="maxCapacity-hint" className="text-xs text-ink/60 mt-1">
                 {line.capacityUsed > 0
-                  ? `Must be at least ${line.capacityUsed} (${isRestaurant ? "guests waiting" : "spots already taken"})`
+                  ? `Must be at least ${line.capacityUsed} (${isRestaurant ? "guests waiting" : "spots already handed out or taken, served people included"})`
                   : isRestaurant ? "Total guests across all parties. Leave empty for no limit" : "Leave empty for unlimited spots"}
               </p>
               {maxCapacity && (

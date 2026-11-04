@@ -201,7 +201,7 @@ export function EmbedWidgetClient({
       <main className="flex-1 overflow-auto p-4">
         {/* Product Image */}
         {productImage && (
-          <div className="w-full aspect-[16/9] overflow-hidden mb-3 bg-paper border border-rule">
+          <div className="w-full aspect-[2/1] overflow-hidden mb-3 bg-paper border border-rule">
             <img
               src={productImage}
               alt={productName || lineName}

@@ -81,6 +81,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
 
   const description = buildDescription(line, await servedAndCleared(line))
+  // Chat apps cache link previews for days: "Paused · 0 people in line" from
+  // the moment it was shared stuck long after the line opened. Keep the live
+  // status for search engines, which refetch.
+  const shareDescription = line.description || `Join the line for ${line.name} on Waitlyst`
 
   return {
     title: line.name,
@@ -89,7 +93,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     ...(!line.isPublic && { robots: { index: false, follow: false } }),
     openGraph: {
       title: `${line.name} - Waitlyst`,
-      description,
+      description: shareDescription,
       type: "website",
       siteName: "Waitlyst",
       // Setting openGraph here replaces the root's, image and all: without a
@@ -99,7 +103,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     twitter: {
       card: "summary_large_image",
       title: `${line.name} - Waitlyst`,
-      description,
+      description: shareDescription,
       images: [line.productImage ?? "/opengraph-image"],
     },
   }

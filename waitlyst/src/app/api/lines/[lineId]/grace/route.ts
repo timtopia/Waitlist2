@@ -45,7 +45,7 @@ export async function POST(
   })
   if (updated.count === 0) {
     return NextResponse.json(
-      { error: "Someone just changed their time (maybe from another device). Refresh to see it." },
+      { error: "Someone just changed their time (maybe from another device). The list has been updated." },
       { status: 409 }
     )
   }

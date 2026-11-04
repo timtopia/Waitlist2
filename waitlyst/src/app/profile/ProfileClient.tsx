@@ -95,6 +95,9 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
       setConnectOnboarded(true)
       setConnectMessage({ text: "Payout account connected successfully!", type: "success" })
       router.replace("/profile", { scroll: false })
+    } else if (connectStatus === "pending") {
+      setConnectMessage({ text: "Stripe is verifying your details -- usually minutes, sometimes a day or two. Anything you earn meanwhile is held and paid out automatically once it's approved.", type: "info" })
+      router.replace("/profile", { scroll: false })
     } else if (connectStatus === "incomplete") {
       setConnectMessage({ text: "Payout setup is not complete. Please finish the onboarding process.", type: "info" })
       router.replace("/profile", { scroll: false })
