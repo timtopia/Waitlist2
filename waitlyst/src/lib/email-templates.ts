@@ -91,10 +91,10 @@ export function positionCalledEmail(
   // The subject is often all that shows on a lock screen, so it carries the
   // what and the deadline on its own
   const subject = `${opts.recall ? "Reminder: " : ""}${opts.isRestaurant ? `Your table is ready at ${lineName}` : `You're up in ${lineName}`}${
-    opts.windowMinutes ? ` -- arrive within ${opts.windowMinutes} min` : ""
+    opts.windowMinutes ? `: arrive within ${opts.windowMinutes} min` : ""
   }`
   const deadline = opts.windowMinutes
-    ? `You have ${opts.windowMinutes} min to get there, or your place goes to the next ${opts.isRestaurant ? "party" : "person"}. Open the line and tap "On my way" when you set off -- your ${opts.windowMinutes} min restart from then.`
+    ? `You have ${opts.windowMinutes} min to get there, or your place goes to the next ${opts.isRestaurant ? "party" : "person"}. Open the line and tap "On my way" when you leave. Your ${opts.windowMinutes} min restart from then.`
     : "Please come forward as soon as possible so you don't lose your spot."
   const recalled = opts.recall
     ? `<p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">The ${opts.isRestaurant ? "host" : "organizer"} called you again${opts.windowMinutes ? `, so your ${opts.windowMinutes} ${opts.windowMinutes === 1 ? "minute starts" : "minutes start"} now` : ""}.</p>`
@@ -122,7 +122,7 @@ export function youreNextEmail(
   const body = `
     <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">You're next, ${safeName}</h2>
     <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">The ${isRestaurant ? "party" : "person"} ahead of you in <strong>${safeLine}</strong> was just called.</p>
-    <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Head back now so you're ready when it's your turn.</p>
+    <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Come back now so you're ready when it's your turn.</p>
   `
   return { subject, html: wrapTemplate(subject, body, "Go to Line", lineUrl) }
 }
@@ -146,7 +146,14 @@ export function removedFromLineEmail(
     ? money.refundedAmount.toLocaleString("en-US", { style: "currency", currency: "USD" })
     : null
   // A line closing for the night isn't a mistake to contact anyone about
-  const mistake = reason === "closed" ? "" : ` If you think this was a mistake, contact the ${organizer}.`
+  // Lines have no contact details to reach a drop organizer by, and nothing
+  // stops a removed person rejoining: point at what they can actually do
+  const mistake = reason === "closed"
+    ? ""
+    : isRestaurant
+      ? " If you think this was a mistake, talk to the host."
+      : " If you think this was a mistake, you can rejoin at the back from the line page while it's open."
+
   const subject = `You're no longer in ${lineName}`
   const body = `
     <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">You're no longer in line, ${safeName}</h2>
@@ -212,7 +219,7 @@ export function swapAcceptedEmail(
   const mustPay = !!opts.payWithinMinutes
   const formattedAmount = opts.amount?.toLocaleString("en-US", { style: "currency", currency: "USD" })
   const subject = mustPay
-    ? `Offer accepted in ${lineName} -- pay within ${opts.payWithinMinutes} min to swap`
+    ? `Offer accepted in ${lineName}: pay within ${opts.payWithinMinutes} min to swap`
     : `Your swap offer was accepted in ${lineName}`
   const body = `
     <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">Offer accepted, ${safeName}!</h2>

@@ -300,7 +300,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
     setLines(initialLines)
   }, [initialLines])
 
-  async function handleCallNext(lineId: string, positionId: string) {
+  async function handleCallNext(lineId: string, positionId: string, recall = false) {
     setLoadingAction(`call-${lineId}`)
     try {
       // Name who the card showed: this page refreshes slowly, and a queue
@@ -308,11 +308,18 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
       const res = await fetch(`/api/lines/${lineId}/call-next`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ positionId }),
+        // "Call Again" must say so: the server refuses a plain call to
+        // someone already called (another tablet may have just done it)
+        body: JSON.stringify({ positionId, ...(recall && { recall: true }) }),
       })
       if (res.ok) {
         const data = await res.json()
-        addToast(`Called ${data.calledUser} to the front!`, "success")
+        addToast(
+          data.isWalkIn
+            ? `${data.calledUser} is a walk-in -- call them out at the stand`
+            : `Called ${data.calledUser} to the front${recall ? " again" : ""}`,
+          "success"
+        )
         router.refresh()
       } else {
         const data = await res.json().catch(() => ({}))
@@ -337,7 +344,16 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
         body: JSON.stringify({ positionId }),
       })
       if (res.ok) {
+        const data = await res.json().catch(() => ({}))
         addToast(`${name} marked as ${servedWord}`, "success")
+        // Same warning as the console: a held payment that couldn't be
+        // collected lapses quietly unless someone looks
+        if (data.payoutsFailed > 0) {
+          addToast(
+            `${data.payoutsFailed} payment${data.payoutsFailed === 1 ? "" : "s"} couldn't be collected -- review on the settlement page.`,
+            "error"
+          )
+        }
         router.refresh()
       } else {
         const data = await res.json().catch(() => ({}))
@@ -1017,30 +1033,28 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                             variant={line.frontPerson.calledAt ? "ghost" : "secondary"}
                             onClick={(e) => {
                               e.preventDefault()
-                              handleCallNext(line.id, line.frontPerson!.id)
+                              handleCallNext(line.id, line.frontPerson!.id, !!line.frontPerson!.calledAt)
                             }}
                             isLoading={loadingAction === `call-${line.id}`}
                           >
                             {line.frontPerson.calledAt ? "Call Again" : "Call Next"}
                           </Button>
-                          {/* remove-front removes position #1; when served people are still
-                              ahead of the next person, that would remove the wrong one. */}
-                          {line.frontPerson.position === 1 && (
-                            <button
-                              onClick={(e) => {
-                                e.preventDefault()
-                                setRemoveConfirm({
-                                  lineId: line.id,
-                                  positionId: line.frontPerson!.id,
-                                  name: line.frontPerson!.user.name || "this person",
-                                })
-                              }}
-                              disabled={loadingAction === `remove-${line.id}`}
-                              className="text-xs text-accent hover:underline underline-offset-4 px-1 py-0.5 disabled:opacity-50"
-                            >
-                              Remove
-                            </button>
-                          )}
+                          {/* The dashboard names the row it showed, and remove-front removes
+                              exactly that one -- seated rows ahead don't matter */}
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault()
+                              setRemoveConfirm({
+                                lineId: line.id,
+                                positionId: line.frontPerson!.id,
+                                name: line.frontPerson!.user.name || "this person",
+                              })
+                            }}
+                            disabled={loadingAction === `remove-${line.id}`}
+                            className="text-xs text-accent hover:underline underline-offset-4 px-1 py-0.5 disabled:opacity-50"
+                          >
+                            Remove
+                          </button>
                         </div>
                       )}
                       {!line.isActive && isClosedBySchedule(line) ? (

@@ -497,7 +497,7 @@ export function OwnerConsole({
         const notRemoved = data.failed ?? 0
         addToast(
           notRemoved > 0
-            ? `Closed, but ${notRemoved} ${notRemoved === 1 ? "party" : "parties"} couldn't be removed -- check the list.${announcementNote}`
+            ? `Closed, but ${notRemoved} ${isRestaurant ? (notRemoved === 1 ? "party" : "parties") : notRemoved === 1 ? "person" : "people"} couldn't be removed -- check the list.${announcementNote}`
             : moneyProblems > 0
               ? `Closed. ${moneyProblems} payment(s) need attention on the settlement page.${announcementNote}`
               : `Closed for now: the line is paused and empty.${announcementNote}`,
@@ -522,7 +522,15 @@ export function OwnerConsole({
         name: walkInName.trim(),
         ...(isRestaurant && { partySize: walkInParty, note: walkInNote }),
       })
-      if (ok) {
+      if (ok && data.duplicate) {
+        // The same name, size and note went in under a minute ago: either a
+        // retry after a lost reply, or a different party with the same name.
+        // Keep the form filled so a second party is one edit away.
+        addToast(
+          `${walkInName.trim()}${isRestaurant ? ` (party of ${walkInParty})` : ""} was already added a moment ago. If this is a different ${isRestaurant ? "party" : "person"}, add a last initial and try again.`,
+          "info"
+        )
+      } else if (ok) {
         // Who's ahead is what the host quotes at the stand, not the raw #.
         // The server counts it, so another tablet's walk-ins aren't missed.
         const ahead: number = typeof data.ahead === "number" ? data.ahead : waiting.length
@@ -598,7 +606,7 @@ export function OwnerConsole({
       <ConfirmModal
         open={seatUncalledConfirm && !!upNext}
         title={isRestaurant ? "Seat without calling?" : "Mark as served?"}
-        message={`${isRestaurant ? "Seat" : "Mark"} ${upNext?.user.name || "this party"}${isRestaurant && upNext ? ` (party of ${upNext.partySize ?? 1})` : ""}${isRestaurant ? "" : " as served"}? They haven't been called yet.${heldPayments ? " Any swap payment of theirs on hold is collected now." : ""} This can't be undone.`}
+        message={`${isRestaurant ? "Seat" : "Mark"} ${upNext?.user.name || (isRestaurant ? "this party" : "this person")}${isRestaurant && upNext ? ` (party of ${upNext.partySize ?? 1})` : ""}${isRestaurant ? "" : " as served"}? They haven't been called yet.${heldPayments ? " Any swap payment of theirs on hold is collected now." : ""} This can't be undone.`}
         confirmLabel={markServedLabel}
         isLoading={busy === "serve"}
         onConfirm={() => {
@@ -610,7 +618,7 @@ export function OwnerConsole({
       <ConfirmModal
         open={!!noShowTarget}
         title="Mark as a no-show?"
-        message={`Remove ${noShowTarget?.user.name || "this party"}${isRestaurant && noShowTarget ? ` (party of ${noShowTarget.partySize ?? 1})` : ""} from the line as a no-show? Everyone behind them moves up.${heldPayments ? " Any swap payment of theirs on hold is collected." : ""}`}
+        message={`Remove ${noShowTarget?.user.name || (isRestaurant ? "this party" : "this person")}${isRestaurant && noShowTarget ? ` (party of ${noShowTarget.partySize ?? 1})` : ""} from the line as a no-show? Everyone behind them moves up.${heldPayments ? " Any swap payment of theirs on hold is collected." : ""}`}
         confirmLabel="No-show"
         variant="danger"
         isLoading={!!noShowTarget && busy?.startsWith("no-show") === true}
@@ -779,7 +787,7 @@ export function OwnerConsole({
                         <button
                           onClick={() => handleGiveMoreTime(upNext)}
                           disabled={!!busy}
-                          aria-label={`Give ${upNext.user.name || "this party"} 5 more minutes`}
+                          aria-label={`Give ${upNext.user.name || (isRestaurant ? "this party" : "this person")} 5 more minutes`}
                           className="inline-flex items-center min-h-11 px-2 -my-3 pointer-fine:min-h-0 pointer-fine:px-0 pointer-fine:my-0 font-mono uppercase tracking-widest text-accent hover:underline underline-offset-4 disabled:opacity-50"
                         >
                           +5 min
@@ -793,7 +801,7 @@ export function OwnerConsole({
                 <p className="text-xs text-ink/60">Limit {purchaseLimit} per person</p>
               )}
               {upNextLocked && (
-                <p className="text-xs text-amber-700">A swap for this spot is in progress. Calling them now cancels it (the buyer isn&apos;t charged) -- wait for it to finish before {isRestaurant ? "seating" : "serving"}.</p>
+                <p className="text-xs text-amber-700">A swap for this spot is in progress. {isRestaurant ? "Seating" : "Serving"} or calling them now cancels it (the buyer isn&apos;t charged).</p>
               )}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -803,7 +811,7 @@ export function OwnerConsole({
                     size="sm"
                     onClick={() => handleServe(canCallAfterNext)}
                     isLoading={busy === (canCallAfterNext ? "serve-next" : "serve")}
-                    disabled={!!busy || upNextLocked}
+                    disabled={!!busy}
                   >
                     {!canCallAfterNext
                       ? markServedLabel
@@ -817,7 +825,7 @@ export function OwnerConsole({
                       variant="ghost"
                       onClick={() => handleServe(false)}
                       isLoading={busy === "serve"}
-                      disabled={!!busy || upNextLocked}
+                      disabled={!!busy}
                     >
                       {markServedLabel}
                     </Button>
@@ -828,7 +836,7 @@ export function OwnerConsole({
                       variant="ghost"
                       onClick={() => setNoShowTarget(upNext)}
                       isLoading={busy === "no-show"}
-                      disabled={!!busy || upNextLocked}
+                      disabled={!!busy}
                     >
                       No-show
                     </Button>
@@ -846,7 +854,7 @@ export function OwnerConsole({
                     // A walk-in is already standing at the stand: no call to skip
                     onClick={() => (upNext.user.isWalkIn ? handleServe(false) : setSeatUncalledConfirm(true))}
                     isLoading={busy === "serve"}
-                    disabled={!!busy || upNextLocked}
+                    disabled={!!busy}
                   >
                     {markServedLabel}
                   </Button>
@@ -899,7 +907,7 @@ export function OwnerConsole({
                       variant="ghost"
                       onClick={() => handleSeatAlsoCalled(p)}
                       isLoading={busy === `seat-${p.id}`}
-                      disabled={!!busy || (!!p.lockedUntil && new Date(p.lockedUntil) > new Date())}
+                      disabled={!!busy}
                       aria-label={`${markServedLabel}: ${name}`}
                     >
                       {markServedLabel}

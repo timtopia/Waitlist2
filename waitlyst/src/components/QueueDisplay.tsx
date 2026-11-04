@@ -228,6 +228,10 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
   useEffect(() => {
     positionsRef.current = positions
   }, [positions])
+  const maxPriceRef = useRef(maxAskingPrice)
+  useEffect(() => {
+    maxPriceRef.current = maxAskingPrice
+  }, [maxAskingPrice])
 
   const fetchOffers = useCallback(async () => {
     if (!session?.user?.id) return
@@ -249,8 +253,10 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
             }
           }
         }
-        const nextSeen = new Map(seen ?? [])
-        for (const o of pending) nextSeen.set(o.id, Math.max(o.amount, nextSeen.get(o.id) ?? 0))
+        // Only offers still pending: a re-sent offer after a decline reuses the
+        // same row, and a stale amount made it silent (or "raised")
+        const nextSeen = new Map<string, number>()
+        for (const o of pending) nextSeen.set(o.id, Math.max(o.amount, seen?.get(o.id) ?? 0))
         seenOfferAmounts.current = nextSeen
 
         const sent = data.sent as SwapOffer[]
@@ -275,7 +281,9 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
               offerAlert(
                 was === "ACCEPTED"
                   ? `Your ${amount} swap was called off -- it wasn't paid in time or couldn't go through. You weren't charged.`
-                  : `Your ${amount} offer expired -- the spot ahead of you changed or no one answered in time.`,
+                  : maxPriceRef.current != null && o.amount > maxPriceRef.current
+                    ? `Your ${amount} offer was called off -- the organizer lowered the max price to ${formatCurrency(maxPriceRef.current)}. You can send a new one within it right away.`
+                    : `Your ${amount} offer expired -- the spot ahead of you changed or no one answered in time.`,
                 "info"
               )
             } else if (was === "ACCEPTED" && o.status === "PENDING") {
@@ -351,6 +359,21 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
   const positionInFront = currentUserPosition
     ? positions.find((p) => p.position === currentUserPosition.position - 1)
     : null
+
+  // Lowering the line's max takes down listings above it (settings route);
+  // the reseller's "Listed for $X" used to just vanish without a word
+  const myAsk = currentUserPosition?.askingPrice ?? null
+  const prevAsk = useRef(myAsk)
+  useEffect(() => {
+    const was = prevAsk.current
+    prevAsk.current = myAsk
+    if (was != null && myAsk == null && maxAskingPrice != null && was > maxAskingPrice) {
+      addToast(
+        `The organizer lowered the max price to ${formatCurrency(maxAskingPrice)}, so your ${formatCurrency(was)} listing was taken down. You can list again at or under the new max.`,
+        "info"
+      )
+    }
+  }, [myAsk, maxAskingPrice, addToast])
 
   // A buy they started but never finished (closed the Stripe tab, pressed
   // Back) keeps both spots locked; let them pick it up again or call it off.
@@ -761,7 +784,9 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
       if (res.ok) {
         onLeft?.()
         addToast("You left the line", "info")
-        onRefresh()
+        // Their row (and the Leave button focus sat on) is about to vanish:
+        // park focus on the list so keyboard and screen readers keep their place
+        void Promise.resolve(onRefresh()).then(focusListSoon)
       } else {
         const data = await res.json().catch(() => ({}))
         // A retry after a dropped reply (the first tap did go through), or
@@ -769,7 +794,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
         if (res.status === 400 && data.error === "You are not in this line") {
           onLeft?.()
           addToast("You're no longer in this line", "info")
-          onRefresh()
+          void Promise.resolve(onRefresh()).then(focusListSoon)
           return
         }
         addToast(data.error || "Couldn't leave the line. Please try again.", "error")
@@ -946,7 +971,8 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
     }
   }
 
-  async function handleNote(note: string, positionId?: string) {
+  /** Resolves whether it saved, so the field can let the same text be retried */
+  async function handleNote(note: string, positionId?: string): Promise<boolean> {
     setLoadingAction(positionId ? `note-${positionId}` : "note")
     try {
       const res = await fetch(`/api/lines/${lineId}/party`, {
@@ -957,13 +983,16 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
       if (res.ok) {
         addToast(note.trim() ? "Note saved" : "Note removed", "success")
         await onRefresh()
+        return true
       } else {
         const data = await res.json().catch(() => ({}))
         addToast(data.error || "Failed to save the note", "error")
         if (res.status === 400 || res.status === 404) await onRefresh()
+        return false
       }
     } catch {
       addToast(NO_CONNECTION, "error")
+      return false
     } finally {
       setLoadingAction(null)
     }
@@ -1155,9 +1184,17 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                       return `${n} sale${n === 1 ? "" : "s"}`
                     })()})</span>
                   </p>
-                  {(removalModal.transactionInfo.totalRefundedToBuyer > 0 || removalModal.transactionInfo.totalRefundedAsSeller > 0) && (
+                  {/* Two different kinds of money: what went back to this person, and
+                      their own sales that went back to other buyers (never theirs).
+                      Released card holds count too -- they were never charged. */}
+                  {removalModal.transactionInfo.totalRefundedToBuyer > 0 && (
                     <p className="text-sm text-amber-700">
-                      <span className="font-medium">Already Refunded:</span> {formatCurrency(removalModal.transactionInfo.totalRefundedToBuyer + removalModal.transactionInfo.totalRefundedAsSeller)}
+                      <span className="font-medium">Refunded or released to them:</span> {formatCurrency(removalModal.transactionInfo.totalRefundedToBuyer)}
+                    </p>
+                  )}
+                  {removalModal.transactionInfo.totalRefundedAsSeller > 0 && (
+                    <p className="text-sm text-amber-700">
+                      <span className="font-medium">Their sales reversed:</span> {formatCurrency(removalModal.transactionInfo.totalRefundedAsSeller)}
                     </p>
                   )}
                   <p className="text-sm font-medium text-ink mt-1 pt-1 border-t border-rule">
@@ -1179,7 +1216,10 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                       ))}
                     </ul>
                     <p className="text-xs text-amber-700 mt-2">
-                      These buyers keep the places they bought; removing this person doesn&apos;t change that. To refund one of them, use the Settlement page.
+                      These buyers keep the places they bought; removing this person doesn&apos;t change that.
+                      {isRestaurant
+                        ? " To refund one of them, remove that buyer and choose the refund option."
+                        : " Their purchases are final and were already collected."}
                     </p>
                   </div>
                 )}
@@ -1453,7 +1493,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
       )}
 
       {positions.length === 0 ? (
-        <p className="text-center text-ink/60 py-8">
+        <p className="text-center text-ink/60 py-8" tabIndex={-1} data-dialog-fallback>
           {isCreator
             ? isPaused
               ? "No one in line, and the line is paused. Resume it so people can join online."
@@ -1732,6 +1772,10 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                                 <option key={n} value={n}>{n}</option>
                               ))}
                             </select>
+                            {/* The list stops where the line's room runs out; say why */}
+                            {isCurrentUser && roomLeft != null && (pos.partySize ?? 1) + roomLeft < MAX_PARTY_SIZE && (
+                              <span>{roomLeft === 0 ? "Line's full. Bigger party? Ask the host." : "Bigger party? Ask the host."}</span>
+                            )}
                           </label>
                         ) : (
                           <p className="text-xs text-ink/60 mt-0.5">
@@ -1836,10 +1880,10 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                             if (isRestaurant && (pos.calledAt || pos.user.isWalkIn)) handleFulfill(pos.id, name)
                             else setFulfillConfirm({ positionId: pos.id, name })
                           }}
-                          // A swap in progress can't be seated until it settles (the server refuses too)
-                          disabled={loadingAction === `fulfill-${pos.id}` || !!isLocked}
+                          // A swap in progress is called off by seating (the buyer isn't charged)
+                          disabled={loadingAction === `fulfill-${pos.id}`}
                           className="inline-flex items-center gap-1.5 px-3 py-2 min-h-11 pointer-fine:min-h-[2.25rem] font-mono text-xs uppercase tracking-widest text-green-700 border border-rule hover:border-green-700 transition-colors disabled:opacity-50"
-                          title={isLocked ? "A swap for this spot is in progress -- wait for it to finish" : isRestaurant ? "Mark as seated" : "Mark as fulfilled"}
+                          title={isLocked ? `A swap for this spot is in progress -- ${isRestaurant ? "seating" : "serving"} cancels it` : isRestaurant ? "Mark as seated" : "Mark as fulfilled"}
                           aria-label={`${isRestaurant ? "Mark seated:" : "Fulfill"} ${pos.user.name || (isRestaurant ? "this party" : "this person")}`}
                         >
                           {loadingAction === `fulfill-${pos.id}` && (
@@ -2054,6 +2098,17 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                             {feeInfo && <>; buyer pays {formatCurrency(buyerTotal(parseFloat(listPriceAmount)))} incl. fees</>}.
                           </p>
                         )}
+                        {/* Checkout only sells to the next spot back: a seller with no one
+                            there (or a walk-in, who can't pay) waited for a buyer who can't exist */}
+                        {(() => {
+                          const behind = positions.find((p) => p.position === pos.position + 1)
+                          return (
+                            <p className="w-full text-xs text-ink/60">
+                              Only the person directly behind you can buy it.
+                              {(!behind || behind.user.isWalkIn) && " No one who can buy is behind you right now."}
+                            </p>
+                          )
+                        })()}
                       </div>
                     ) : (
                       <button
@@ -2187,15 +2242,21 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                           Offer sent: {formatCurrency(sentOfferToFront.amount)} (you&apos;d pay {formatCurrency(buyerTotal(sentOfferToFront.amount))} incl. fees) -- waiting for response
                           {sentOfferToFront.expiresAt && ` (expires in ${formatTimeLeft(sentOfferToFront.expiresAt)})`}
                         </p>
-                        <button
-                          onClick={() => {
-                            setOfferAmount(sentOfferToFront.amount.toFixed(2))
-                            setOfferFormOpen(pos.user.id)
-                          }}
-                          className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"
-                        >
-                          Raise
-                        </button>
+                        {maxAskingPrice != null && sentOfferToFront.amount >= maxAskingPrice ? (
+                          // Every higher amount is over the line's max: Raise was a dead end
+                          <span className="text-xs text-ink/60">That&apos;s the line&apos;s max.</span>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              // Start a dollar up: the current amount itself is refused as "not a raise"
+                              setOfferAmount(Math.min(sentOfferToFront.amount + 1, maxAskingPrice ?? Infinity).toFixed(2))
+                              setOfferFormOpen(pos.user.id)
+                            }}
+                            className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"
+                          >
+                            Raise
+                          </button>
+                        )}
                         <button
                           onClick={() => setWithdrawConfirm({ offerId: sentOfferToFront.id, accepted: false })}
                           disabled={loadingAction === `withdraw-${sentOfferToFront.id}`}
@@ -2365,7 +2426,7 @@ function NoteField({
   initial: string
   label: string
   saving: boolean
-  onSave: (note: string) => void
+  onSave: (note: string) => Promise<boolean>
 }) {
   const [value, setValue] = useState(initial)
   const [focused, setFocused] = useState(false)
@@ -2381,7 +2442,8 @@ function NoteField({
   const save = () => {
     if (dirty && value !== lastSaved.current) {
       lastSaved.current = value
-      onSave(value)
+      // A save lost to a weak signal must not block tapping Save again
+      void onSave(value).then((ok) => { if (!ok && lastSaved.current === value) lastSaved.current = null })
     }
   }
   // Locking the phone or switching apps often skips blur; save the draft then too

@@ -66,7 +66,7 @@ export function AnimatedStat({ value, label }: { value: number; label: string })
       <div aria-hidden="true" className="font-mono text-4xl sm:text-5xl tabular-nums tracking-tight">
         {display.toLocaleString()}
       </div>
-      <div aria-hidden="true" className="font-mono text-xs uppercase tracking-[0.2em] text-ink/60 mt-2">{label}</div>
+      <div aria-hidden="true" className="font-mono text-xs uppercase tracking-[0.2em] text-ink/70 mt-2">{label}</div>
     </div>
   )
 }

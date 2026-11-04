@@ -134,10 +134,22 @@ export async function GET(
       ? line.nowServingUserId
       : servingPosition ? `anon-${servingPosition.id}` : null
 
+    // Why the viewer's last visit ended. A seated party whose row the host
+    // then cleared looked, to a phone that slept through it, exactly like a
+    // called no-show: "you didn't show up" right after being seated.
+    const lastVisit = viewer === "public" && viewerId
+      ? await prisma.queueVisit.findFirst({
+          where: { lineId, userId: viewerId },
+          orderBy: { exitedAt: "desc" },
+          select: { outcome: true },
+        })
+      : null
+
     return NextResponse.json({
       ...line,
       nowServingUserId,
       positions,
+      myLastOutcome: lastVisit?.outcome ?? null,
       ...capacity,
       platformFeePercent: getPlatformFeePercent(),
       emailEnabled: emailEnabled(),

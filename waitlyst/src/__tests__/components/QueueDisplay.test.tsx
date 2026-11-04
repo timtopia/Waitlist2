@@ -1086,7 +1086,7 @@ describe("QueueDisplay", () => {
       expect(screen.queryByText(/held for you for/)).not.toBeInTheDocument()
     })
 
-    it("prefills a raise and rejects one that isn't higher", async () => {
+    it("prefills a raise a dollar up and rejects one that isn't higher", async () => {
       asUser("user-2")
       const addToast = withToast()
       mockOffers([pendingOffer(20)].map((o) => ({ ...o, fromUserId: "user-2", toUserId: "user-1" })))
@@ -1094,9 +1094,11 @@ describe("QueueDisplay", () => {
 
       fireEvent.click(await screen.findByText("Raise"))
       const input = screen.getByPlaceholderText("0.00") as HTMLInputElement
-      expect(input.value).toBe("20.00")
+      expect(input.value).toBe("21.00")
       expect(input.min).toBe("20.01")
       expect(screen.getByText("Current offer: $20.00")).toBeInTheDocument()
+
+      fireEvent.change(input, { target: { value: "20" } })
 
       fireEvent.click(screen.getByText("Raise Offer"))
       expect(addToast).toHaveBeenCalledWith("Raise above your current $20.00", "error")

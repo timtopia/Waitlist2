@@ -53,21 +53,21 @@ describe("email templates", () => {
   it("puts the call and its deadline in the subject, for lock-screen previews", async () => {
     const { positionCalledEmail } = await import("@/lib/email-templates")
     expect(positionCalledEmail("Ann", "Dinner", "u", { isRestaurant: true, windowMinutes: 10 }).subject)
-      .toBe("Your table is ready at Dinner -- arrive within 10 min")
+      .toBe("Your table is ready at Dinner: arrive within 10 min")
     expect(positionCalledEmail("Ann", "Drop", "u").subject).toBe("You're up in Drop")
   })
 
   it("marks a second call as a reminder whose window restarts, so it doesn't read as a duplicate", async () => {
     const { positionCalledEmail } = await import("@/lib/email-templates")
     const { subject, html } = positionCalledEmail("Ann", "Dinner", "u", { isRestaurant: true, windowMinutes: 10, recall: true })
-    expect(subject).toBe("Reminder: Your table is ready at Dinner -- arrive within 10 min")
+    expect(subject).toBe("Reminder: Your table is ready at Dinner: arrive within 10 min")
     expect(html).toContain("called you again, so your 10 minutes start now")
   })
 
   it("tells an offerer whose offer was accepted what to pay and by when", async () => {
     const { swapAcceptedEmail } = await import("@/lib/email-templates")
     const owes = swapAcceptedEmail("Ben", "Drop", "u", { payWithinMinutes: 30, amount: 55 })
-    expect(owes.subject).toBe("Offer accepted in Drop -- pay within 30 min to swap")
+    expect(owes.subject).toBe("Offer accepted in Drop: pay within 30 min to swap")
     expect(owes.html).toContain("<strong>$55.00</strong> within <strong>30 minutes</strong>")
     // Without a payment step (dev mode) the swap already happened
     const done = swapAcceptedEmail("Ben", "Drop", "u")

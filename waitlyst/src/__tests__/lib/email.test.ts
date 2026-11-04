@@ -73,7 +73,7 @@ describe("removedFromLineEmail", () => {
     expect(closed.html).not.toContain("mistake")
 
     const removed = removedFromLineEmail("Ann", "Joe's", false, "http://x", "removed", false, true)
-    expect(removed.html).toContain("contact the host")
+    expect(removed.html).toContain("talk to the host")
     expect(removed.html).not.toContain("organizer")
   })
 })

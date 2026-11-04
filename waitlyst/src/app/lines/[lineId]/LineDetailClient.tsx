@@ -63,6 +63,8 @@ interface Line {
   capacityUsed: number
   /** Notification emails are set up on the server */
   emailEnabled: boolean
+  /** How the viewer's last visit to this line ended (sent once they're out of it) */
+  myLastOutcome?: string | null
   ownerFeePercent: number
   platformFeePercent: number
   announcement: string | null
@@ -441,6 +443,12 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       if (change.kind === "removed" && leftHereRef.current) {
         leftHereRef.current = false
         continue
+      }
+      // Seated, then cleared while this tab slept: not a missed call
+      if (change.kind === "removed" && next.myLastOutcome === "SERVED") {
+        change.wasServed = true
+        change.wasCalled = false
+        delete change.closed
       }
       if (change.kind === "removed") {
         const was = prev.positions.find((p) => p.user.id === session?.user?.id)
@@ -872,7 +880,11 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       <div className="max-w-4xl mx-auto px-4 py-8">
         <Card>
           <CardContent className="py-12 text-center">
-            <p className="text-ink/60">{error || "Line not found"}</p>
+            {/* A heading for heading navigation, announced when the line
+                disappears mid-visit (deleted while someone was watching) */}
+            <div role="alert">
+              <h1 className="text-lg font-semibold tracking-tight text-ink">{error || "Line not found"}</h1>
+            </div>
             <div className="mt-4 flex items-center justify-center gap-2">
               {canRetry && (
                 <Button size="sm" onClick={retryLoad}>
@@ -979,6 +991,10 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                 <span className="text-xs text-ink/60">
                   Room for {maxPartySize} more guest{maxPartySize === 1 ? "" : "s"}. Bigger party? Ask the host.
                 </span>
+              )}
+              {/* The list stops at the app-wide max: a party of 24 picking 20 should know why */}
+              {canJoin && !joinFormHidden && isRestaurant && maxPartySize === MAX_PARTY_SIZE && joinPartySize === MAX_PARTY_SIZE && (
+                <span className="text-xs text-ink/60">More than {MAX_PARTY_SIZE}? Ask the host.</span>
               )}
               {canJoin && !joinFormHidden && line.kind === "RESTAURANT" && (
                 <input

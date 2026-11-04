@@ -45,7 +45,7 @@ describe("GET /api/activity", () => {
     expect(exits.map((a: { type: string; description: string }) => [a.type, a.description])).toEqual([
       ["removed", `Skipped in "Line a" after not showing up in time`],
       ["served", `Seated at "Line b"`],
-      ["removed", `Removed from "Line c" by the organizer`],
+      ["removed", `No longer in "Line c" (removed, or the line closed)`],
     ])
     // The join is kept too, though the position itself is gone
     expect(data.some((a: { id: string }) => a.id === "join-visit-a")).toBe(true)

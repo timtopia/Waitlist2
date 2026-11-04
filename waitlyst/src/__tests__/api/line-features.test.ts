@@ -38,6 +38,7 @@ vi.mock("@/auth", () => ({
 
 // Mock fees
 vi.mock("@/lib/fees", () => ({
+  feeBreakdown: vi.fn(() => ""),
   getPlatformFeePercent: vi.fn(() => 10),
   calculateFees: vi.fn((askingPrice: number, ownerFeePercent: number) => ({
     askingPrice,
