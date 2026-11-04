@@ -220,7 +220,9 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
   const { sendNotification } = useNotifications()
   /** Offers expire and payment windows close: reach people in other tabs too */
   const offerAlert = useCallback((message: string, type: "info" | "success" | "warning") => {
-    sendNotification("Swap update", { body: message, tag: `waitlyst-${lineId}-offer` })
+    // Tagged by message, not just the line: someone both buying the spot ahead
+    // and selling to the person behind kept only the last of two alerts
+    sendNotification("Swap update", { body: message, tag: `waitlyst-${lineId}-offer-${message}` })
     if (document.visibilityState === "visible") addToast(message, type)
   }, [sendNotification, addToast, lineId])
   // Read by the offer watcher without re-creating it on every poll
@@ -298,6 +300,16 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
         const prevReceived = prevReceivedStatuses.current
         if (prevReceived) {
           for (const o of received) {
+            // An offer that vanished before they answered it: say why, so the
+            // card going away isn't a mystery (or an Accept that then fails)
+            if (prevReceived.get(o.id) === "PENDING") {
+              if (o.status === "WITHDRAWN") {
+                offerAlert(`They withdrew their ${formatCurrency(o.amount)} offer for your spot.`, "info")
+              } else if (o.status === "EXPIRED") {
+                offerAlert(`The ${formatCurrency(o.amount)} offer for your spot expired or no longer applies.`, "info")
+              }
+              continue
+            }
             if (prevReceived.get(o.id) !== "ACCEPTED") continue
             if (o.status === "PENDING" || o.status === "EXPIRED") {
               // Lapsed payment, a call, or an organizer cancel all land here: say
@@ -1034,7 +1046,9 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
         const payoutMsg = n > 0
           ? isRestaurant
             ? ` (${n} held payment${n === 1 ? "" : "s"} collected)`
-            : ` (${n} payout${n === 1 ? "" : "s"} released)`
+            // Collected, not necessarily paid out: a payee with no payout
+            // account has their share held
+            : ` (${n} payment${n === 1 ? "" : "s"} collected)`
           : ""
         const who = name && !name.startsWith("this ") ? name : isRestaurant ? "Party" : "Person"
         addToast(`${who} ${isRestaurant ? "seated" : "marked as served"}${payoutMsg}`, "success")
@@ -1320,7 +1334,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                 )}
                 {breakdown.platformFee > 0 && (
                   <div className="flex justify-between px-3 py-1.5">
-                    <dt className="text-ink/60">Platform fee</dt>
+                    <dt className="text-ink/60">Waitlyst fee</dt>
                     <dd className="font-mono tabular-nums">{formatCurrency(breakdown.platformFee)}</dd>
                   </div>
                 )}
@@ -1349,7 +1363,15 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
         message={fulfillConfirm
           ? isRestaurant
             ? `Seat ${fulfillConfirm.name}?${allowResale ? " Any swap payment of theirs on hold is collected now." : ""} This can't be undone.`
-            : `Mark ${fulfillConfirm.name} as served?${emailEnabled ? ` They'll get a "you've been served" email.` : ""} This can't be undone.`
+            : `Mark ${fulfillConfirm.name} as served?${emailEnabled ? ` They'll get a "you've been served" email.` : ""}${
+                // Phones never show the button's hover title: say it here
+                (() => {
+                  const lockedUntil = positions.find((p) => p.id === fulfillConfirm.positionId)?.lockedUntil
+                  return lockedUntil && new Date(lockedUntil) > new Date()
+                    ? " Someone is paying for a swap with this spot right now -- serving them cancels it (the buyer isn't charged)."
+                    : ""
+                })()
+              } This can't be undone.`
           : ""}
         confirmLabel={isRestaurant ? "Seated" : "Served"}
         isLoading={!!fulfillConfirm && loadingAction === `fulfill-${fulfillConfirm.positionId}`}
@@ -1396,7 +1418,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
         open={!!withdrawConfirm}
         title={withdrawConfirm?.accepted ? "Back out of this swap?" : "Withdraw your offer?"}
         message={withdrawConfirm?.accepted
-          ? "They already accepted, so backing out releases both spots and counts as a cancelled payment -- several of those and you can't buy or make offers here for a while. You won't be charged."
+          ? `They already accepted, so backing out releases both spots and counts as a cancelled payment -- several of those and you can't buy or make offers here for a while. You won't be able to send them another offer for ${Math.round(OFFER_COOLDOWN_MS / 60_000)} minutes. You won't be charged.`
           : `You won't be able to send them another offer for ${Math.round(OFFER_COOLDOWN_MS / 60_000)} minutes.`}
         confirmLabel={withdrawConfirm?.accepted ? "Back Out" : "Withdraw"}
         variant="danger"
@@ -1565,13 +1587,14 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                 autoComplete="off"
                 className="w-full border border-rule bg-white px-3 py-2 text-base sm:text-sm text-ink placeholder:text-ink/60 focus:border-ink focus:outline-none"
               />
-              {filterText && (
-                <p className="mt-1 text-xs text-ink/60" aria-live="polite">
-                  {visiblePositions.length === 0
+              {/* Always mounted: a live region that appears with its text isn't announced */}
+              <p className={`text-xs text-ink/60 ${filterText ? "mt-1" : ""}`} aria-live="polite">
+                {filterText
+                  ? visiblePositions.length === 0
                     ? `No one matches "${nameFilter.trim()}".`
-                    : `Showing ${visiblePositions.length} of ${positions.length}.`}
-                </p>
-              )}
+                    : `Showing ${visiblePositions.length} of ${positions.length}.`
+                  : ""}
+              </p>
             </div>
           )}
 
@@ -1926,9 +1949,20 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                         </p>
                       )}
                       {isPaused ? (
-                        <p className="text-xs text-ink/60 mt-2">
-                          Swaps are paused. You can answer this when the line resumes.
-                        </p>
+                        // Accepting waits for the line to resume; turning it down doesn't
+                        <div className="mt-2 flex items-center gap-3 flex-wrap">
+                          <p className="text-xs text-ink/60">
+                            Swaps are paused. You can accept this when the line resumes.
+                          </p>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleRespondToOffer(offer, "decline")}
+                            isLoading={loadingAction === `offer-${offer.id}-decline`}
+                          >
+                            Decline
+                          </Button>
+                        </div>
                       ) : isLocked ? (
                         <p className="text-xs text-ink/60 mt-2">
                           {payingForOffer || myCheckout?.pending
@@ -2159,7 +2193,8 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                       : `They've been called up, so their spot can't be bought or offered on.`}
                   </p>
                 )}
-                {isDirectlyInFront && !isCurrentUser && allowResale && (!isPaused || payingForOffer) && !selectMode && !pos.user.isWalkIn &&
+                {/* A pending offer stays live while paused: keep it (and Withdraw) in view */}
+                {isDirectlyInFront && !isCurrentUser && allowResale && (!isPaused || payingForOffer || sentOfferToFront?.status === "PENDING") && !selectMode && !pos.user.isWalkIn &&
                   !offMarket(pos) && !(currentUserPosition && offMarket(currentUserPosition)) && (
                   <div className="mt-3 space-y-2">
                     {pos.askingPrice != null && !isLocked && !myLockActive && !isPaused && (
@@ -2242,7 +2277,10 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                           Offer sent: {formatCurrency(sentOfferToFront.amount)} (you&apos;d pay {formatCurrency(buyerTotal(sentOfferToFront.amount))} incl. fees) -- waiting for response
                           {sentOfferToFront.expiresAt && ` (expires in ${formatTimeLeft(sentOfferToFront.expiresAt)})`}
                         </p>
-                        {maxAskingPrice != null && sentOfferToFront.amount >= maxAskingPrice ? (
+                        {isPaused ? (
+                          // Offers can't be raised while paused
+                          <span className="text-xs text-ink/60">Line paused.</span>
+                        ) : maxAskingPrice != null && sentOfferToFront.amount >= maxAskingPrice ? (
                           // Every higher amount is over the line's max: Raise was a dead end
                           <span className="text-xs text-ink/60">That&apos;s the line&apos;s max.</span>
                         ) : (

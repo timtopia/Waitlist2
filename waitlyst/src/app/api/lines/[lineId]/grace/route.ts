@@ -32,7 +32,12 @@ export async function POST(
   }
   if (position.graceMinutes + GRACE_STEP_MINUTES > MAX_GRACE_MINUTES) {
     return NextResponse.json(
-      { error: `They've already had ${position.graceMinutes} extra minutes. Use Call again on their row in the list to restart their time.` },
+      {
+        // Only restaurant lists have a per-row Call again
+        error: result.line.kind === "RESTAURANT"
+          ? `They've already had ${position.graceMinutes} extra minutes. Use Call again on their row in the list to restart their time.`
+          : `They've already had ${position.graceMinutes} extra minutes, the most allowed. Mark them served, or as a no-show if they aren't coming.`,
+      },
       { status: 400 }
     )
   }

@@ -81,7 +81,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         </svg>
         <span className="flex-1 min-w-0 break-words">{toast.message}</span>
         <button
-          onClick={() => removeToast(toast.id)}
+          onClick={() => {
+            // The button is about to disappear: don't drop focus to the page body
+            document.getElementById("main-content")?.focus({ preventScroll: true })
+            removeToast(toast.id)
+          }}
           className="flex-shrink-0 p-2.5 -my-2.5 -mr-2.5 ml-0 inline-flex items-center justify-center text-white/80 hover:text-white focus-visible:outline-white"
           aria-label="Dismiss"
         >

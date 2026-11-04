@@ -131,6 +131,9 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   // Set when the viewer leaves from this tab, so the next poll isn't
   // reported as "you're no longer in line".
   const leftHereRef = useRef(false)
+  // The viewer's own email setting: the card mustn't promise emails to
+  // someone who turned them off in Profile
+  const [userEmailNotifications, setUserEmailNotifications] = useState(true)
   // Back from the Google sign-in page (back/forward cache) shouldn't leave
   // Join or Remind me spinning
   useEffect(() => {
@@ -144,6 +147,21 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const [deleting, setDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showAnnouncementEditor, setShowAnnouncementEditor] = useState(false)
+  // Cancel/Save unmount the button that had focus: hand it back to the
+  // pencil (or the page) instead of dropping it to the top of the document
+  const announcementEditorWasOpen = useRef(false)
+  useEffect(() => {
+    if (showAnnouncementEditor) {
+      announcementEditorWasOpen.current = true
+      return
+    }
+    if (!announcementEditorWasOpen.current) return
+    announcementEditorWasOpen.current = false
+    requestAnimationFrame(() => {
+      if (document.activeElement && document.activeElement !== document.body) return
+      ;(document.getElementById("edit-announcement") ?? document.getElementById("main-content"))?.focus()
+    })
+  }, [showAnnouncementEditor])
   const [announcementDraft, setAnnouncementDraft] = useState("")
   const [savingAnnouncement, setSavingAnnouncement] = useState(false)
   const [duplicating, setDuplicating] = useState(false)
@@ -187,7 +205,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       addToast("Payment was cancelled. No charges were made. Cancelling several purchases within a few hours pauses buying here for a while.", "info")
       router.replace(`/lines/${lineId}`, { scroll: false })
     } else if (paymentStatus === "offer_withdrawn") {
-      addToast("Payment was cancelled and your offer withdrawn. No charges were made. Cancelling several purchases within a few hours pauses buying here for a while.", "info")
+      addToast("Payment was cancelled and your offer withdrawn. No charges were made. You can send them a new offer in 10 minutes. Cancelling several purchases within a few hours pauses buying here for a while.", "info")
       router.replace(`/lines/${lineId}`, { scroll: false })
     } else if (paymentStatus === "error") {
       const reason = searchParams.get("reason")
@@ -265,6 +283,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
           const data = await res.json()
           setHasPayoutSetup(!!data.stripeConnectOnboarded)
           setStripeEnabled(!!data.stripeEnabled)
+          setUserEmailNotifications(data.emailNotifications !== false)
         }
       } catch {
         // Non-critical — default to false
@@ -437,7 +456,12 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
 
     // Back in the line (rejoined): a later removal must be announced, not
     // swallowed as the leave from this tab
-    if (getMemberStatus(next, session?.user?.id)) leftHereRef.current = false
+    // An old "you're no longer in line" card is stale once they're back, and
+    // mustn't reappear if they later leave on purpose
+    if (getMemberStatus(next, session?.user?.id)) {
+      leftHereRef.current = false
+      setDeparture(null)
+    }
 
     for (const change of diffMemberStatus(prev, next, session?.user?.id)) {
       if (change.kind === "removed" && leftHereRef.current) {
@@ -626,6 +650,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         // picker on the default notices before the host plans a table for 2
         addToast(line?.kind === "RESTAURANT" ? `You're in line as a party of ${size}` : "You're in line!", "success")
         setJoinNote("")
+        setDeparture(null)
         // The Join button they were on is gone: move focus to the new
         // "Your place" headline instead of dropping it to the top of the page
         void Promise.resolve(refreshAll()).then(() =>
@@ -949,7 +974,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                   className="inline-flex items-center font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4 transition-colors"
                 >
                   View Product
-                  <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <span className="sr-only"> (opens in a new tab)</span>
+                  <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
                   </svg>
                 </a>
@@ -974,6 +1000,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                 <label className="flex items-center gap-2 text-sm text-ink/60">
                   <span className="whitespace-nowrap">Party of</span>
                   <select
+                    id="join-party-size"
                     value={joinPartySize}
                     onChange={(e) => {
                       setPartySize(Number(e.target.value))
@@ -1170,7 +1197,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                   {line.platformFeePercent > 0 && <> + a {line.platformFeePercent}% Waitlyst fee</>}.{" "}
                   {isRestaurant
                     ? "Your card is held until you're seated. If you leave, or don't show up in time when you're called, it's charged anyway -- the guest you bought from gave up their place. The host can release it if they remove you."
-                    : "Swaps are final and paid out to the seller right away."}
+                    : "Swaps are final. Sellers are paid as soon as they've connected a payout account."}
                 </>
               ) : (
                 "Spots on this line can't be bought or swapped."
@@ -1248,6 +1275,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                     setAnnouncementDraft(line.announcement || "")
                     setShowAnnouncementEditor(true)
                   }}
+                  id="edit-announcement"
                   className="text-ink/60 hover:text-ink flex-shrink-0 p-2.5 -m-2.5"
                   title="Edit announcement"
                   aria-label="Edit announcement"
@@ -1365,7 +1393,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       {memberStatus && userPosition && (
         <MemberStatusCard
           status={memberStatus}
-          emailEnabled={line.emailEnabled}
+          emailEnabled={line.emailEnabled && userEmailNotifications}
           maxCapacity={isRestaurant ? null : line.maxCapacity}
           isRestaurant={isRestaurant}
           allowResale={line.allowResale}
@@ -1418,14 +1446,22 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                   className="mt-3"
                   onClick={() => {
                     if (!isRestaurant) return handleJoin()
-                    // Come back as the same party, not the default of 2
-                    if (departure.partySize > maxPartySize) return partyNoLongerFits(departure.partySize)
+                    // Too big for the room left: point at the picker instead of
+                    // offering the same refused size on every tap
+                    if (departure.partySize > maxPartySize) {
+                      partyNoLongerFits(departure.partySize)
+                      document.getElementById("join-party-size")?.focus()
+                      return
+                    }
+                    // Come back as the same party, not the default of 2.
                     // Keep "high chair" / "wheelchair access" for the host
-                    return handleJoin(Math.min(departure.partySize, maxPartySize), departure.note ?? "")
+                    return handleJoin(departure.partySize, departure.note ?? "")
                   }}
                   isLoading={joining}
                 >
-                  Rejoin at the back{isRestaurant && ` (party of ${departure.partySize})`}
+                  {isRestaurant && departure.partySize > maxPartySize
+                    ? `Room for ${maxPartySize} now -- choose party size`
+                    : <>Rejoin at the back{isRestaurant && ` (party of ${departure.partySize})`}</>}
                 </Button>
               )}
               {/* No button and no reason was a dead end */}
@@ -1440,11 +1476,15 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
               )}
             </div>
             <button
-              onClick={() => setDeparture(null)}
+              onClick={() => {
+                // The button they were on goes away: land on the list, not the page body
+                document.querySelector<HTMLElement>("[data-dialog-fallback]")?.focus()
+                setDeparture(null)
+              }}
               className="text-ink/60 hover:text-ink flex-shrink-0 p-2.5 -m-2.5 inline-flex items-center justify-center"
               aria-label="Dismiss"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -1510,6 +1550,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             emailEnabled={line.emailEnabled}
             onLeft={() => {
               leftHereRef.current = true
+              setDeparture(null)
               // Joining again from this tab keeps the same party and note, not the default of 2
               if (userPosition?.partySize) setPartySize(userPosition.partySize)
               setJoinNote(userPosition?.note ?? "")

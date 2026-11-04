@@ -166,7 +166,8 @@ export function AnalyticsClient({
         return {
           label: size === 8 ? "8+" : String(size),
           value: m,
-          display: `${m} min typical (${w.length} ${w.length === 1 ? "party" : "parties"})`,
+          // Same format as the "Typical wait" stat above ("1 hr 59 min")
+          display: `${formatWaited(m)} typical (${w.length} ${w.length === 1 ? "party" : "parties"})`,
         }
       })
 

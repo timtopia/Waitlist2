@@ -24,6 +24,17 @@ import { tradeBlocker, MAX_ABANDONED_CHECKOUTS, ABANDON_WINDOW_MS } from "@/lib/
 const LOCK_DURATION_MS = 31 * 60 * 1000
 const offerRespondLimiter = rateLimit({ interval: 60000, limit: 10 })
 
+/** Why an offer can't be acted on, in words a person would use */
+function offerStatusError(status: string): string {
+  switch (status) {
+    case "EXPIRED": return "This offer expired or no longer applies (the line moved)."
+    case "WITHDRAWN": return "They withdrew this offer."
+    case "DECLINED": return "This offer was already declined."
+    case "ACCEPTED": return "This offer was already accepted."
+    default: return "This offer can't be changed any more."
+  }
+}
+
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ lineId: string; offerId: string }> }
@@ -74,7 +85,7 @@ export async function PATCH(
 
     if (offer.status !== "PENDING") {
       return NextResponse.json(
-        { error: `Offer has already been ${offer.status.toLowerCase()}` },
+        { error: offerStatusError(offer.status) },
         { status: 400 }
       )
     }
@@ -504,7 +515,7 @@ export async function DELETE(
       }
     } else if (offer.status !== "PENDING") {
       return NextResponse.json(
-        { error: `This offer was already ${offer.status.toLowerCase()}` },
+        { error: offerStatusError(offer.status) },
         { status: 400 }
       )
     }

@@ -27,7 +27,7 @@ export async function POST(
       calledAt: true,
       respondedAt: true,
       graceMinutes: true,
-      line: { select: { responseWindowMinutes: true, isActive: true } },
+      line: { select: { responseWindowMinutes: true, isActive: true, pausedAt: true } },
     },
   })
   if (!position) {
@@ -37,11 +37,15 @@ export async function POST(
   // Too late to answer once the time to show up has run out; the next
   // sweep skips them, and a reply mustn't win their place back.
   const now = new Date()
-  const { responseWindowMinutes, isActive } = position.line
+  const { responseWindowMinutes, isActive, pausedAt } = position.line
+  // A pause freezes the clock where it stood: someone whose time had already
+  // run out before the pause (the sweep just hadn't run) can't answer then
+  // and have resume hand them a fresh window.
+  const clock = !isActive && pausedAt ? pausedAt : isActive ? now : null
   if (
     responseWindowMinutes &&
-    isActive &&
-    responseDeadline(position.calledAt!, responseWindowMinutes, position.respondedAt, position.graceMinutes ?? 0) <= now
+    clock &&
+    responseDeadline(position.calledAt!, responseWindowMinutes, position.respondedAt, position.graceMinutes ?? 0) <= clock
   ) {
     return NextResponse.json({ error: "Your time to show up has run out" }, { status: 409 })
   }
@@ -69,6 +73,9 @@ export async function POST(
   const extended = body.response === "ON_MY_WAY" && !position.respondedAt && !!responseWindowMinutes
   // The window restarts from this tap, so it adds only as long as they took
   // to answer: tapping straight from the email adds seconds, not minutes
-  const extendedMinutes = extended ? Math.floor((now.getTime() - position.calledAt!.getTime()) / 60_000) : 0
+  // While paused, resume moves the tap back to the pause: only the time up to
+  // the pause counts, not the paused minutes
+  const answeredAt = !isActive && pausedAt ? pausedAt : now
+  const extendedMinutes = extended ? Math.max(0, Math.floor((answeredAt.getTime() - position.calledAt!.getTime()) / 60_000)) : 0
   return NextResponse.json({ response: body.response, extended: extendedMinutes >= 1, extendedMinutes })
 }

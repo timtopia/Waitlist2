@@ -1047,8 +1047,10 @@ describe("QueueDisplay", () => {
       mockOffers([], [pendingOffer()])
       render(<QueueDisplay lineId="line-1" positions={mockPositions} onRefresh={mockOnRefresh} isPaused={true} />)
 
-      expect(await screen.findByText("Swaps are paused. You can answer this when the line resumes.")).toBeInTheDocument()
+      expect(await screen.findByText("Swaps are paused. You can accept this when the line resumes.")).toBeInTheDocument()
       expect(screen.queryByText("Accept")).not.toBeInTheDocument()
+      // Turning it down doesn't need to wait for the line to resume
+      expect(screen.getByRole("button", { name: "Decline" })).toBeInTheDocument()
     })
 
     it("hides Accept once the seller has been called", async () => {

@@ -136,6 +136,29 @@ describe("POST /respond", () => {
     expect(mockPrisma.linePosition.updateMany).not.toHaveBeenCalled()
   })
 
+  it("refuses a reply during a pause if their time had already run out before it", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "guest-1" } })
+    // Called 15 min ago with a 10-min window; paused 3 min ago (after it ran out)
+    mockPrisma.linePosition.findFirst.mockResolvedValue(
+      called({ calledAt: minutesAgo(15), line: { responseWindowMinutes: 10, isActive: false, pausedAt: minutesAgo(3) } })
+    )
+
+    expect((await respond("ON_MY_WAY")).status).toBe(409)
+    expect(mockPrisma.linePosition.updateMany).not.toHaveBeenCalled()
+  })
+
+  it("counts only the minutes before a pause toward the 'on my way' extension", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "guest-1" } })
+    // Called 23 min ago, paused 20 min ago: resume gives back about 3 minutes, not 23
+    mockPrisma.linePosition.findFirst.mockResolvedValue(
+      called({ calledAt: minutesAgo(23), line: { responseWindowMinutes: 10, isActive: false, pausedAt: minutesAgo(20) } })
+    )
+
+    const res = await respond("ON_MY_WAY")
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ response: "ON_MY_WAY", extended: true, extendedMinutes: 3 })
+  })
+
   it("refuses someone who hasn't been called", async () => {
     mockAuth.mockResolvedValue({ user: { id: "guest-1" } })
     mockPrisma.linePosition.findFirst.mockResolvedValue(null)

@@ -35,6 +35,12 @@ export async function POST(req: Request) {
     if (nameErr) {
       return NextResponse.json({ error: nameErr }, { status: 400 })
     }
+    // Zero-width and direction characters pass the check above but are
+    // stripped on save, which left a line with no visible name (as settings guards)
+    const cleanName = cleanText(name)
+    if (!cleanName) {
+      return NextResponse.json({ error: "Name is required" }, { status: 400 })
+    }
 
     // Validate description (optional, max 500 chars)
     if (description !== undefined && description !== null && description !== "") {
@@ -133,7 +139,7 @@ export async function POST(req: Request) {
 
     const line = await prisma.line.create({
       data: {
-        name: cleanText(name),
+        name: cleanName,
         description: typeof description === "string" ? cleanText(description, { multiline: true }) || null : null,
         createdById: result.userId,
         isPublic: Boolean(isPublic),

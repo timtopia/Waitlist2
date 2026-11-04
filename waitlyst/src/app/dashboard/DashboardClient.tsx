@@ -32,6 +32,10 @@ interface CreatedLine {
     id: string
     position: number
     calledAt: string | null
+    partySize?: number | null
+    /** The guest's reply to being called, and extra time the host gave */
+    response?: string | null
+    graceMinutes?: number | null
     user: { id: string; name: string | null }
   } | null
 }
@@ -132,7 +136,16 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
   const statsDialogRef = useDialog(!!statsModal, () => setStatsModal(null))
   const statsTitleRef = useRef<HTMLHeadingElement>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ lineId: string; lineName: string } | null>(null)
-  const [removeConfirm, setRemoveConfirm] = useState<{ lineId: string; positionId: string; name: string } | null>(null)
+  // A called party who never came is a no-show (held payments collected, counted
+  // as a no-show in Analytics), the same as the console's No-show button
+  const [removeConfirm, setRemoveConfirm] = useState<{
+    lineId: string
+    positionId: string
+    name: string
+    noShow?: { calledAt: string; graceMinutes: number }
+  } | null>(null)
+  // "Call Again" clears an "On my way" reply and extra time: ask first, as the list does
+  const [recallConfirm, setRecallConfirm] = useState<{ lineId: string; positionId: string; message: string } | null>(null)
   const [onboardingDismissed, setOnboardingDismissed] = useState(false)
 
   // Check localStorage for dismissed onboarding
@@ -324,6 +337,9 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
       } else {
         const data = await res.json().catch(() => ({}))
         addToast(data.error || "Failed to call next person", "error")
+        // Another device moved the line: show what it looks like now instead of
+        // waiting up to a minute for the poll while every retry fails the same way
+        if (res.status === 400 || res.status === 404 || res.status === 409) router.refresh()
       }
     } catch {
       // The request may have landed before the reply was lost: retrying
@@ -358,6 +374,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
       } else {
         const data = await res.json().catch(() => ({}))
         addToast(data.error || `Failed to mark as ${servedWord}`, "error")
+        if (res.status === 400 || res.status === 404 || res.status === 409) router.refresh()
       }
     } catch {
       // The request may have landed before the reply was lost: retrying
@@ -369,21 +386,33 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
     }
   }
 
-  async function handleRemoveFront(lineId: string, positionId: string, name: string) {
+  async function handleRemoveFront(
+    lineId: string,
+    positionId: string,
+    name: string,
+    noShow?: { calledAt: string; graceMinutes: number }
+  ) {
     setRemoveConfirm(null)
     setLoadingAction(`remove-${lineId}`)
     try {
-      const res = await fetch(`/api/lines/${lineId}/remove-front`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ positionId }),
-      })
+      const res = noShow
+        ? await fetch(`/api/lines/${lineId}/remove-position`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ positionId, noShow: true, calledAt: noShow.calledAt, graceMinutes: noShow.graceMinutes }),
+          })
+        : await fetch(`/api/lines/${lineId}/remove-front`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ positionId }),
+          })
       if (res.ok) {
-        addToast(`${name} removed from the line`, "success")
+        addToast(noShow ? `${name} removed as a no-show` : `${name} removed from the line`, "success")
         router.refresh()
       } else {
         const data = await res.json().catch(() => ({}))
         addToast(data.error || "Failed to remove person", "error")
+        if (res.status === 400 || res.status === 404 || res.status === 409) router.refresh()
       }
     } catch {
       // The request may have landed before the reply was lost: retrying
@@ -590,7 +619,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
       {(lines.length > 0 || positions.length > 0) && (
       <div className="relative mb-6">
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-          <svg className="h-4 w-4 text-ink/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="h-4 w-4 text-ink/60" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
         </div>
@@ -612,11 +641,17 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
             className="absolute inset-y-0 right-0 pr-3 flex items-center text-ink/60 hover:text-ink"
             aria-label="Clear search"
           >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         )}
+        {/* Search filters two lists at once: say what matched without scrolling both */}
+        <p className="sr-only" aria-live="polite">
+          {searchText
+            ? `${filteredPositions.length} of your spots and ${filteredLines.length} of your lines match.`
+            : ""}
+        </p>
       </div>
       )}
 
@@ -810,13 +845,35 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
       {/* Remove Front Confirmation Modal */}
       <ConfirmModal
         open={!!removeConfirm}
-        title="Remove Person"
-        message={removeConfirm ? `Remove ${removeConfirm.name} from the front of the line? If they haven't been served, any payment of theirs still on hold is refunded.` : ""}
-        confirmLabel="Remove"
+        title={removeConfirm?.noShow ? "Mark as No-show" : "Remove Person"}
+        message={
+          !removeConfirm
+            ? ""
+            : removeConfirm.noShow
+              ? `Remove ${removeConfirm.name} from the line as a no-show? Everyone behind them moves up. Any swap payment of theirs on hold is collected.`
+              : `Remove ${removeConfirm.name} from the front of the line? If they haven't been served, any payment of theirs still on hold is refunded.`
+        }
+        confirmLabel={removeConfirm?.noShow ? "No-show" : "Remove"}
         variant="danger"
         isLoading={!!removeConfirm && loadingAction === `remove-${removeConfirm.lineId}`}
-        onConfirm={() => removeConfirm && handleRemoveFront(removeConfirm.lineId, removeConfirm.positionId, removeConfirm.name)}
+        onConfirm={() => removeConfirm && handleRemoveFront(removeConfirm.lineId, removeConfirm.positionId, removeConfirm.name, removeConfirm.noShow)}
         onCancel={() => setRemoveConfirm(null)}
+      />
+
+      {/* Call Again Confirmation Modal */}
+      <ConfirmModal
+        open={!!recallConfirm}
+        title="Call Again"
+        message={recallConfirm?.message ?? ""}
+        confirmLabel="Call Again"
+        isLoading={!!recallConfirm && loadingAction === `call-${recallConfirm.lineId}`}
+        onConfirm={() => {
+          if (!recallConfirm) return
+          const { lineId, positionId } = recallConfirm
+          setRecallConfirm(null)
+          handleCallNext(lineId, positionId, true)
+        }}
+        onCancel={() => setRecallConfirm(null)}
       />
 
       {/* Lines I'm In */}
@@ -996,15 +1053,20 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                           ) : null}
                         </div>
                         <p className="text-sm text-ink/60 mt-1">
-                          {line._count.positions} waiting
+                          {line._count.positions}{" "}
+                          {line.kind === "RESTAURANT"
+                            ? (line._count.positions === 1 ? "party" : "parties") + " waiting"
+                            : "waiting"}
                           {line.maxCapacity != null && line.capacityUsed != null && (
                             <span className="tabular-nums">
-                              {" · "}{line.capacityUsed}/{line.maxCapacity} {line.kind === "RESTAURANT" ? "seats" : "spots"}
+                              {" · "}{line.capacityUsed}/{line.maxCapacity} {line.kind === "RESTAURANT" ? "guests" : "spots"}
                             </span>
                           )}
                           {line.frontPerson && (
                             <span>
                               {" · "} Next: {line.frontPerson.user.name || "Anonymous"}
+                              {/* Party size decides whether the free table fits them */}
+                              {line.kind === "RESTAURANT" && ` (party of ${line.frontPerson.partySize ?? 1})`}
                             </span>
                           )}
                         </p>
@@ -1033,7 +1095,20 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                             variant={line.frontPerson.calledAt ? "ghost" : "secondary"}
                             onClick={(e) => {
                               e.preventDefault()
-                              handleCallNext(line.id, line.frontPerson!.id, !!line.frontPerson!.calledAt)
+                              const fp = line.frontPerson!
+                              if (fp.calledAt && (fp.response || fp.graceMinutes)) {
+                                const name = fp.user.name || "this party"
+                                const replyLabel = fp.response === "ON_MY_WAY" ? "On the way" : "Running late"
+                                setRecallConfirm({
+                                  lineId: line.id,
+                                  positionId: fp.id,
+                                  message: fp.response
+                                    ? `Call ${name} again? Their "${replyLabel}" reply and extra time will be cleared.`
+                                    : `Call ${name} again? Their extra time will be cleared.`,
+                                })
+                                return
+                              }
+                              handleCallNext(line.id, fp.id, !!fp.calledAt)
                             }}
                             isLoading={loadingAction === `call-${line.id}`}
                           >
@@ -1044,16 +1119,20 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                           <button
                             onClick={(e) => {
                               e.preventDefault()
+                              const fp = line.frontPerson!
                               setRemoveConfirm({
                                 lineId: line.id,
-                                positionId: line.frontPerson!.id,
-                                name: line.frontPerson!.user.name || "this person",
+                                positionId: fp.id,
+                                name: fp.user.name || "this person",
+                                ...(fp.calledAt && {
+                                  noShow: { calledAt: fp.calledAt, graceMinutes: fp.graceMinutes ?? 0 },
+                                }),
                               })
                             }}
                             disabled={loadingAction === `remove-${line.id}`}
                             className="text-xs text-accent hover:underline underline-offset-4 px-1 py-0.5 disabled:opacity-50"
                           >
-                            Remove
+                            {line.frontPerson.calledAt ? "No-show" : "Remove"}
                           </button>
                         </div>
                       )}

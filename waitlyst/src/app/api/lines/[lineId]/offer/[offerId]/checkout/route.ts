@@ -103,6 +103,13 @@ export async function GET(
       )
     }
     if (!session.url) {
+      // Actually call it off, as the message says: otherwise both spots stay
+      // locked and "Complete Payment" keeps coming back and failing
+      await abandonPendingTransaction(transaction.id, {
+        offerId,
+        expireSession: false,
+        offerOutcome: "expire",
+      })
       return NextResponse.json(
         { error: "The payment window closed, so the offer was called off. You weren't charged." },
         { status: 410 }

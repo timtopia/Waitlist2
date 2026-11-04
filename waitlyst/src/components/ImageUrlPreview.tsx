@@ -10,6 +10,14 @@ export function ImageUrlPreview({ url }: { url: string }) {
   const trimmed = url.trim()
   // Keyed on the URL so a new link gets a fresh load/error state
   const [failedUrl, setFailedUrl] = useState<string | null>(null)
+  // The field accepts http://, but saving refuses it: say so while typing
+  if (/^http:\/\//i.test(trimmed)) {
+    return (
+      <p className="text-xs text-amber-700 mt-1" role="status">
+        Use an https:// link -- images from plain http:// links can&apos;t be shown.
+      </p>
+    )
+  }
   if (!/^https:\/\/\S+$/i.test(trimmed)) return null
 
   if (failedUrl === trimmed) {

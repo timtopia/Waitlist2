@@ -343,6 +343,10 @@ function CreateLineForm() {
           : /asking price/i.test(message) ? "maxAskingPrice"
           : /closing time|close after/i.test(message) ? "closesAt"
           : /opening time/i.test(message) ? "opensAt"
+          : /product image/i.test(message) ? "productImage"
+          : /product price/i.test(message) ? "productPrice"
+          : /^name/i.test(message) ? "name"
+          : /^description/i.test(message) ? "description"
           : null
         if (field && document.getElementById(field)) failField(field, message)
         else setError(message)
@@ -405,6 +409,7 @@ function CreateLineForm() {
               id="name"
               label="Line Name"
               placeholder={kind === "RESTAURANT" ? "e.g., Friday dinner waitlist" : 'e.g., Air Max 1 "Chicago" drop'}
+              maxLength={100}
               value={name}
               onChange={(e) => setName(e.target.value)}
               error={error && !name.trim() ? "Name is required" : undefined}
@@ -414,6 +419,7 @@ function CreateLineForm() {
               id="description"
               label="Description (optional)"
               placeholder="What is this line for?"
+              maxLength={500}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
@@ -532,7 +538,7 @@ function CreateLineForm() {
                     onChange={(e) => setPurchaseLimit(e.target.value)}
                     className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                   />
-                  <p id="purchaseLimit-hint" className="text-xs text-ink/60 mt-1">e.g. 1 per person. Shown on the line page and when someone is called.</p>
+                  <p id="purchaseLimit-hint" className="text-xs text-ink/60 mt-1">e.g. 1 per person. Shown on the line page and when someone is called, as a reminder -- Waitlyst doesn&apos;t enforce it, so apply it when you hand out.</p>
                 </div>
               )}
               <div>
