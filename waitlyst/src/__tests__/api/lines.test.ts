@@ -535,7 +535,23 @@ describe("Join Line API", () => {
     const response = await POST(req, { params: Promise.resolve({ lineId: "line-1" }) })
     expect(response.status).toBe(400)
     const data = await response.json()
-    expect(data.error).toContain("cannot join your own line")
+    expect(data.error).toContain("can't join your own line")
+  })
+
+  it("tells the creator it's their own line even when it's paused or closed", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "creator-1" } })
+    mockPrisma.line.findUnique.mockResolvedValue({
+      id: "line-1",
+      createdById: "creator-1",
+      isActive: false,
+      closesAt: new Date(Date.now() - 60_000),
+    })
+
+    const { POST } = await import("@/app/api/lines/[lineId]/join/route")
+    const req = new Request("http://localhost/api/lines/line-1/join", { method: "POST" })
+    const response = await POST(req, { params: Promise.resolve({ lineId: "line-1" }) })
+    expect(response.status).toBe(400)
+    expect((await response.json()).error).toContain("can't join your own line")
   })
 
   it("should not allow joining an inactive line", async () => {
