@@ -41,6 +41,11 @@ export async function POST(
       if (!line) {
         throw new JoinRefusedError("Line not found")
       }
+      // Creator cannot join their own line. Checked first: an owner told
+      // "this line is paused" would think resuming it lets them join.
+      if (line.createdById === result.userId) {
+        throw new JoinRefusedError("You can't join your own line -- you run it from this page.")
+      }
       if (!line.isActive) {
         throw new JoinRefusedError("This line is paused. Try again when it reopens.")
       }
@@ -53,11 +58,6 @@ export async function POST(
       // Check if line has closed
       if (line.closesAt && new Date() > new Date(line.closesAt)) {
         throw new JoinRefusedError("This line is closed")
-      }
-
-      // Creator cannot join their own line
-      if (line.createdById === result.userId) {
-        throw new JoinRefusedError("You cannot join your own line")
       }
 
       // Check if already in line

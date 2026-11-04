@@ -663,7 +663,10 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
     if (canJoin) {
       // handleJoin confirms the join itself
       handleJoin(size, savedNote)
-    } else if (!isInLine && !isCreator) {
+    } else if (isCreator) {
+      // Signed in from a join link to a line they own: say why nothing happened
+      addToast("This is your line, so you can't join it -- you run it from here.", "info")
+    } else if (!isInLine) {
       // Say why, rather than landing them back on the page with nothing done
       addToast(
         lineFull ? "The line filled up while you were signing in."
