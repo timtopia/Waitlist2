@@ -34,6 +34,7 @@ const mockPrisma = {
   },
   queueVisit: {
     create: vi.fn(),
+    findFirst: vi.fn().mockResolvedValue(null),
     findMany: vi.fn().mockResolvedValue([]),
     count: vi.fn().mockResolvedValue(0),
     groupBy: vi.fn().mockResolvedValue([]),

@@ -10,7 +10,7 @@ import {
   abandonPendingTransaction,
 } from "@/lib/stripe"
 import { paymentsUnavailable } from "@/lib/payments-mode"
-import { calculateFees } from "@/lib/fees"
+import { calculateFees, feeBreakdown } from "@/lib/fees"
 import { sendEmail } from "@/lib/email"
 import { swapAcceptedEmail, type SwapAcceptedOptions } from "@/lib/email-templates"
 import { rateLimit } from "@/lib/rate-limit"
@@ -339,7 +339,7 @@ export async function PATCH(
                   name: sellerPosition.line.kind === "RESTAURANT"
                     ? `A spot in line at ${sellerPosition.line.name}`
                     : `Spot #${sellerPosition.position} in ${sellerPosition.line.name}`,
-                  description: `Swap offer accepted — buy ${sellerPosition.line.kind === "RESTAURANT" ? "the spot ahead of you" : `spot #${sellerPosition.position}`} from ${shortName(sellerPosition.user.name) || "someone"}`,
+                  description: `Swap offer accepted — buy ${sellerPosition.line.kind === "RESTAURANT" ? "the spot ahead of you" : `spot #${sellerPosition.position}`} from ${shortName(sellerPosition.user.name) || "someone"}${feeBreakdown(fees)}`,
                 },
                 unit_amount: Math.round(fees.totalPrice * 100),
               },

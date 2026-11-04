@@ -102,7 +102,9 @@ export async function GET() {
         : visit.outcome === "NO_SHOW"
           ? { type: "removed" as const, description: `Skipped in "${name}" after not showing up in time` }
           : visit.outcome === "REMOVED"
-            ? { type: "removed" as const, description: `Removed from "${name}" by the ${visit.line.kind === "RESTAURANT" ? "host" : "organizer"}` }
+            // Closing a line records REMOVED too: "removed by the host" read
+            // like being kicked out of a line that simply closed for the night
+            ? { type: "removed" as const, description: `No longer in "${name}" (removed, or the line closed)` }
             : { type: "left" as const, description: `Left "${name}"` }
       activities.push({
         id: `exit-${visit.id}`,

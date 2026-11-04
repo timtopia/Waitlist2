@@ -29,6 +29,16 @@ export function calculateFees(askingPrice: number, ownerFeePercent: number) {
   }
 }
 
+/**
+ * The split for Stripe's line description and the card receipt, which
+ * otherwise show one total above the listed price and read as an overcharge
+ */
+export function feeBreakdown(fees: { askingPrice: number; ownerFee: number; platformFee: number }) {
+  const feeTotal = fees.ownerFee + fees.platformFee
+  if (feeTotal <= 0) return ""
+  return `: $${fees.askingPrice.toFixed(2)} to the seller + $${feeTotal.toFixed(2)} in fees`
+}
+
 /** Client-safe fee calculator (no env vars). Works on both server and client. */
 export function calcFees(price: number, ownerFeePercent: number, platformFeePercent: number) {
   if (!price) return { ownerFee: 0, platformFee: 0, total: price }

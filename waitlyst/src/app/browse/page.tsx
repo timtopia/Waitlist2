@@ -59,6 +59,7 @@ export default function BrowsePage() {
   // Search, filter and sort live in the URL, so Back from a line returns to
   // the same view instead of resetting it
   const urlRead = useRef(false)
+  const searchRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const q = params.get("q")
@@ -163,11 +164,11 @@ export default function BrowsePage() {
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10 border-b border-ink pb-6">
         <div>
-          <p className="font-mono text-xs uppercase tracking-[0.25em] text-ink/60 mb-3">
+          <p className="font-mono text-xs uppercase tracking-[0.25em] text-ink/70 mb-3">
             The board
           </p>
           <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight">Lines</h1>
-          <p className="mt-3 text-sm text-ink/60 max-w-xl">
+          <p className="mt-3 text-sm text-ink/70 max-w-xl">
             Public lines anyone can join. Looking for a specific restaurant or
             shop? Open the link or scan the QR code they shared; private lines
             aren&apos;t listed here.
@@ -180,6 +181,7 @@ export default function BrowsePage() {
       <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-4">
         <div className="flex-1">
           <input
+            ref={searchRef}
             type="text"
             placeholder="Search lines…"
             aria-label="Search lines"
@@ -241,7 +243,8 @@ export default function BrowsePage() {
       ) : loadError ? (
         <div className="text-center py-20 border border-rule bg-white" role="alert">
           <p className="text-ink/60 mb-4">Couldn&apos;t load lines. Check your connection and try again.</p>
-          <Button variant="secondary" onClick={fetchLines}>Try again</Button>
+          {/* The button unmounts on retry: hand focus to search, not <body> */}
+          <Button variant="secondary" onClick={() => { searchRef.current?.focus(); fetchLines() }}>Try again</Button>
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-20 border border-rule bg-white">
@@ -264,8 +267,8 @@ export default function BrowsePage() {
               </p>
               <p className="text-sm text-ink/60 mb-2">Paused and private lines aren&apos;t listed. Ask the host for their link.</p>
               <button
-                onClick={() => { setSearch(""); setFilter("all"); setSortBy("newest") }}
-                className="font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"
+                onClick={() => { setSearch(""); setFilter("all"); setSortBy("newest"); searchRef.current?.focus() }}
+                className="min-h-11 pointer-fine:min-h-0 font-mono text-xs uppercase tracking-widest text-accent hover:underline underline-offset-4"
               >
                 Clear filters
               </button>
@@ -274,7 +277,7 @@ export default function BrowsePage() {
         </div>
       ) : (
         <>
-          <p className="font-mono text-xs uppercase tracking-widest text-ink/60 mb-3">
+          <p className="font-mono text-xs uppercase tracking-widest text-ink/70 mb-3">
             {filtered.length} {filtered.length === 1 ? "line" : "lines"}
           </p>
           <h2 className="sr-only">Lines</h2>

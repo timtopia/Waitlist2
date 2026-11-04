@@ -3,7 +3,7 @@ import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { getStripe, getBaseUrl, performPositionSwap, lockPositionsForTransaction } from "@/lib/stripe"
 import { paymentsUnavailable } from "@/lib/payments-mode"
-import { calculateFees } from "@/lib/fees"
+import { calculateFees, feeBreakdown } from "@/lib/fees"
 import { rateLimit } from "@/lib/rate-limit"
 import { shortName } from "@/lib/privacy"
 import { tradeBlocker, MAX_ABANDONED_CHECKOUTS, ABANDON_WINDOW_MS } from "@/lib/trading"
@@ -293,7 +293,7 @@ export async function POST(
                   name: targetPosition.line.kind === "RESTAURANT"
                     ? `A spot in line at ${targetPosition.line.name}`
                     : `Spot #${targetPosition.position} in ${targetPosition.line.name}`,
-                  description: `Buy ${targetPosition.line.kind === "RESTAURANT" ? "the spot ahead of you" : `spot #${targetPosition.position}`} from ${shortName(targetPosition.user.name) || "someone"}`,
+                  description: `Buy ${targetPosition.line.kind === "RESTAURANT" ? "the spot ahead of you" : `spot #${targetPosition.position}`} from ${shortName(targetPosition.user.name) || "someone"}${feeBreakdown(fees)}`,
                 },
                 unit_amount: Math.round(fees.totalPrice * 100), // Stripe uses cents — total includes fees
               },

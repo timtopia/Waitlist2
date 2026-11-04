@@ -93,6 +93,9 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
   const [connectOnboarded, setConnectOnboarded] = useState(stripeConnectOnboarded)
   const [connectLoading, setConnectLoading] = useState(false)
   const [dashboardLoading, setDashboardLoading] = useState(false)
+  // Back from Stripe with details under review: sending them through again
+  // just lands on the same "verifying" result
+  const [connectPending, setConnectPending] = useState(false)
 
   useEffect(() => {
     const connectStatus = searchParams.get("connect")
@@ -101,6 +104,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
       addToast("Payout account connected -- fees from this line will now be paid out.", "success")
       router.replace(pathname, { scroll: false })
     } else if (connectStatus === "pending") {
+      setConnectPending(true)
       addToast("Stripe is verifying your details -- usually minutes, sometimes a day or two. Anything you earn meanwhile is held and paid out automatically once it's approved.", "info")
       router.replace(pathname, { scroll: false })
     } else if (connectStatus === "incomplete") {
@@ -596,7 +600,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
           <p className="text-sm text-ink/60 mt-1 max-w-2xl">
             {kind === "RESTAURANT"
               ? "Paid swaps on this line are held on the buyer's card until you seat them. Seating a guest collects their payment automatically, and so does the guest leaving. Anything still held below you can capture, or release to give the buyer their money back. Settle holds the same evening, since card holds lapse after about a week."
-              : "Paid swaps on this line are collected the moment they happen, so there's nothing to capture or release. Sellers and you are paid once each has a payout account connected. Anything listed as pending below couldn't be collected automatically."}
+              : "Paid swaps on this line are collected the moment they happen, so there's nothing to capture or release. Sellers and you are paid once each has a payout account connected. Any row marked \"Collection failed\" couldn't be collected automatically: use Collect to try again."}
           </p>
         </div>
       </div>
@@ -610,15 +614,19 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
           <CardContent className="py-4 flex items-center justify-between gap-4 flex-wrap">
             <div>
               <p className="font-medium text-ink">
-                You&apos;ve earned {formatCurrency(summary.ownerFeeCaptured)} in fees from this line{summary.ownerFeePending > 0 && ` (plus ${formatCurrency(summary.ownerFeePending)} ${isDrop ? "not yet collected" : "still on hold"})`}, but have no payout account connected.
+                You&apos;ve earned {formatCurrency(summary.ownerFeeCaptured)} in fees from this line{summary.ownerFeePending > 0 && ` (plus ${formatCurrency(summary.ownerFeePending)} ${isDrop ? "not yet collected" : "still on hold"})`}{connectPending ? "." : ", but have no payout account connected."}
               </p>
               <p className="text-sm text-ink/60 mt-0.5">
-                Connect one now so this (and future) earnings actually reach you.
+                {connectPending
+                  ? "Stripe is verifying your payout account. Your fees are held and sent automatically once it's approved."
+                  : "Connect one now so this (and future) earnings actually reach you."}
               </p>
             </div>
-            <Button onClick={handleConnectSetup} isLoading={connectLoading} className="flex-shrink-0">
-              Set Up Payouts
-            </Button>
+            {!connectPending && (
+              <Button onClick={handleConnectSetup} isLoading={connectLoading} className="flex-shrink-0">
+                Set Up Payouts
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}

@@ -353,7 +353,10 @@ export function MemberStatusCard({
                 {response && (
                   <span className="text-xs text-ink/60">
                     {response === "RUNNING_LATE" && responseWindowMinutes
-                      ? respondedAt
+                      ? graceMinutes > 0
+                        // The host just tapped +5: "ask for longer" would read as a no
+                        ? `The ${organizer} gave you ${graceMinutes} extra min. It's already in the time above.`
+                        : respondedAt
                         // "On my way" only extends a call once: don't promise more
                         ? `The ${organizer} can see this, but your time is still running and you've already had your extra time. Ask the ${organizer} if you need longer.`
                         : `The ${organizer} can see this, but your time is still running. Tap On my way when you head over to get more time.`

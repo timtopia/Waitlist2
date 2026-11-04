@@ -546,7 +546,9 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
             <div>
               <p className="text-sm font-medium">Email Notifications</p>
               <p className="text-xs text-ink/60 mt-0.5">
-                Emails when you&apos;re called or served, get swap offers, a sale or refund goes through, or a line you asked about opens
+                Emails when you&apos;re next or called, served, skipped or removed, get or win a swap offer,
+                a sale or refund goes through, a line you&apos;re in is deleted, or a line you asked about opens.
+                With this off, you&apos;ll only find out by checking the page.
               </p>
             </div>
             <button
@@ -580,7 +582,8 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
           <h2 className="font-mono text-xs uppercase tracking-widest text-ink/60 mb-3">Your Data</h2>
           <p className="text-sm text-ink/60">
             Other people in a line see your first name and last initial; the line&apos;s
-            owner sees your full name and email.{" "}
+            owner sees your full name and email. Lines you create show your display
+            name and profile picture to anyone who opens them, including link previews.{" "}
             <Link href="/privacy" className="text-accent hover:underline underline-offset-4">
               Privacy policy
             </Link>

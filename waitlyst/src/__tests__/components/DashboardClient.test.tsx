@@ -541,13 +541,31 @@ describe("DashboardClient", () => {
   })
 
   describe("Call Next (Remove Front)", () => {
-    it("hides the quick Remove when served people are still ahead of the next person", () => {
+    it("keeps the quick Remove when seated people are still ahead of the next person", () => {
+      // remove-front removes the row the dashboard names, not whoever is #1
       const lines = [{ ...mockCreatedLines[0], frontPerson: { id: "pos-3", position: 3, calledAt: null, user: { id: "user-3", name: "Cara" } } }]
       render(<DashboardClient createdLines={lines} positions={[]} />)
 
       expect(screen.getByText(/Next: Cara/)).toBeInTheDocument()
       expect(screen.getByText("Call Next")).toBeInTheDocument()
-      expect(screen.queryByText("Remove")).not.toBeInTheDocument()
+      expect(screen.getByText("Remove")).toBeInTheDocument()
+    })
+
+    it("sends recall for Call Again, which the server otherwise refuses", async () => {
+      ;(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ calledUser: "Cara" }),
+      })
+      const lines = [{ ...mockCreatedLines[0], frontPerson: { id: "pos-3", position: 1, calledAt: new Date().toISOString(), user: { id: "user-3", name: "Cara" } } }]
+      render(<DashboardClient createdLines={lines} positions={[]} />)
+
+      fireEvent.click(screen.getByText("Call Again"))
+      await waitFor(() => {
+        expect(fetch).toHaveBeenCalledWith(
+          "/api/lines/line-1/call-next",
+          expect.objectContaining({ body: JSON.stringify({ positionId: "pos-3", recall: true }) })
+        )
+      })
     })
 
     it("calls call-next API when Call Next is clicked", async () => {

@@ -65,7 +65,9 @@ export async function POST(
         const ahead = await tx.linePosition.count({
           where: { lineId, fulfilled: false, position: { lt: recent.position } },
         })
-        return { ...recent, ahead }
+        // Flagged so the host hears it: two different "Smith, party of 2"s
+        // a few seconds apart would otherwise look like two adds
+        return { ...recent, ahead, duplicate: true }
       }
 
       if (line.maxCapacity) {
