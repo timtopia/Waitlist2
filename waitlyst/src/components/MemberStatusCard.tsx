@@ -341,7 +341,13 @@ export function MemberStatusCard({
                         // "On my way" only extends a call once: don't promise more
                         ? `The ${organizer} can see this, but your time is still running and you've already had your extra time. Ask the ${organizer} if you need longer.`
                         : `The ${organizer} can see this, but your time is still running. Tap On my way when you head over to get more time.`
-                      : `The ${organizer} can see this${response === "ON_MY_WAY" && responseWindowMinutes ? ", and you have a little more time" : ""}.`}
+                      // The window restarts from the tap: answering at once adds next to nothing
+                      : `The ${organizer} can see this${
+                          response === "ON_MY_WAY" && responseWindowMinutes && respondedAt && calledAt &&
+                          new Date(respondedAt).getTime() - new Date(calledAt).getTime() >= 60_000
+                            ? ", and you have a little more time"
+                            : ""
+                        }.`}
                   </span>
                 )}
               </div>

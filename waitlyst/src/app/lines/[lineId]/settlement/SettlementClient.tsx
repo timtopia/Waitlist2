@@ -29,6 +29,8 @@ interface Transaction {
   buyerFulfilled: boolean
   buyerPosition: number | null
   createdAt: string
+  /** Checkout started recently: the buyer may be paying right now */
+  inProgress?: boolean
 }
 
 interface Summary {
@@ -377,16 +379,18 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
         <span className="inline-flex flex-col items-center">
           <span className="font-mono text-xs uppercase tracking-widest text-green-700">{isDrop ? "Collected" : "Captured"}</span>
           {waitingOn.length > 0 && (
-            <span className="text-xs text-ink/60 mt-0.5" title="Sent automatically once they set up payouts">
+            <span className="text-xs text-ink/60 mt-0.5">
               Holding {waitingOn.join(" and ")} until payout setup
+              <span className="sr-only">. Sent automatically once they set up payouts.</span>
             </span>
           )}
         </span>
       )
     }
     const deadline = txn.captureBefore && (
-      <span className="text-xs text-amber-700 mt-0.5" title="The buyer's card hold lapses after this and the payment can no longer be collected">
+      <span className="text-xs text-amber-700 mt-0.5">
         Collect by {formatDeadline(txn.captureBefore)}
+        <span className="sr-only">. The buyer&apos;s card hold lapses after this and the payment can no longer be collected.</span>
       </span>
     )
     // On drops payments are collected straight away; an open one here is a
@@ -420,6 +424,10 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
 
     // A PENDING transaction's checkout was never completed -- there's no
     // hold to capture or release, just a stuck/abandoned swap to clear out.
+    // A recent one may be a buyer paying right now: cancelling would kill it.
+    if (txn.status === "PENDING" && txn.inProgress) {
+      return <span className="text-xs text-ink/60">Buyer may be paying now</span>
+    }
     if (txn.status === "PENDING") {
       return (
         <Button
@@ -585,7 +593,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
           <p className="text-sm text-ink/60 mt-1 max-w-2xl">
             {kind === "RESTAURANT"
               ? "Paid swaps on this line are held on the buyer's card until you seat them. Seating a guest collects their payment automatically, and so does the guest leaving. Anything still held below you can capture, or release to give the buyer their money back. Settle holds the same evening, since card holds lapse after about a week."
-              : "Paid swaps on this line are collected and paid out the moment they happen, so there's nothing to capture or release. Anything listed as pending below couldn't be collected automatically."}
+              : "Paid swaps on this line are collected the moment they happen, so there's nothing to capture or release. Sellers and you are paid once each has a payout account connected. Anything listed as pending below couldn't be collected automatically."}
           </p>
         </div>
       </div>
@@ -618,13 +626,15 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div className="text-center">
               <p className="font-mono text-2xl tabular-nums">{summary.total}</p>
-              <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Transactions</p>
+              {/* Only swaps that went through: the table below also lists unpaid and cancelled ones */}
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Paid swaps</p>
             </div>
             <div className="text-center">
               <p className="font-mono text-2xl tabular-nums">
                 {formatCurrency(summary.totalAmount)}
               </p>
-              <p className="font-mono text-xs uppercase tracking-widest text-ink/60" title="Asking price of every paid swap, including any not yet collected or still waiting on the seller's payout setup. Excludes your fee.">Swap sales</p>
+              <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Swap sales</p>
+              <p className="text-xs text-ink/60 mt-0.5">Seller prices, before your fee</p>
             </div>
             {isDrop ? (
               // Drop swaps are collected as they happen, so "awaiting capture"

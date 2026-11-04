@@ -70,9 +70,11 @@ function CreateLineForm() {
   // never a description the owner wrote themselves
   const templateDescriptions = [
     "Join the waitlist and we'll let you know when your table is ready.",
-    "Limited release drop",
+    // Shown on Browse when there's no product name: filler read as unfinished
+    "Join to hold your place for this release. Spots are limited.",
     "Event waitlist. If your plans change, you can sell your spot to the person behind you.",
     // Older wording, still recognised as a template blurb
+    "Limited release drop",
     "Event waitlist. If your plans change, you can swap spots with the person next to you.",
   ]
   function setTemplateDescription(text: string) {
@@ -364,7 +366,7 @@ function CreateLineForm() {
         </p>
         <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight">Create a New Line</h1>
         <p className="text-ink/60 mt-3">
-          Create a virtual queue for others to join
+          Create a line for others to join
         </p>
       </div>
       <Card>
@@ -454,8 +456,9 @@ function CreateLineForm() {
                 checked={kind === "RESTAURANT"}
                 onChange={(e) => {
                   setKind(e.target.checked ? "RESTAURANT" : "STANDARD")
-                  // The template no longer describes this line
-                  setSelectedTemplate("custom")
+                  // The template no longer describes this line, but "Custom --
+                  // start from scratch" didn't either: its settings are kept
+                  setSelectedTemplate("")
                 }}
                 className="w-4 h-4 mt-0.5 accent-ink"
               />
@@ -463,8 +466,9 @@ function CreateLineForm() {
                 <span className="block text-sm text-ink">Restaurant waitlist</span>
                 <span className="block text-xs text-ink/60 mt-0.5">
                   {kind === "RESTAURANT"
-                    ? "Guests give a party size, capacity counts guests, and you can call any party. Paid swaps are held on the buyer's card until you seat them, so you can still release them if the evening goes wrong."
-                    : "Everyone holds one spot and is called in order. Paid swaps are collected right away; sellers are paid once they connect a payout account."}
+                    // How swaps are paid is explained under Swap Settings, and only when they're on
+                    ? "Guests give a party size, capacity counts guests, and you can call any party."
+                    : "Everyone holds one spot and is called in order."}
                 </span>
               </span>
             </label>
@@ -496,12 +500,12 @@ function CreateLineForm() {
                     onChange={(e) => setHideCapacity(e.target.checked)}
                     className="w-4 h-4 accent-ink"
                   />
-                  <span className="text-sm text-ink/70">Hide capacity from members</span>
+                  <span className="text-sm text-ink/70">Hide capacity from guests</span>
                 </label>
               )}
               {maxCapacity && hideCapacity && (
                 <p className="text-xs text-ink/60 mt-1">
-                  Members will see &quot;Limited spots available&quot; instead of the exact number
+                  Guests will see &quot;Limited spots available&quot; instead of the exact number
                 </p>
               )}
             </div>

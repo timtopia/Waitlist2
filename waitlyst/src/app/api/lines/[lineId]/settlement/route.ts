@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma"
 
 /** Warn the owner when a hold lapses within this long */
 const HOLD_WARNING_MS = 48 * 60 * 60 * 1000
+// Checkout locks both spots for 31 minutes (see the checkout routes)
+const CHECKOUT_WINDOW_MS = 31 * 60 * 1000
 
 // Get settlement summary for a line (owner only)
 export async function GET(
@@ -77,6 +79,10 @@ export async function GET(
         buyerFulfilled: buyerPos ? buyerPos.fulfilled : servedAndCleared.has(txn.buyerId),
         buyerPosition: buyerPos?.position ?? null,
         createdAt: txn.createdAt.toISOString(),
+        // The buyer may be on the payment page right now: the spots stay
+        // locked this long, and an abandoned session is cleaned up by Stripe's
+        // expiry webhook. Only past that is a checkout actually stuck.
+        inProgress: txn.status === "PENDING" && Date.now() - txn.createdAt.getTime() < CHECKOUT_WINDOW_MS,
       }
     })
 
@@ -104,7 +110,7 @@ export async function GET(
     )
     const expiredTxns = enrichedTransactions.filter((t) => t.holdExpired)
 
-    const stuckTxns = enrichedTransactions.filter((t) => t.status === "PENDING")
+    const stuckTxns = enrichedTransactions.filter((t) => t.status === "PENDING" && !t.inProgress)
     const stuckAmount = stuckTxns.reduce((sum, t) => sum + t.amount, 0)
 
     // What the owner actually earns from this line's swap activity -- this is

@@ -353,14 +353,22 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   const announceToHost = useCallback((prev: Line, next: Line) => {
     const name = (p: Line["positions"][number]) => p.user.name || "Guest"
     const before = new Map(prev.positions.map((p) => [p.id, p]))
-    for (const p of next.positions) {
-      const old = before.get(p.id)
-      if (!old) {
-        if (p.user.isWalkIn || p.fulfilled) continue
+    // A drop opening can bring 40 joins in one poll: one toast, not a wall
+    const joined = next.positions.filter((p) => !before.has(p.id) && !p.user.isWalkIn && !p.fulfilled)
+    if (joined.length > 3) {
+      addToast(next.kind === "RESTAURANT" ? `${joined.length} new parties joined` : `${joined.length} people joined`, "info")
+    } else {
+      for (const p of joined) {
         addToast(
           next.kind === "RESTAURANT" ? `New party: ${name(p)} (party of ${p.partySize})` : `${name(p)} joined`,
           "info"
         )
+      }
+    }
+    for (const p of next.positions) {
+      const old = before.get(p.id)
+      if (!old) {
+        continue
       } else if (old.user.id === p.user.id && p.response && p.response !== old.response) {
         addToast(
           p.response === "ON_MY_WAY" ? `${name(p)} is on the way` : `${name(p)} is running late`,
@@ -725,7 +733,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       addToast(
         response === "ON_MY_WAY"
           // Only the first "on my way" for a call buys extra time
-          ? `Told ${who} you're on your way${data.extended ? " -- you have a few more minutes" : ""}`
+          ? `Told ${who} you're on your way${data.extended && data.extendedMinutes >= 1 ? ` -- ${data.extendedMinutes} more min` : ""}`
           : `Told ${who} you're running late`,
         "success"
       )
@@ -778,6 +786,8 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   }
 
   async function handleSaveAnnouncement() {
+    // The server doesn't re-alert guests for the same text: don't claim it did
+    const unchanged = announcementDraft.trim() === (line?.announcement ?? "").trim()
     setSavingAnnouncement(true)
     try {
       const res = await fetch(`/api/lines/${lineId}/announcement`, {
@@ -790,7 +800,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         // fields), so reload rather than briefly showing a broken list
         await fetchLine()
         setShowAnnouncementEditor(false)
-        addToast(announcementDraft.trim() ? "Announcement posted" : "Announcement cleared", "success")
+        addToast(!announcementDraft.trim() ? "Announcement cleared" : unchanged ? "Announcement saved" : "Announcement posted", "success")
       } else {
         const data = await res.json().catch(() => ({}))
         addToast(data.error || "Failed to update announcement", "error")
@@ -1151,6 +1161,9 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         />
       )}
 
+      {/* Pausing and resuming arrive by poll; say so to screen readers */}
+      <p className="sr-only" aria-live="polite">{linePaused ? "This line is paused." : ""}</p>
+
       {/* Paused Banner */}
       {linePaused && (
         <div className="mb-6">
@@ -1292,6 +1305,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             kind={line.kind}
             hideCapacity={line.hasCapacityLimit && line.maxCapacity === null}
             inLine={!!memberStatus && memberStatus.phase !== "served"}
+            isPaused={linePaused}
           />
         </div>
       )}

@@ -96,7 +96,7 @@ export function Header() {
               <span className="font-mono text-lg font-semibold tracking-tight uppercase">Waitlyst</span>
             </Link>
 
-          <nav className="hidden md:flex items-center gap-6">
+          <nav aria-label="Main" className="hidden md:flex items-center gap-6">
             <Link
               href="/browse"
               className={desktopLink("/browse")}
@@ -220,7 +220,7 @@ export function Header() {
       {/* Mobile menu */}
       {mobileMenuOpen && (
         <div className="md:hidden border-t border-rule bg-paper" id="mobile-menu">
-          <nav className="px-4 py-2 space-y-1">
+          <nav aria-label="Main" className="px-4 py-2 space-y-1">
             <Link
               href="/browse"
               aria-current={isCurrent("/browse") ? "page" : undefined}

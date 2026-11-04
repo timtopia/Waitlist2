@@ -6,10 +6,11 @@ import { useDialog } from "@/lib/use-dialog"
 import { Button } from "./ui/Button"
 import { ConfirmModal } from "./ui/ConfirmModal"
 import { useToast } from "./ui/Toast"
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useSession } from "next-auth/react"
 import { formatCurrency, formatWaited } from "@/lib/format"
 import { calcFees } from "@/lib/fees"
+import { batchRemove } from "@/lib/batch-remove-client"
 import { OFFER_COOLDOWN_MS } from "@/lib/offers"
 import { formatWaitTime } from "@/lib/wait-time"
 import { MAX_PARTY_SIZE } from "@/lib/capacity"
@@ -358,6 +359,16 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
   const [cancelCheckoutConfirm, setCancelCheckoutConfirm] = useState(false)
   const myLockUntil = currentUserPosition?.lockedUntil ?? null
   const myPlace = currentUserPosition?.position ?? null
+  // The number their row shows: restaurant rows count waiting parties only,
+  // so a toast quoting the raw spot number contradicted the list and the email
+  const myDisplayPlace = currentUserPosition
+    ? isRestaurant
+      ? positions.filter((p) => p.position < currentUserPosition.position && !p.fulfilled).length + 1
+      : currentUserPosition.position
+    : null
+  // When their own pending buy's payment window ends, to tell a lapse from a
+  // swap someone else called off
+  const pendingBuyUntil = useRef<string | null>(null)
   // Where they stood while their direct buy was pending, to tell them how it
   // ended when the lock clears (the "Resume payment" card used to just vanish)
   const pendingBuyFrom = useRef<number | null>(null)
@@ -368,15 +379,23 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
     if (!myLockUntil || new Date(myLockUntil) <= new Date()) {
       const was = pendingBuyFrom.current
       pendingBuyFrom.current = null
+      const buyUntil = pendingBuyUntil.current
+      pendingBuyUntil.current = null
       const sold = sellingFrom.current
       sellingFrom.current = null
       // A swap that fell through is already announced by the offer watcher
       if (sold !== null && myPlace !== null && myPlace > sold) {
-        addToast(`Your spot sold -- you're now #${myPlace}. Your earnings are on your profile.`, "success")
+        addToast(`Your spot sold -- you're now #${myDisplayPlace}. Your earnings are on your profile.`, "success")
       }
       if (was !== null && myPlace !== null) {
         if (myPlace < was) {
-          addToast(`Your payment went through -- you're now #${myPlace}.`, "success")
+          addToast(`Your payment went through -- you're now #${myDisplayPlace}.`, "success")
+        } else if (buyUntil && Date.now() >= new Date(buyUntil).getTime() - 2 * 60_000) {
+          // Stripe ends the checkout a minute before the lock; it ran out on them
+          addToast(
+            "Your payment window for the spot ahead closed, so the purchase is off. You weren't charged. Letting several lapse pauses buying here for a while.",
+            "info"
+          )
         } else {
           addToast(
             "Your purchase of the spot ahead was called off (they were called up, left, or the organizer stopped it). You weren't charged.",
@@ -410,6 +429,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
     // Only their own pending buy (not someone paying for their spot); cancelling
     // clears myCheckout first, so a deliberate cancel isn't reported
     pendingBuyFrom.current = myCheckout?.pending ? myPlace : null
+    pendingBuyUntil.current = myCheckout?.pending ? myLockUntil : null
     // { pending: false } while locked: someone else is buying this spot
     sellingFrom.current = myCheckout && !myCheckout.pending && !myCheckout.paid ? myPlace : null
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -613,19 +633,20 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
   }
 
   /** Withdraw a pending offer, or back out of one that was accepted but not yet paid. */
-  async function handleWithdrawOffer(offerId: string) {
+  async function handleWithdrawOffer(offerId: string, accepted = false) {
     setLoadingAction(`withdraw-${offerId}`)
     try {
       const res = await fetch(`/api/lines/${lineId}/offer/${offerId}`, { method: "DELETE" })
       const data = await res.json().catch(() => ({}))
       if (res.ok) {
-        addToast("Offer withdrawn", "info")
+        addToast(accepted ? "You backed out. Both spots are released and you weren't charged." : "Offer withdrawn", "info")
         fetchOffers()
         onRefresh()
       } else {
         addToast(data.error || "Failed to withdraw offer", "error")
-        // They may have just answered it
+        // They may have just answered it, or the payment already moved them
         fetchOffers()
+        onRefresh()
       }
     } catch {
       lostConnection()
@@ -709,6 +730,8 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
         onRefresh()
       } else {
         addToast(data.error || "Failed to update listing", "error")
+        // Called up, or a swap with them started: the listing controls are stale
+        if (res.status === 409 || res.status === 400) onRefresh()
       }
     } catch {
       lostConnection()
@@ -1018,6 +1041,26 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
     })
   }
 
+  // Waiting parties ahead of each row, counted once per list instead of per
+  // row (a full scan per row crawled on a 300-person drop). Positions arrive
+  // sorted by place.
+  const unservedAheadById = useMemo(() => {
+    const m = new Map<string, number>()
+    let n = 0
+    for (const p of [...positions].sort((a, b) => a.position - b.position)) {
+      m.set(p.id, n)
+      if (!p.fulfilled) n++
+    }
+    return m
+  }, [positions])
+  // Finding "Garcia" among 80 parties meant scrolling; hosts can filter by name
+  const [nameFilter, setNameFilter] = useState("")
+  const showNameFilter = isCreator && positions.length > 20 && !selectMode
+  const filterText = showNameFilter ? nameFilter.trim().toLowerCase() : ""
+  const visiblePositions = filterText
+    ? positions.filter((p) => (p.user.name || "").toLowerCase().includes(filterText) || (p.note || "").toLowerCase().includes(filterText))
+    : positions
+
   function cancelSelectMode() {
     setSelectMode(false)
     setSelectedIds(new Set())
@@ -1027,16 +1070,8 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
     setShowBatchConfirm(false)
     setBatchLoading(true)
     try {
-      const res = await fetch(`/api/lines/${lineId}/batch-remove`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          positionIds: Array.from(selectedIds),
-          action,
-        }),
-      })
-      if (res.ok) {
-        const data = await res.json().catch(() => ({}))
+      const { ok, data } = await batchRemove(lineId, Array.from(selectedIds), { action })
+      if (ok) {
         // Parties another device (or the guest) already took off aren't failures
         const gone: number = data.alreadyGone ?? 0
         let msg = data.failed > 0
@@ -1054,7 +1089,6 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
         // Awaited so removed rows don't linger, still tappable, until a poll
         await onRefresh()
       } else {
-        const data = await res.json().catch(() => ({}))
         addToast(data.error || "Batch remove failed", "error")
       }
     } catch {
@@ -1105,7 +1139,10 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                   </p>
                   <p className="text-sm text-ink/60">
                     <span className="font-medium text-ink">Received:</span> <span className="font-mono tabular-nums">{formatCurrency(removalModal.transactionInfo.totalReceived)}</span>
-                    <span className="text-ink/60 ml-1">({removalModal.transactionInfo.asSeller.filter(t => t.status === "COMPLETED").length} sales)</span>
+                    <span className="text-ink/60 ml-1">({(() => {
+                      const n = removalModal.transactionInfo.asSeller.filter((t) => t.status === "COMPLETED").length
+                      return `${n} sale${n === 1 ? "" : "s"}`
+                    })()})</span>
                   </p>
                   {(removalModal.transactionInfo.totalRefundedToBuyer > 0 || removalModal.transactionInfo.totalRefundedAsSeller > 0) && (
                     <p className="text-sm text-amber-700">
@@ -1131,7 +1168,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                       ))}
                     </ul>
                     <p className="text-xs text-amber-700 mt-2">
-                      Removing this person may affect these buyers. Consider refunding if the removal invalidates their purchase.
+                      These buyers keep the places they bought; removing this person doesn&apos;t change that. To refund one of them, use the Settlement page.
                     </p>
                   </div>
                 )}
@@ -1217,7 +1254,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                 You&apos;ll swap places with {buyConfirm.sellerName || "the person in front of you"}.
                 {stripeEnabled && (isRestaurant
                   ? " Your card is held, not charged, until you're seated. It's charged when you're seated or if you leave; the host can release it if you aren't seated."
-                  : " This purchase is final: you're charged now and the seller is paid right away, even if you leave or are removed later.")}
+                  : " This purchase is final: you're charged now, even if you leave or are removed later.")}
               </p>
               <dl id="buy-confirm-total" className="text-sm border border-rule divide-y divide-rule mb-4">
                 <div className="flex justify-between px-3 py-1.5">
@@ -1315,7 +1352,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
         isLoading={!!withdrawConfirm && loadingAction === `withdraw-${withdrawConfirm.offerId}`}
         onConfirm={async () => {
           if (!withdrawConfirm) return
-          await handleWithdrawOffer(withdrawConfirm.offerId)
+          await handleWithdrawOffer(withdrawConfirm.offerId, withdrawConfirm.accepted)
           setWithdrawConfirm(null)
         }}
         onCancel={() => setWithdrawConfirm(null)}
@@ -1358,7 +1395,9 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                 : selectedIds.size === 1 ? "person" : "people"}?
             </h3>
             <p id="batch-remove-desc" className="text-sm text-ink/60 mb-4">
-              {!allowResale
+              {isRestaurant && positions.filter((p) => selectedIds.has(p.id)).every((p) => p.fulfilled)
+                ? "They've already been seated, so no one's place in line changes."
+                : !allowResale
                 ? "Everyone behind them moves up."
                 : isRestaurant
                   ? "Any of their payments still on hold can be kept (collected and paid out) or refunded. Payments already collected are final."
@@ -1436,7 +1475,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                       ? "Deselect All"
                       : "Select All"}
                   </button>
-                  <span className="font-mono text-xs uppercase tracking-widest text-ink/60 tabular-nums">
+                  <span className="font-mono text-xs uppercase tracking-widest text-ink/60 tabular-nums" aria-live="polite">
                     {selectedIds.size} selected
                   </span>
                 </div>
@@ -1451,6 +1490,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                     setSelectMode(true)
                   }
                 }}
+                aria-pressed={selectMode}
                 className={`min-h-11 pointer-fine:min-h-0 font-mono text-xs uppercase tracking-widest px-3 py-1.5 border transition-colors ${
                   selectMode
                     ? "border-ink bg-ink text-paper"
@@ -1462,13 +1502,35 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
             </div>
           )}
 
-          <div className="border border-rule divide-y divide-rule" role="list" aria-label="People in line" tabIndex={-1} data-dialog-fallback>
-          {positions.map((pos) => {
+          {showNameFilter && (
+            <div className="pb-2">
+              <label htmlFor="queue-name-filter" className="sr-only">Find by name or note</label>
+              <input
+                id="queue-name-filter"
+                type="search"
+                value={nameFilter}
+                onChange={(e) => setNameFilter(e.target.value)}
+                placeholder="Find by name or note"
+                autoComplete="off"
+                className="w-full border border-rule bg-white px-3 py-2 text-base sm:text-sm text-ink placeholder:text-ink/60 focus:border-ink focus:outline-none"
+              />
+              {filterText && (
+                <p className="mt-1 text-xs text-ink/60" aria-live="polite">
+                  {visiblePositions.length === 0
+                    ? `No one matches "${nameFilter.trim()}".`
+                    : `Showing ${visiblePositions.length} of ${positions.length}.`}
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className={`border border-rule divide-y divide-rule ${selectMode && selectedIds.size > 0 ? "mb-24" : ""}`} role="list" aria-label="People in line" tabIndex={-1} data-dialog-fallback>
+          {visiblePositions.map((pos) => {
             const isCurrentUser = pos.user.id === session?.user?.id
             const isLocked = pos.lockedUntil && new Date(pos.lockedUntil) > new Date()
             // Served people stay listed until cleared, so the front of the
             // queue is the first unserved person, not position 1.
-            const unservedAhead = positions.filter((p) => p.position < pos.position && !p.fulfilled).length
+            const unservedAhead = unservedAheadById.get(pos.id) ?? 0
             const isFront = !pos.fulfilled && unservedAhead === 0
             const isSelected = selectedIds.has(pos.id)
             const canSelect = selectMode && isCreator && !isCurrentUser
@@ -1511,7 +1573,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                         className="w-4 h-4 accent-ink border-rule flex-shrink-0"
                       />
                     )}
-                    <div className={`w-8 flex-shrink-0 font-mono tabular-nums text-lg text-right ${
+                    <div className={`min-w-8 flex-shrink-0 font-mono tabular-nums text-lg text-right ${
                       isFront ? "text-accent" : "text-ink/60"
                     }`}>
                       {/* Seated parties stay listed at a restaurant, so the raw
@@ -1803,7 +1865,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                         {isRestaurant && " You're paid once the buyer is seated."}
                         {offer.expiresAt && ` Expires in ${formatTimeLeft(offer.expiresAt)}.`}
                       </p>
-                      {allowResale && !isPaused && !offMarket(pos) && (
+                      {allowResale && !isPaused && !offMarket(pos) && pos.askingPrice == null && (
                         <p className="text-xs text-ink/60 mt-0.5">
                           Want more? List your spot at your price first -- they&apos;ll see a Buy button -- then decline this offer.
                         </p>
@@ -1864,7 +1926,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                 {isCurrentUser && !selectMode && isLocked && myCheckout?.pending && (
                   <div className="mt-3">
                       <div className="flex items-center gap-3 flex-wrap">
-                        <p className="text-sm text-ink/70">You started buying the spot ahead but haven&apos;t paid yet.</p>
+                        <p className="text-sm text-ink/70">You started buying the spot ahead but haven&apos;t paid yet{myLockUntil && new Date(myLockUntil) > new Date() ? ` (${formatTimeLeft(myLockUntil)} left)` : ""}.</p>
                         {myCheckout.url && (
                           <a
                             href={myCheckout.url}
@@ -2235,7 +2297,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
 
       {/* Floating action bar for batch select mode */}
       {selectMode && selectedIds.size > 0 && (
-        <div data-action-bar className="fixed bottom-0 left-0 right-0 bg-white border-t border-ink z-40 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div data-action-bar role="region" aria-label="Selected parties" className="fixed bottom-0 left-0 right-0 bg-white border-t border-ink z-40 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="max-w-4xl mx-auto flex items-center justify-between">
             <span className="font-mono text-xs uppercase tracking-widest text-ink tabular-nums">
               {selectedIds.size} selected

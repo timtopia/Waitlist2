@@ -228,7 +228,7 @@ describe("describeMemberEvent", () => {
 
   it("uses seating wording on restaurant lines", () => {
     expect(describeMemberEvent({ kind: "served" }, "Dinner", true)).toMatchObject({ title: "You've been seated", body: "The host seated you at Dinner." })
-    expect(describeMemberEvent({ kind: "removed", wasServed: true, wasCalled: false }, "Dinner", true)?.body).toContain("after being seated")
+    expect(describeMemberEvent({ kind: "removed", wasServed: true, wasCalled: false }, "Dinner", true)?.body).toBe("The host cleared your spot at Dinner. Thanks for waiting.")
     expect(describeMemberEvent({ kind: "removed", wasServed: false, wasCalled: false }, "Dinner", true)?.body).toContain("the host removed you")
     expect(describeMemberEvent({ kind: "served" }, "Bakery")).toMatchObject({ title: "You've been served" })
   })

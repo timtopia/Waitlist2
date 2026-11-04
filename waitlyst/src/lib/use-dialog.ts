@@ -31,7 +31,14 @@ export function useDialog<T extends HTMLElement = HTMLDivElement>(open: boolean,
       if (event.key === "Escape") onCloseRef.current()
       if (event.key === "Tab" && container) {
         const items = container.querySelectorAll<HTMLElement>(focusable)
-        if (items.length === 0) return
+        // Every button disabled while it saves: Tab used to slip out to the
+        // page behind the dialog. Hold focus on the dialog itself.
+        if (items.length === 0) {
+          event.preventDefault()
+          if (!container.hasAttribute("tabindex")) container.setAttribute("tabindex", "-1")
+          container.focus()
+          return
+        }
         const first = items[0]
         const last = items[items.length - 1]
         const active = document.activeElement

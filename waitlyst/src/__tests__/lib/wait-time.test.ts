@@ -44,7 +44,9 @@ describe("formatWaitTime", () => {
   it("formats minutes and hours", () => {
     expect(formatWaitTime(0.4)).toBe("<1 min")
     expect(formatWaitTime(12.4)).toBe("~12 min")
-    expect(formatWaitTime(90)).toBe("~1 hr")
-    expect(formatWaitTime(200)).toBe("~3 hrs")
+    expect(formatWaitTime(90)).toBe("~1 hr 30 min")
+    expect(formatWaitTime(115)).toBe("~1 hr 55 min")
+    expect(formatWaitTime(119)).toBe("~2 hr")
+    expect(formatWaitTime(200)).toBe("~3 hr 20 min")
   })
 })

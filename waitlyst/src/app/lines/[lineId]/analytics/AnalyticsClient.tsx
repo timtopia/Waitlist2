@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import { BarChart, type Bar } from "@/components/BarChart"
-import { formatCurrency } from "@/lib/format"
+import { formatCurrency, formatWaited } from "@/lib/format"
 
 interface Visit {
   joinedAt: string
@@ -17,6 +17,8 @@ interface Swap {
   ownerFee: number
   buyerPaid: number
   settled?: boolean
+  /** When the fee was collected (a hold can be collected days after purchase) */
+  collectedAt?: string | null
 }
 
 interface Data {
@@ -142,7 +144,8 @@ export function AnalyticsClient({
     for (const s of data.swaps) {
       // Match the headline stat: fees still on hold aren't earned yet
       if (s.settled === false) continue
-      const k = dayKey(new Date(s.at))
+      // Filed under the day it was collected, or a past bar grows after the fact
+      const k = dayKey(new Date(s.collectedAt ?? s.at))
       feesPerDay.set(k, (feesPerDay.get(k) ?? 0) + s.ownerFee)
     }
     const fees: Bar[] = days.map((d) => {
@@ -244,7 +247,8 @@ export function AnalyticsClient({
             />
             <Stat
               label="Typical wait"
-              value={view.medianWait === null ? "--" : `${Math.round(view.medianWait)} min`}
+              // Same format as the console and stats: "1 hr 59 min", not "119 min"
+              value={view.medianWait === null ? "--" : formatWaited(Math.round(view.medianWait))}
             />
             <Stat
               label="No-show rate"
@@ -312,7 +316,9 @@ export function AnalyticsClient({
                   labelHeader="Day"
                   valueHeader="Fees"
                   labelEvery={5}
-                  formatTick={(v) => `$${Math.round(v)}`}
+                  integer={false}
+                  // A $2.50 top used to label its ticks "$0 / $1 / $3"
+                  formatTick={(v) => (v % 1 ? `$${v.toFixed(2)}` : `$${v}`)}
                 />
               )}
             </>

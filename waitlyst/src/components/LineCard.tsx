@@ -126,7 +126,10 @@ export function LineCard({ line }: LineCardProps) {
           ) : (
             <span className="inline-flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-ink/60 whitespace-nowrap">
               <span className={`w-1.5 h-1.5 ${statusDot[statusKey]}`} aria-hidden />
-              {status.label}
+              {/* A bare "Upcoming" left visitors opening every card to learn when */}
+              {statusKey === "upcoming" && opensAtDate
+                ? `Opens ${opensAtDate.toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
+                : status.label}
             </span>
           )}
         </div>

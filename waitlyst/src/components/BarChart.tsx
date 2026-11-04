@@ -20,6 +20,9 @@ interface BarChartProps {
   /** Show every Nth axis label so they don't collide */
   labelEvery?: number
   formatTick?: (value: number) => string
+  /** Values are whole numbers (counts, minutes): keep the ticks whole too, or
+   * a top of 1 put a "0.5 joins" tick mid-axis (and rounded to "1m / 1m") */
+  integer?: boolean
 }
 
 // One series, so one hue (validated slot 1) and no legend: the title names it.
@@ -41,7 +44,7 @@ function niceMax(max: number): number {
  * a tooltip on hover or keyboard focus, and a table view for anyone who'd
  * rather read numbers.
  */
-export function BarChart({ title, subtitle, bars, labelHeader, valueHeader, labelEvery = 1, formatTick = String }: BarChartProps) {
+export function BarChart({ title, subtitle, bars, labelHeader, valueHeader, labelEvery = 1, formatTick = String, integer = true }: BarChartProps) {
   const [active, setActive] = useState<number | null>(null)
   // Keyboard focus, apart from hover, so only focus draws the outline
   const [focused, setFocused] = useState<number | null>(null)
@@ -66,7 +69,8 @@ export function BarChart({ title, subtitle, bars, labelHeader, valueHeader, labe
   const width = 640
   const plotW = width - PAD.left - PAD.right
   const plotH = HEIGHT - PAD.top - PAD.bottom
-  const top = niceMax(Math.max(0, ...bars.map((b) => b.value)))
+  const rawTop = niceMax(Math.max(0, ...bars.map((b) => b.value)))
+  const top = integer ? Math.max(2, Math.ceil(rawTop / 2) * 2) : rawTop
   const band = plotW / Math.max(bars.length, 1)
   const barW = Math.min(BAR_MAX, band - 2) // 2px of surface between neighbours
   const y = (v: number) => PAD.top + plotH - (v / top) * plotH
@@ -176,7 +180,8 @@ export function BarChart({ title, subtitle, bars, labelHeader, valueHeader, labe
                 left: `${((PAD.left + band * active + band / 2) / width) * 100}%`,
                 top: `${(y(bars[active].value) / HEIGHT) * 100}%`,
               }}
-              role="status"
+              // A visual copy of the focused bar's own label; read once, not twice
+              aria-hidden="true"
             >
               <span className="text-paper/70">{bars[active].label}</span> · {bars[active].display}
             </div>
