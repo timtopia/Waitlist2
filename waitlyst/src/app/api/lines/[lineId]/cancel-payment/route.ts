@@ -24,6 +24,7 @@ export async function GET(
   let offerWithdrawn = false
   // Already FAILED before they backed out (the spot ahead changed): no strike was counted
   let calledOff = false
+  let paidAlready = false
 
   if (transactionId) {
     try {
@@ -47,6 +48,9 @@ export async function GET(
           ...(offer ? { offerId: null } : {}),
         })
         if (!abandoned && transaction.status === "FAILED" && !transaction.abandonedByBuyer) calledOff = true
+        // Paid in another tab, then pressed Back in this one: "no charges
+        // were made" would be wrong
+        if (!abandoned && transaction.status === "COMPLETED") paidAlready = true
         if (abandoned && offer) {
           const { count } = await prisma.swapOffer.updateMany({
             where: { id: offer.id, status: "ACCEPTED" },
@@ -62,5 +66,5 @@ export async function GET(
     }
   }
 
-  return NextResponse.redirect(`${baseUrl}/lines/${lineId}?payment=${calledOff ? "called_off" : offerWithdrawn ? "offer_withdrawn" : "cancelled"}`)
+  return NextResponse.redirect(`${baseUrl}/lines/${lineId}?payment=${paidAlready ? "success" : calledOff ? "called_off" : offerWithdrawn ? "offer_withdrawn" : "cancelled"}`)
 }

@@ -354,7 +354,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
 
   // A buy they started but never finished (closed the Stripe tab, pressed
   // Back) keeps both spots locked; let them pick it up again or call it off.
-  const [myCheckout, setMyCheckout] = useState<{ pending: boolean; url: string | null; paid?: boolean } | null>(null)
+  const [myCheckout, setMyCheckout] = useState<{ pending: boolean; url: string | null; paid?: boolean; released?: boolean } | null>(null)
   // Cancelling counts toward the walk-away limit, so it's confirmed like Back Out
   const [cancelCheckoutConfirm, setCancelCheckoutConfirm] = useState(false)
   const myLockUntil = currentUserPosition?.lockedUntil ?? null
@@ -414,7 +414,18 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
         setMyCheckout(data)
         // The payment had gone through; the server just finished the swap
         if (data?.paid) {
-          addToast("Your payment went through -- the spot is yours.", "success")
+          addToast(
+            isRestaurant
+              ? "Your payment went through -- the spot is yours. Your card is held until you're seated."
+              : "Your payment went through -- the spot is yours.",
+            "success"
+          )
+          onRefresh()
+        } else if (data?.released) {
+          addToast(
+            "The spot you were buying changed hands before the swap could finish, so it was cancelled. The hold on your card has been released.",
+            "info"
+          )
           onRefresh()
         }
       })
@@ -424,7 +435,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
     }
     // myPlace is read only when the lock clears, which changes myLockUntil
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lineId, myLockUntil, addToast, onRefresh])
+  }, [lineId, myLockUntil, addToast, onRefresh, isRestaurant])
   useEffect(() => {
     // Only their own pending buy (not someone paying for their spot); cancelling
     // clears myCheckout first, so a deliberate cancel isn't reported
@@ -1915,6 +1926,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                       </p>
                       <p className="text-xs text-ink/60 mt-0.5">
                         Both spots are held until they pay or the payment window closes. If they don&apos;t pay in time, the swap is off and you keep your spot.
+                        {isLocked && pos.lockedUntil && ` They have ${formatTimeLeft(pos.lockedUntil)} left.`}
                       </p>
                     </div>
                   )
@@ -2145,7 +2157,24 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                       </div>
                     ) : isLocked || myLockActive ? (
                       // Buttons gone with no reason left buyers guessing
-                      myCheckout?.pending ? null : (
+                      myCheckout?.pending ? null : sentOfferToFront?.status === "PENDING" ? (
+                        // Their offer looked like it had vanished, with no way to withdraw it
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <p className="text-xs text-ink/60">
+                            Your {formatCurrency(sentOfferToFront.amount)} offer is still pending, but{" "}
+                            {myLockActive
+                              ? "someone behind you is paying for your spot right now, so they can't answer until that finishes."
+                              : `they're in the middle of another swap, so they can't answer until it finishes${pos.lockedUntil ? ` (up to ${formatTimeLeft(pos.lockedUntil)})` : ""}.`}
+                          </p>
+                          <button
+                            onClick={() => setWithdrawConfirm({ offerId: sentOfferToFront.id, accepted: false })}
+                            disabled={loadingAction === `withdraw-${sentOfferToFront.id}`}
+                            className="min-h-11 pointer-fine:min-h-0 font-mono text-xs uppercase tracking-widest text-ink/60 hover:text-ink underline underline-offset-4 disabled:opacity-50"
+                          >
+                            Withdraw
+                          </button>
+                        </div>
+                      ) : (
                         <p className="text-xs text-ink/60">
                           {myLockActive
                             ? "Someone behind you is paying for your spot right now. You can buy or make an offer once that finishes."
@@ -2347,8 +2376,13 @@ function NoteField({
     setValue(initial)
   }
   const dirty = value.trim() !== initial.trim()
+  // Enter saves without leaving the field, so the later blur mustn't send it again
+  const lastSaved = useRef<string | null>(null)
   const save = () => {
-    if (dirty) onSave(value)
+    if (dirty && value !== lastSaved.current) {
+      lastSaved.current = value
+      onSave(value)
+    }
   }
   // Locking the phone or switching apps often skips blur; save the draft then too
   const saveRef = useRef(save)
@@ -2366,17 +2400,19 @@ function NoteField({
         maxLength={140}
         placeholder="Add a note (high chair, patio...)"
         aria-label={label}
-        disabled={saving}
-        onChange={(e) => setValue(e.target.value)}
+        // readOnly, not disabled: disabling pushed keyboard focus out of the field
+        readOnly={saving}
+        onChange={(e) => { lastSaved.current = null; setValue(e.target.value) }}
         onFocus={() => setFocused(true)}
         onBlur={() => { setFocused(false); save() }}
         onKeyDown={(e) => {
+          // Save in place: blurring dropped keyboard focus to the top of the page
           if (e.key === "Enter") {
             e.preventDefault()
-            ;(e.target as HTMLInputElement).blur()
+            save()
           }
         }}
-        className="w-full border border-rule bg-white px-2 py-1 text-xs text-ink placeholder:text-ink/60 focus:outline-none focus:border-ink disabled:opacity-50"
+        className="w-full min-h-11 pointer-fine:min-h-0 border border-rule bg-white px-2 py-1 text-base sm:text-sm text-ink placeholder:text-ink/60 focus:outline-none focus:border-ink read-only:opacity-50"
       />
       {dirty && (
         <button

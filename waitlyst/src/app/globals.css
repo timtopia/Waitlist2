@@ -129,3 +129,9 @@ textarea:focus-visible {
 body:has([data-action-bar]) .toast-stack {
   bottom: calc(5rem + env(safe-area-inset-bottom));
 }
+
+/* ...and keep a row tabbed to from scrolling in underneath it (focus not
+   obscured) */
+html:has([data-action-bar]) {
+  scroll-padding-bottom: calc(6rem + env(safe-area-inset-bottom));
+}

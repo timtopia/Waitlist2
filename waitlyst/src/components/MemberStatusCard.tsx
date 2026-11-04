@@ -80,27 +80,40 @@ export function MemberStatusCard({
   const [now, setNow] = useState(() => Date.now())
   const deadline = phase === "called" && !isPaused ? callDeadline(calledAt, responseWindowMinutes, respondedAt, graceMinutes) : null
   const deadlineMs = deadline?.getTime() ?? null
+  // Just called after a long wait: `now` was minutes old, so the countdown
+  // read long for its first second
+  const [deadlineSeen, setDeadlineSeen] = useState(deadlineMs)
+  if (deadlineSeen !== deadlineMs) {
+    setDeadlineSeen(deadlineMs)
+    setNow(Date.now())
+  }
   useEffect(() => {
     if (deadlineMs === null) return
     const timer = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(timer)
   }, [deadlineMs])
-  // Slower tick so the host's quoted time can flip to "has passed"
+  // Slower tick so the host's quoted time can flip to "has passed", and an
+  // estimate can flip to "taking longer" while the line sits still (no poll
+  // brings anything new then, so nothing else re-renders the card)
   useEffect(() => {
-    if (deadlineMs !== null || !quotedAt) return
+    if (deadlineMs !== null || (!quotedAt && minutesPerPerson == null)) return
     const timer = setInterval(() => setNow(Date.now()), 30_000)
     return () => clearInterval(timer)
-  }, [deadlineMs, quotedAt])
+  }, [deadlineMs, quotedAt, minutesPerPerson])
   const left = timeLeft(deadline, now)
   // When the number ahead last changed: the estimate's clock time counts
   // from here (adjusting state during render, per React's guidance)
   const [aheadSince, setAheadSince] = useState(() => ({ ahead, at: Date.now() }))
   if (aheadSince.ahead !== ahead) setAheadSince({ ahead, at: Date.now() })
 
+  // Bumped a minute after a failed fetch, so one rate-limited request doesn't
+  // leave "unavailable" up until the line next moves
+  const [waitTimeRetry, setWaitTimeRetry] = useState(0)
   // Refetch as the line moves: each service event changes the pace estimate.
   useEffect(() => {
     if (phase !== "waiting") return
     let cancelled = false
+    let retryTimer: ReturnType<typeof setTimeout> | undefined
     fetch(`/api/lines/${lineId}/wait-time`)
       .then((res) => {
         if (!res.ok) throw new Error(String(res.status))
@@ -112,15 +125,18 @@ export function MemberStatusCard({
         setMinutesPerPerson(data?.estimatedMinutesPerPerson ?? null)
       })
       .catch(() => {
-        if (!cancelled) setWaitTimeFailed(true)
+        if (cancelled) return
+        setWaitTimeFailed(true)
+        retryTimer = setTimeout(() => setWaitTimeRetry((r) => r + 1), 60_000)
       })
       .finally(() => {
         if (!cancelled) setWaitTimeLoading(false)
       })
     return () => {
       cancelled = true
+      clearTimeout(retryTimer)
     }
-  }, [lineId, ahead, phase])
+  }, [lineId, ahead, phase, waitTimeRetry])
 
   const pastCapacity = maxCapacity !== null && position > maxCapacity
   const spotsLeft = maxCapacity !== null ? Math.max(maxCapacity - (capacityUsed ?? totalPositions), 0) : 0
@@ -193,7 +209,7 @@ export function MemberStatusCard({
       const minutes = minutesPerPerson * ahead
       const aroundMs = aheadSince.at + minutes * 60_000
       const around = new Date(aroundMs).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-      detail = minutes >= 1 && Date.now() > aroundMs + 5 * 60_000
+      detail = minutes >= 1 && now > aroundMs + 5 * 60_000
         ? `Taking longer than estimated (we guessed around ${around}). You're still in line.`
         : `Est. wait: ${formatWaitTime(minutes)}${minutes >= 1 ? ` (around ${around})` : ""}`
     } else if (waitTimeFailed) detail = "Wait estimate unavailable right now. You're still in line."

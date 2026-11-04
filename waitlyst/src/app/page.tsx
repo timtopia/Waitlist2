@@ -218,7 +218,7 @@ export default async function HomePage() {
             </div>
             <Link
               href="/lines/new"
-              className="inline-flex items-center justify-center px-8 py-3.5 bg-paper text-ink font-medium hover:bg-accent hover:text-white transition-colors shrink-0"
+              className="inline-flex items-center justify-center px-8 py-3.5 bg-paper text-ink font-medium hover:bg-accent hover:text-white transition-colors shrink-0 focus-visible:outline-paper"
             >
               Get started
             </Link>

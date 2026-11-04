@@ -9,7 +9,7 @@ export async function GET(req: Request) {
   // Send the owner back to wherever they started the Connect flow from
   // (e.g. a line's settlement page), not always /profile.
   const returnTo = sanitizeReturnPath(url.searchParams.get("return_to"), "/profile")
-  const redirectWith = (status: "success" | "incomplete" | "error") => {
+  const redirectWith = (status: "success" | "pending" | "incomplete" | "error") => {
     const sep = returnTo.includes("?") ? "&" : "?"
     return `${returnTo}${sep}connect=${status}`
   }
@@ -60,6 +60,13 @@ export async function GET(req: Request) {
         console.error("Catch-up payouts failed:", err)
       )
       return NextResponse.redirect(`${baseUrl}${redirectWith("success")}`)
+    }
+
+    // Everything's submitted and Stripe is still verifying: sending them
+    // back through onboarding would be for nothing. The account.updated
+    // webhook marks them ready and sends held payouts once approved.
+    if (account.details_submitted) {
+      return NextResponse.redirect(`${baseUrl}${redirectWith("pending")}`)
     }
 
     // Onboarding is incomplete

@@ -82,7 +82,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         <span className="flex-1 min-w-0 break-words">{toast.message}</span>
         <button
           onClick={() => removeToast(toast.id)}
-          className="flex-shrink-0 p-2.5 -my-2.5 -mr-2.5 ml-0 inline-flex items-center justify-center text-white/80 hover:text-white"
+          className="flex-shrink-0 p-2.5 -my-2.5 -mr-2.5 ml-0 inline-flex items-center justify-center text-white/80 hover:text-white focus-visible:outline-white"
           aria-label="Dismiss"
         >
           <svg className="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">

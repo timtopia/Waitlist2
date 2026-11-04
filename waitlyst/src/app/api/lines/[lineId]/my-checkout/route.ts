@@ -57,7 +57,15 @@ export async function GET(
       if (session.status === "complete" && (await isCheckoutAuthorized(session))) {
         await recordPaymentIntent(txn.id, session)
         await performPositionSwap(txn.id)
-        return NextResponse.json({ pending: false, paid: true })
+        // The spot may have changed hands while they were paying, in which
+        // case the swap was called off and the hold released: "the spot is
+        // yours" would be a lie
+        const settled = await prisma.transaction.findUnique({
+          where: { id: txn.id },
+          select: { status: true },
+        })
+        if (settled?.status === "COMPLETED") return NextResponse.json({ pending: false, paid: true })
+        return NextResponse.json({ pending: false, released: true })
       }
     } catch {
       // Gone or unreachable: they can still cancel

@@ -132,7 +132,7 @@ export async function POST(
     const message = error instanceof Error ? error.message : ""
     if (message === "Position not found") {
       return NextResponse.json(
-        { error: "Could not find this position. The person may have already left the line." },
+        { error: "This party isn't in the line any more -- they may have left." },
         { status: 404 }
       )
     }
@@ -144,13 +144,13 @@ export async function POST(
     }
     if (message === "Position locked") {
       return NextResponse.json(
-        { error: "This position is in the middle of a pending swap and can't be fulfilled until it completes or the lock expires." },
+        { error: "A swap for this spot is still going through -- try again in a minute." },
         { status: 409 }
       )
     }
     console.error("Fulfill error:", error)
     return NextResponse.json(
-      { error: "Something went wrong while fulfilling this position. Please try again." },
+      { error: "Couldn't mark them as seated or served. Try again." },
       { status: 500 }
     )
   }

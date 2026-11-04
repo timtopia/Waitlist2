@@ -119,6 +119,15 @@ export function OwnerConsole({
   const walkInButtonRef = useRef<HTMLButtonElement>(null)
   const walkInNameRef = useRef<HTMLInputElement>(null)
   const [copyAnnounce, setCopyAnnounce] = useState("")
+  // Back from Stripe's payout setup (back/forward cache) left busy on
+  // "connect", with every Call/Seat/No-show button still greyed out
+  useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => {
+      if (e.persisted) setBusy(null)
+    }
+    window.addEventListener("pageshow", onShow)
+    return () => window.removeEventListener("pageshow", onShow)
+  }, [])
   // Hand focus back to "+ Add walk-in" when the form closes, not on first render
   const walkInWasOpen = useRef(false)
   useEffect(() => {
@@ -580,7 +589,7 @@ export function OwnerConsole({
       <ConfirmModal
         open={showClearConfirm}
         title={`Clear ${servedWord} ${isRestaurant ? "parties" : "people"}`}
-        message={`Remove the ${served.length} ${isRestaurant ? (served.length === 1 ? "party" : "parties") : served.length === 1 ? "person" : "people"} you've already ${servedWord} from the line? ${isRestaurant ? "No one's place in line changes." : "Everyone still waiting moves up."} Their payments stay final.`}
+        message={`Remove the ${served.length} ${isRestaurant ? (served.length === 1 ? "party" : "parties") : served.length === 1 ? "person" : "people"} you've already ${servedWord} from the line? ${isRestaurant ? "No one's place in line changes." : "Everyone still waiting moves up."} Their payments stay final.${!isRestaurant && roomLeft != null ? " Served people still count toward your capacity (it tracks stock handed out), so this won't let more people join -- raise the capacity in Edit to add stock." : ""}`}
         confirmLabel={isRestaurant ? "Clear Seated" : "Clear Served"}
         isLoading={busy === "clear"}
         onConfirm={handleClearServed}
@@ -977,6 +986,10 @@ export function OwnerConsole({
             </Button>
             {roomLeft === 0 && (
               <p className="w-full text-xs text-accent" role="status">The line is full. Seat or remove someone to make room.</p>
+            )}
+            {/* The party-size list quietly stopped at the room left, with no reason given */}
+            {isRestaurant && roomLeft != null && roomLeft > 0 && roomLeft < MAX_PARTY_SIZE && (
+              <p className="w-full text-xs text-ink/70">Room for {roomLeft} more {roomLeft === 1 ? "guest" : "guests"} under your cap.</p>
             )}
             <Button size="sm" variant="ghost" type="button" onClick={() => setWalkInOpen(false)}>
               Done

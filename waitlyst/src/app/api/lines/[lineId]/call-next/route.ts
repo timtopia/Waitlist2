@@ -77,7 +77,7 @@ export async function POST(
     if (frontPosition.calledAt && body?.recall !== true) {
       return NextResponse.json(
         {
-          error: `${frontPosition.user?.name || "They"} ${frontPosition.user?.name ? "was" : "were"} already called (maybe from another device). Refresh to see the latest.`,
+          error: `${frontPosition.user?.name || "They"} ${frontPosition.user?.name ? "was" : "were"} already called (maybe from another device). The list has been updated.`,
           code: "ALREADY_CALLED",
         },
         { status: 409 }
@@ -128,7 +128,7 @@ export async function POST(
     if (!line) {
       return NextResponse.json(
         {
-          error: `${frontPosition.user?.name || "That party"} was just called, seated or removed (maybe from another device). Refresh to see the latest.`,
+          error: `${frontPosition.user?.name || "That party"} was just called, seated or removed (maybe from another device). The list has been updated.`,
           code: "ALREADY_CALLED",
         },
         { status: 409 }

@@ -7,6 +7,7 @@ const mockPrisma = {
   linePosition: {
     findUnique: vi.fn(),
     findFirst: vi.fn(),
+    findMany: vi.fn().mockResolvedValue([]),
     create: vi.fn(),
     update: vi.fn(),
     updateMany: vi.fn(),
@@ -61,6 +62,20 @@ describe("POST /walk-in", () => {
     expect(res.status).toBe(400)
     expect((await res.json()).error).toMatch(/room for 2 more guests/)
     expect(mockPrisma.user.create).not.toHaveBeenCalled()
+  })
+
+  it("hands back the party just added when a lost reply makes the host tap Add again", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "owner-1" } })
+    mockPrisma.linePosition.findMany.mockResolvedValueOnce([{ id: "pos-rosa", position: 4, partySize: 4, note: null }])
+    mockPrisma.linePosition.count.mockResolvedValueOnce(3)
+
+    const { POST } = await import("@/app/api/lines/[lineId]/walk-in/route")
+    const res = await POST(post("walk-in", { name: "Rosa", partySize: 4 }), ctx)
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ id: "pos-rosa", ahead: 3 })
+    expect(mockPrisma.user.create).not.toHaveBeenCalled()
+    expect(mockPrisma.linePosition.create).not.toHaveBeenCalled()
   })
 
   it("is only for the line's owner", async () => {

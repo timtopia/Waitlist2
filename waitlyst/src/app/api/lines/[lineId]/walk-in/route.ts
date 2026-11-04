@@ -46,6 +46,28 @@ export async function POST(
       const note = line.kind === "RESTAURANT" ? parseNote(body?.note) : null
       if (note && typeof note === "object") throw new WalkInRefusedError(note.error)
 
+      // A reply lost on venue Wi-Fi reads as a failure while the name is still
+      // in the form, so the host taps Add again: hand back the party just
+      // added instead of seating them twice
+      const [recent] = (await tx.linePosition.findMany({
+        where: {
+          lineId,
+          fulfilled: false,
+          partySize,
+          note,
+          joinedAt: { gte: new Date(Date.now() - 60_000) },
+          user: { isWalkIn: true, name },
+        },
+        orderBy: { position: "desc" },
+        take: 1,
+      })) ?? []
+      if (recent) {
+        const ahead = await tx.linePosition.count({
+          where: { lineId, fulfilled: false, position: { lt: recent.position } },
+        })
+        return { ...recent, ahead }
+      }
+
       if (line.maxCapacity) {
         const left = line.maxCapacity - await countCapacityUsed(line, tx)
         if (partySize > left) {

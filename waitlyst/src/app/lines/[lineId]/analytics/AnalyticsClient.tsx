@@ -263,7 +263,7 @@ export function AnalyticsClient({
               />
             )}
             {(allowResale || view.swapCount > 0) && !noFee && (
-              <Stat label="Swap fees earned" value={formatCurrency(view.ownerFees)} note={`${view.swapCount} swap${view.swapCount === 1 ? "" : "s"}${view.swapCount > 0 ? `, buyers paid ${formatCurrency(view.swapVolume)}` : ""}${view.ownerFeesOnHold > 0 ? ` (+ ${formatCurrency(view.ownerFeesOnHold)} on hold)` : ""}`} />
+              <Stat label="Swap fees earned" value={formatCurrency(view.ownerFees)} note={`${view.swapCount} swap${view.swapCount === 1 ? "" : "s"}${view.swapCount > 0 ? `, buyers paid ${formatCurrency(view.swapVolume)}` : ""}${view.ownerFeesOnHold > 0 ? ` (+ ${formatCurrency(view.ownerFeesOnHold)} ${isRestaurant ? "on hold" : "not yet collected"})` : ""}`} />
             )}
           </div>
 

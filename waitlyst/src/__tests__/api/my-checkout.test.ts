@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const mockPrisma = {
   linePosition: { findUnique: vi.fn() },
-  transaction: { findFirst: vi.fn() },
+  transaction: { findFirst: vi.fn(), findUnique: vi.fn() },
   swapOffer: { count: vi.fn() },
 }
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }))
@@ -47,12 +47,25 @@ describe("/api/lines/[lineId]/my-checkout", () => {
     mockPrisma.linePosition.findUnique.mockResolvedValue(locked())
     mockPrisma.transaction.findFirst.mockResolvedValue({ id: "txn-1", stripePaymentId: "cs_1" })
     sessionsRetrieve.mockResolvedValue({ status: "complete", url: null })
+    mockPrisma.transaction.findUnique.mockResolvedValue({ status: "COMPLETED" })
     const { GET } = await import("@/app/api/lines/[lineId]/my-checkout/route")
 
     const data = await (await GET(new Request("http://localhost/x"), ctx)).json()
 
     expect(data).toEqual({ pending: false, paid: true })
     expect(performPositionSwap).toHaveBeenCalledWith("txn-1")
+  })
+
+  it("says the hold was released, not 'the spot is yours', when the spot changed hands while they paid", async () => {
+    mockPrisma.linePosition.findUnique.mockResolvedValue(locked())
+    mockPrisma.transaction.findFirst.mockResolvedValue({ id: "txn-1", stripePaymentId: "cs_1" })
+    sessionsRetrieve.mockResolvedValue({ status: "complete", url: null })
+    mockPrisma.transaction.findUnique.mockResolvedValue({ status: "FAILED" })
+    const { GET } = await import("@/app/api/lines/[lineId]/my-checkout/route")
+
+    const data = await (await GET(new Request("http://localhost/x"), ctx)).json()
+
+    expect(data).toEqual({ pending: false, released: true })
   })
 
   it("won't cancel a purchase that was already paid for", async () => {
