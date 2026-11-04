@@ -60,8 +60,15 @@ export function LineCard({ line }: LineCardProps) {
   }, [showDropBadge])
 
   return (
-    <Link href={`/lines/${line.id}`} className="block group">
-      <div className="grid grid-cols-[auto_1fr_auto] sm:grid-cols-[7rem_1fr_auto] items-center gap-4 sm:gap-6 px-4 sm:px-6 py-5 bg-white hover:bg-paper transition-colors">
+    // Named by the line, not by everything in the card read in order
+    // ("12 slash 50 Spots filled Air Max..."), so a links list can tell them apart
+    <Link
+      href={`/lines/${line.id}`}
+      className="block group"
+      aria-labelledby={`line-${line.id}-name`}
+      aria-describedby={`line-${line.id}-details`}
+    >
+      <div id={`line-${line.id}-details`} className="grid grid-cols-[auto_1fr_auto] sm:grid-cols-[7rem_1fr_auto] items-center gap-4 sm:gap-6 px-4 sm:px-6 py-5 bg-white hover:bg-paper transition-colors">
         {/* Count */}
         <div className="text-left">
           <div className="font-mono text-2xl sm:text-3xl tabular-nums leading-none">
@@ -91,7 +98,7 @@ export function LineCard({ line }: LineCardProps) {
               />
             )}
             <div className="min-w-0">
-              <h3 className="font-semibold tracking-tight truncate group-hover:underline underline-offset-4">
+              <h3 id={`line-${line.id}-name`} className="font-semibold tracking-tight truncate group-hover:underline underline-offset-4">
                 {line.name}
               </h3>
               <p className="text-sm text-ink/60 truncate">

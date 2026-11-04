@@ -19,7 +19,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // people's emails. Clean it like names edited on the profile page, so a
       // bidi override or an 80-character name can't garble those.
       profile(p) {
-        const cleaned = cleanDisplayName(cleanText(p.name ?? "").slice(0, 50))
+        // Whole characters, so a cut never leaves half an emoji ("�")
+        const cleaned = cleanDisplayName(Array.from(cleanText(p.name ?? "")).slice(0, 50).join(""))
         return {
           id: p.sub,
           name: typeof cleaned === "string" ? cleaned : null,

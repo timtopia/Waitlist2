@@ -197,7 +197,9 @@ export function MemberStatusCard({
       ? `${ahead} ${ahead === 1 ? "party" : "parties"} ahead of you`
       : `${ahead} ${ahead === 1 ? "person" : "people"} ahead of you`
     // A paused line isn't moving: a clock time would bring them back too early
-    if (isPaused) detail = `Line paused. No wait estimate until the ${organizer} resumes it.`
+    // A restaurant keeps seating while online joins are paused, so the host's
+    // own quote still stands
+    if (isPaused && !(isRestaurant && quoteDetail)) detail = `Line paused. No wait estimate until the ${organizer} resumes it.`
     else if (quoteDetail) detail = quoteDetail
     else if (waitTimeLoading) detail = "Estimating your wait..."
     else if (minutesPerPerson != null) {
@@ -352,7 +354,9 @@ export function MemberStatusCard({
                 ))}
                 {response && (
                   <span className="text-xs text-ink/60">
-                    {response === "RUNNING_LATE" && responseWindowMinutes
+                    {/* No deadline while paused: "your time is still running" would
+                        contradict the "on hold" note below */}
+                    {response === "RUNNING_LATE" && deadline
                       ? graceMinutes > 0
                         // The host just tapped +5: "ask for longer" would read as a no
                         ? `The ${organizer} gave you ${graceMinutes} extra min. It's already in the time above.`
@@ -362,7 +366,7 @@ export function MemberStatusCard({
                         : `The ${organizer} can see this, but your time is still running. Tap On my way when you head over to get more time.`
                       // The window restarts from the tap: answering at once adds next to nothing
                       : `The ${organizer} can see this${
-                          response === "ON_MY_WAY" && responseWindowMinutes && respondedAt && calledAt &&
+                          response === "ON_MY_WAY" && deadline && respondedAt && calledAt &&
                           new Date(respondedAt).getTime() - new Date(calledAt).getTime() >= 60_000
                             ? ", and you have a little more time"
                             : ""

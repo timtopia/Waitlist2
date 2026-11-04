@@ -741,7 +741,8 @@ export function OwnerConsole({
               ? !isActive
                 ? "No one in line, and the line is paused -- tap Resume so people can join online."
                 : closedBySchedule
-                  ? "No one in line, and it's past closing time -- change the closing time in Edit to take more guests."
+                  // Walk-ins still work past closing; only online joins stop
+                  ? "No one in line, and it's past closing time, so no online joins. You can still add walk-ins, or change the closing time in Edit."
                   : "No one in line yet. Share the link to get people in."
               : `Everyone in line has been ${servedWord}.`}
           </p>

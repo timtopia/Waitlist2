@@ -30,7 +30,8 @@ export async function POST(
     const newLine = await prisma.line.create({
       data: {
         // Stay within the 100-character name limit, even for a copy of a copy
-        name: `${source.name.slice(0, 93)} (Copy)`,
+        // Cut by whole characters: slicing UTF-16 could split an emoji into "�"
+        name: `${Array.from(source.name).slice(0, 93).join("")} (Copy)`,
         description: source.description,
         createdById: result.userId,
         isPublic: source.isPublic,

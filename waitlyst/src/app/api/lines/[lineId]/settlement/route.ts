@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
+import { buyerTotal } from "@/lib/fees"
 
 /** Warn the owner when a hold lapses within this long */
 const HOLD_WARNING_MS = 48 * 60 * 60 * 1000
@@ -68,7 +69,13 @@ export async function GET(
         sellerName: userMap.get(txn.sellerId) || "Anonymous",
         amount: txn.amount,
         ownerFee: txn.ownerFee,
+        // What the buyer's Stripe checkout is for, so an unfinished one can be
+        // matched against the Stripe dashboard
+        buyerTotal: buyerTotal(txn),
         status: txn.status,
+        // A refund after collection is a real refund; one before is a
+        // released hold. The swaps CSV already tells them apart.
+        captured: !!txn.capturedAt,
         settledAt: txn.settledAt?.toISOString() || null,
         // Collected but not yet passed on -- the payee has no payout account.
         sellerUnpaid: !!txn.capturedAt && !txn.sellerPaidAt,
@@ -77,7 +84,8 @@ export async function GET(
         captureBefore: txn.captureBefore?.toISOString() || null,
         holdExpired: !!txn.holdExpiredAt,
         buyerFulfilled: buyerPos ? buyerPos.fulfilled : servedAndCleared.has(txn.buyerId),
-        buyerPosition: buyerPos?.position ?? null,
+        // A seated/served buyer whose row isn't cleared yet isn't "in position #7"
+        buyerPosition: buyerPos && !buyerPos.fulfilled ? buyerPos.position : null,
         createdAt: txn.createdAt.toISOString(),
         // The buyer may be on the payment page right now: the spots stay
         // locked this long, and an abandoned session is cleaned up by Stripe's
@@ -111,7 +119,7 @@ export async function GET(
     const expiredTxns = enrichedTransactions.filter((t) => t.holdExpired)
 
     const stuckTxns = enrichedTransactions.filter((t) => t.status === "PENDING" && !t.inProgress)
-    const stuckAmount = stuckTxns.reduce((sum, t) => sum + t.amount, 0)
+    const stuckAmount = Math.round(stuckTxns.reduce((sum, t) => sum + t.buyerTotal, 0) * 100) / 100
 
     // What the owner actually earns from this line's swap activity -- this is
     // the number that matters for "how much can I pull out," distinct from

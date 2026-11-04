@@ -223,6 +223,28 @@ export async function lockLine(tx: Prisma.TransactionClient, lineId: string) {
   await tx.$queryRaw`SELECT id FROM "Line" WHERE id = ${lineId} FOR UPDATE`
 }
 
+/** Far above any real place in line, so parked rows can't meet a real one */
+const SHIFT_PARKING_OFFSET = 1_000_000
+
+/**
+ * Move everyone behind a vacated place up by one. Postgres checks the
+ * (lineId, position) unique index row by row, in whatever order the rows sit
+ * on disk, and a swap rewrites two rows so the one further back sits first:
+ * a plain "position - 1" then hit the row ahead before it had moved, and
+ * leaving or removing anyone ahead of a swapped pair failed. Parking the rows
+ * out of range first means no step can collide.
+ */
+export async function shiftUpBehind(tx: Prisma.TransactionClient, lineId: string, vacated: number) {
+  await tx.linePosition.updateMany({
+    where: { lineId, position: { gt: vacated } },
+    data: { position: { increment: SHIFT_PARKING_OFFSET } },
+  })
+  await tx.linePosition.updateMany({
+    where: { lineId, position: { gt: SHIFT_PARKING_OFFSET } },
+    data: { position: { decrement: SHIFT_PARKING_OFFSET + 1 } },
+  })
+}
+
 /**
  * Take someone out of a line, however they're leaving. Every exit path
  * (leaving, the organizer removing them, clearing the front) goes through
@@ -277,10 +299,7 @@ export async function exitQueue(
   })
 
   await tx.linePosition.delete({ where: { id: position.id } })
-  await tx.linePosition.updateMany({
-    where: { lineId, position: { gt: position.position } },
-    data: { position: { decrement: 1 } },
-  })
+  await shiftUpBehind(tx, lineId, position.position)
 
   // The spot these offers referred to is gone. An accepted offer whose
   // checkout was just abandoned goes too, rather than reopening.

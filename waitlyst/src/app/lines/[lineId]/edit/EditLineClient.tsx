@@ -100,7 +100,8 @@ export function EditLineClient({
     if (/product price/i.test(message)) return "productPrice"
     if (/closing time|close after/i.test(message)) return "closesAt"
     if (/opening time/i.test(message)) return "opensAt"
-    if (/^name is required/i.test(message)) return "name"
+    if (/product image/i.test(message)) return "productImage"
+    if (/^name/i.test(message)) return "name"
     if (/^description/i.test(message)) return "description"
     return null
   }
@@ -137,7 +138,10 @@ export function EditLineClient({
       }
     }
 
-    if (maxCapacity && Number(maxCapacity) < line.capacityUsed) {
+    // Only a changed capacity: a host can enlarge a party past the cap, and
+    // fixing a typo in the description mustn't then be refused
+    const capacityChanged = maxCapacity !== (line.maxCapacity?.toString() || "")
+    if (capacityChanged && maxCapacity && Number(maxCapacity) < line.capacityUsed) {
       failField("maxCapacity", `Capacity cannot be less than the ${line.capacityUsed} ${isRestaurant ? "guests waiting" : "spots already handed out or taken, served people included"}`)
       return
     }
@@ -305,6 +309,7 @@ export function EditLineClient({
               id="name"
               label="Line Name"
               placeholder="e.g., Coffee Shop Queue"
+              maxLength={100}
               value={name}
               onChange={(e) => setName(e.target.value)}
               error={error && !name.trim() ? "Name is required" : undefined}
@@ -314,6 +319,7 @@ export function EditLineClient({
               id="description"
               label="Description (optional)"
               placeholder="What is this line for?"
+              maxLength={500}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
@@ -397,7 +403,7 @@ export function EditLineClient({
                 {...fieldA11y("maxCapacity", "maxCapacity-hint")}
                 type="number"
                 inputMode="numeric"
-                min={line.capacityUsed || 1}
+                min={maxCapacity !== (line.maxCapacity?.toString() || "") ? line.capacityUsed || 1 : 1}
                 placeholder="Unlimited"
                 value={maxCapacity}
                 onChange={(e) => setMaxCapacity(e.target.value)}
@@ -445,7 +451,7 @@ export function EditLineClient({
                     onChange={(e) => setPurchaseLimit(e.target.value)}
                     className="w-full px-3 py-2 bg-white border border-rule text-sm focus:outline-none focus:border-ink"
                   />
-                  <p id="purchaseLimit-hint" className="text-xs text-ink/60 mt-1">e.g. 1 per person. Shown on the line page and when someone is called.</p>
+                  <p id="purchaseLimit-hint" className="text-xs text-ink/60 mt-1">e.g. 1 per person. Shown on the line page and when someone is called, as a reminder -- Waitlyst doesn&apos;t enforce it, so apply it when you hand out.</p>
                 </div>
               )}
               <div>

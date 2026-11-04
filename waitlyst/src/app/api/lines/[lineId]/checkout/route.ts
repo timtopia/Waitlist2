@@ -50,7 +50,11 @@ export async function POST(
   try {
     // Check if line is active (not paused)
     const line = await prisma.line.findUnique({ where: { id: lineId } })
-    if (!line || !line.isActive) {
+    // A deleted line isn't "paused": don't leave a stale tab waiting on it
+    if (!line) {
+      return NextResponse.json({ error: "This line no longer exists." }, { status: 404 })
+    }
+    if (!line.isActive) {
       return NextResponse.json(
         { error: "This line is currently paused" },
         { status: 400 }

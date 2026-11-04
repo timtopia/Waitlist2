@@ -882,7 +882,11 @@ describe("POST /api/lines/[lineId]/remove-front", () => {
     })
     expect(mockPrisma.linePosition.updateMany).toHaveBeenCalledWith({
       where: { lineId: "line-1", position: { gt: 1 } },
-      data: { position: { decrement: 1 } },
+      data: { position: { increment: 1_000_000 } },
+    })
+    expect(mockPrisma.linePosition.updateMany).toHaveBeenCalledWith({
+      where: { lineId: "line-1", position: { gt: 1_000_000 } },
+      data: { position: { decrement: 1_000_001 } },
     })
   })
 

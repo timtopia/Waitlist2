@@ -18,7 +18,11 @@ interface Transaction {
   sellerName: string
   amount: number
   ownerFee: number
+  /** Seller's price plus both fees: what the buyer's checkout is for */
+  buyerTotal?: number
   status: "PENDING" | "COMPLETED" | "FAILED" | "REFUNDED"
+  /** Money was collected before it was refunded */
+  captured?: boolean
   settledAt: string | null
   sellerUnpaid?: boolean
   ownerFeeUnpaid?: boolean
@@ -350,7 +354,8 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
     if (txn.status === "REFUNDED") {
       return (
         <span className="inline-flex items-center font-mono text-xs uppercase tracking-widest text-accent">
-          Cancelled
+          {/* Same words as the swaps CSV: collected-then-refunded vs never charged */}
+          {txn.captured ? "Refunded" : "Cancelled"}
         </span>
       )
     }
@@ -539,8 +544,8 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
         open={bulkConfirm === "capture-all"}
         title={isDrop ? "Retry Collecting Payments" : "Capture All Payments"}
         message={isDrop
-          ? `Try again to collect the ${completedUnsettled.length} swap payment(s) that couldn't be collected automatically. Total: ${formatCurrency(summary.pendingAmount)}.`
-          : `This will collect all ${completedUnsettled.length} payment(s) still on hold, including buyers you haven't seated yet. Total: ${formatCurrency(summary.pendingAmount)}.`}
+          ? `Try again to collect the ${completedUnsettled.length} swap payment${completedUnsettled.length === 1 ? "" : "s"} that couldn't be collected automatically. Total: ${formatCurrency(summary.pendingAmount)}.`
+          : `This will collect ${completedUnsettled.length === 1 ? "the 1 payment" : `all ${completedUnsettled.length} payments`} still on hold, including buyers you haven't seated yet. Total: ${formatCurrency(summary.pendingAmount)}.`}
         confirmLabel={isDrop ? "Collect All" : "Capture All"}
         variant="primary"
         isLoading={actionLoading === "capture-all"}
@@ -552,7 +557,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
         title={cancelConfirm?.status === "PENDING" ? "Cancel Checkout" : isDrop ? "Cancel This Payment" : "Release Payment Hold"}
         message={
           cancelConfirm?.status === "PENDING"
-            ? `Cancel ${cancelConfirm.buyerName}'s unfinished checkout for ${formatCurrency(cancelConfirm.amount)} (started ${formatDeadline(cancelConfirm.createdAt)})? If they're still on the payment page, their payment will fail and both spots unlock.`
+            ? `Cancel ${cancelConfirm.buyerName}'s unfinished checkout for ${formatCurrency(cancelConfirm.buyerTotal ?? cancelConfirm.amount)}${cancelConfirm.buyerTotal != null && cancelConfirm.buyerTotal !== cancelConfirm.amount ? " (incl. fees)" : ""} (started ${formatDeadline(cancelConfirm.createdAt)})? If they're still on the payment page, their payment will fail and both spots unlock.`
             : cancelConfirm
               ? `${isDrop ? `Cancel ${cancelConfirm.buyerName}'s uncollected payment of` : `Release the hold on ${cancelConfirm.buyerName}'s card for`} ${formatCurrency(cancelConfirm.amount)}? They won't be charged, ${cancelConfirm.sellerName} won't be paid for the spot${cancelConfirm.ownerFee > 0 ? `, and you give up your ${formatCurrency(cancelConfirm.ownerFee)} fee` : ""}. This can't be undone.`
               : ""
@@ -665,11 +670,11 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
               <>
                 <div className="text-center">
                   <p className="font-mono text-2xl tabular-nums text-green-700">{summary.fulfilled}</p>
-                  <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Awaiting capture: served</p>
+                  <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Awaiting capture: seated</p>
                 </div>
                 <div className="text-center">
                   <p className="font-mono text-2xl tabular-nums text-amber-700">{summary.unfulfilled}</p>
-                  <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Awaiting capture: not served</p>
+                  <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Awaiting capture: not seated yet</p>
                 </div>
               </>
             )}
@@ -745,7 +750,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
             <div className="mt-4 pt-4 border-t border-rule flex items-center justify-between">
               <div>
                 <p className="font-mono text-sm tabular-nums text-accent">
-                  {summary.stuckCount} checkout{summary.stuckCount === 1 ? "" : "s"} never completed ({formatCurrency(summary.stuckAmount)})
+                  {summary.stuckCount} checkout{summary.stuckCount === 1 ? "" : "s"} never completed ({formatCurrency(summary.stuckAmount)} incl. fees)
                 </p>
                 <p className="text-xs text-ink/60 mt-0.5">
                   Someone started a swap but never paid, or the link broke. Cancel it below to free up the positions.

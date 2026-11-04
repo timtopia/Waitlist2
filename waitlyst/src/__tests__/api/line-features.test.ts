@@ -402,7 +402,7 @@ describe("POST /api/lines/[lineId]/checkout", () => {
     expect(data.error).toContain("paused")
   })
 
-  it("should return 400 if line not found", async () => {
+  it("should return 404, not 'paused', if the line was deleted", async () => {
     mockAuth.mockResolvedValue({ user: { id: "buyer-1" } })
     mockPrisma.line.findUnique.mockResolvedValue(null)
 
@@ -412,7 +412,8 @@ describe("POST /api/lines/[lineId]/checkout", () => {
     })
 
     const response = await POST(req, { params: Promise.resolve({ lineId: "line-1" }) })
-    expect(response.status).toBe(400)
+    expect(response.status).toBe(404)
+    expect((await response.json()).error).toBe("This line no longer exists.")
   })
 
   it("should return 400 if buyer is not in the line", async () => {
