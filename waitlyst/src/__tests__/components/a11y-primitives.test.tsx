@@ -39,6 +39,17 @@ describe("Button", () => {
     render(<Button isLoading>Save</Button>)
     expect(screen.getByRole("button", { name: "Save" })).toHaveAttribute("aria-busy", "true")
   })
+
+  it("stays focusable while loading but ignores clicks", () => {
+    const onClick = vi.fn()
+    render(<Button isLoading onClick={onClick}>Join</Button>)
+    const button = screen.getByRole("button", { name: "Join" })
+    // Disabling the focused button would drop keyboard focus to the page
+    expect(button).not.toBeDisabled()
+    expect(button).toHaveAttribute("aria-disabled", "true")
+    fireEvent.click(button)
+    expect(onClick).not.toHaveBeenCalled()
+  })
 })
 
 describe("ShareLine", () => {

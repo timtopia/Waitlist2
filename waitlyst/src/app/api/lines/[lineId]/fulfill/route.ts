@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { emailNewlyOnDeck } from "@/lib/on-deck"
 import { runAfterResponse } from "@/lib/after-response"
 import { requireLineOwner } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
@@ -122,6 +123,10 @@ export async function POST(
         runAfterResponse(() => sendEmail(fulfilledUser.email!, subject, html))
       }
     }
+
+    // Seated without being called (a walk-in, or straight from the list):
+    // the next uncalled party is next now and hasn't been told
+    await emailNewlyOnDeck(lineId, result.position, true)
 
     return NextResponse.json({
       fulfilled: true,

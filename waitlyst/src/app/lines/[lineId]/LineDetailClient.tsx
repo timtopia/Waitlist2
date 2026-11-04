@@ -524,7 +524,7 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
   // Restaurant hosts call parties out of order, so anyone still waiting may be
   // called next and the show-up window is short
   const restaurantWaiting = line?.kind === "RESTAURANT" && !!memberStatus && memberStatus.phase !== "served"
-  const { stale } = useLineUpdates(lineId, handleLineUpdate, {
+  const { stale, lastUpdatedAt } = useLineUpdates(lineId, handleLineUpdate, {
     // Called guests further back need the quick poll too, not just the front two
     intervalMs: awaitingTurn || hostingLive || restaurantWaiting ? 10000 : 30000,
     pollWhenHidden: !!memberStatus && notificationsEnabled,
@@ -640,9 +640,13 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ partySize: size, ...(note && { note }) }),
           }),
+          signal: timeoutSignal(15_000),
         })
       } catch {
-        addToast(NO_CONNECTION, "error")
+        // The request may have reached the server and only the reply was
+        // lost: check before they tap again
+        addToast("Connection dropped -- that may not have gone through. Checking your place now.", "error")
+        refreshAll()
         return false
       }
       if (res.ok) {
@@ -664,7 +668,9 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         // joined from another tab: they're in, which is what they wanted
         addToast("You're already in this line", "info")
         setJoinNote("")
-        refreshAll()
+        void Promise.resolve(refreshAll()).then(() =>
+          requestAnimationFrame(() => document.getElementById("my-status-headline")?.focus())
+        )
         return true
       }
       addToast(data.error || "Failed to join line", "error")
@@ -767,10 +773,13 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ response }),
+        // Tapped walking over on one bar: don't leave the buttons spinning
+        signal: timeoutSignal(15_000),
       })
     } catch {
-      // Often tapped walking over with a weak signal: say it didn't go
-      addToast(NO_CONNECTION, "error")
+      // The reply may be what was lost, not the request: show the real state
+      addToast("Connection dropped -- that may not have gone through. Check your status before trying again.", "error")
+      refreshAll()
       return
     }
     // Drop lines have an organizer, not a host
@@ -1006,7 +1015,6 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                       setPartySize(Number(e.target.value))
                     }}
                     className="border border-rule bg-white px-2 py-2 text-ink"
-                    aria-label="Party size"
                   >
                     {Array.from({ length: maxPartySize }, (_, i) => i + 1).map((n) => (
                       <option key={n} value={n}>{n}</option>
@@ -1059,9 +1067,13 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
                   >
                     {linkCopied ? "Link copied" : "Copy link"}
                   </button>
+                  {/* Always mounted, so the result of the tap is read out */}
+                  <p className="sr-only" aria-live="polite">
+                    {linkCopied ? "Link copied" : linkCopyFailed ? "Couldn't copy. The link is shown below to copy by hand." : ""}
+                  </p>
                   {linkCopyFailed && (
                     <>
-                      <p className="mt-2 text-xs text-ink/70" role="status">Couldn&apos;t copy. Press and hold the link to copy it:</p>
+                      <p className="mt-2 text-xs text-ink/70">Couldn&apos;t copy. Press and hold the link to copy it:</p>
                       <input
                         readOnly
                         aria-label="Link to open in your browser"
@@ -1384,7 +1396,9 @@ export function LineDetailClient({ lineId }: { lineId: string }) {
       <div role="status" aria-live="polite">
         {stale && (memberStatus || isCreator) && (
           <p className="mb-4 border border-amber-600/40 bg-amber-50 px-4 py-2 text-sm text-amber-800">
-            Connection lost. {memberStatus ? "Your place is safe; this" : "This"} page will update when you&apos;re back online.
+            Connection lost.
+            {lastUpdatedAt && ` Showing info from ${new Date(lastUpdatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`}{" "}
+            {memberStatus ? "Your place is safe; this" : "This"} page will update when you&apos;re back online.
           </p>
         )}
       </div>

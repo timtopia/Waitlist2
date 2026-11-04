@@ -18,7 +18,12 @@ export function timeAgo(dateStr: string): string {
   const diffDays = Math.floor(diffHours / 24)
   if (diffDays < 7) return `${diffDays}d ago`
 
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", ...otherYear(date) })
+}
+
+/** Last year's "Dec 5" otherwise reads as next month */
+function otherYear(date: Date): { year?: "numeric" } {
+  return date.getFullYear() !== new Date().getFullYear() ? { year: "numeric" } : {}
 }
 
 /** Countdown: "2d 5h 30m", "1h 15m 30s", "45s" */
@@ -60,7 +65,9 @@ export function formatDate(iso: string): string {
  * copy and share with others who may be in another time zone.
  */
 export function formatDateTime(iso: string, opts: { withZone?: boolean } = {}): string {
-  return new Date(iso).toLocaleDateString(undefined, {
+  const date = new Date(iso)
+  return date.toLocaleDateString(undefined, {
+    ...otherYear(date),
     month: "short",
     day: "numeric",
     hour: "numeric",

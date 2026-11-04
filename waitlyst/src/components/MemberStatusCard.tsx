@@ -198,8 +198,8 @@ export function MemberStatusCard({
       : `${ahead} ${ahead === 1 ? "person" : "people"} ahead of you`
     // A paused line isn't moving: a clock time would bring them back too early
     // A restaurant keeps seating while online joins are paused, so the host's
-    // own quote still stands
-    if (isPaused && !(isRestaurant && quoteDetail)) detail = `Line paused. No wait estimate until the ${organizer} resumes it.`
+    // quote and the seating pace both still stand
+    if (isPaused && !isRestaurant) detail = `Line paused. No wait estimate until the ${organizer} resumes it.`
     else if (quoteDetail) detail = quoteDetail
     else if (waitTimeLoading) detail = "Estimating your wait..."
     else if (minutesPerPerson != null) {

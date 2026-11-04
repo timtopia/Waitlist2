@@ -12,6 +12,8 @@ interface ConfirmModalProps {
   cancelLabel?: string
   variant?: "danger" | "primary"
   isLoading?: boolean
+  /** Which button starts focused. Defaults to Cancel for danger dialogs. */
+  initialFocus?: "cancel" | "confirm"
   onConfirm: () => void
   onCancel: () => void
 }
@@ -24,9 +26,11 @@ export function ConfirmModal({
   cancelLabel = "Cancel",
   variant = "primary",
   isLoading = false,
+  initialFocus,
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
+  const focusCancel = (initialFocus ?? (variant === "danger" ? "cancel" : "confirm")) === "cancel"
   const titleId = useId()
   const messageId = useId()
   const dialogRef = useDialog(open, () => {
@@ -58,15 +62,15 @@ export function ConfirmModal({
           </div>
         </div>
         <div className="px-6 pb-6 flex justify-end gap-3">
-          {/* Destructive dialogs start on Cancel, so a reflexive Enter is safe */}
-          <Button variant="ghost" onClick={onCancel} disabled={isLoading} data-autofocus={variant === "danger" || undefined}>
+          {/* Destructive or final dialogs start on Cancel, so a reflexive Enter is safe */}
+          <Button variant="ghost" onClick={onCancel} disabled={isLoading} data-autofocus={focusCancel || undefined}>
             {cancelLabel}
           </Button>
           <Button
             variant={variant === "danger" ? "danger" : "primary"}
             onClick={onConfirm}
             isLoading={isLoading}
-            data-autofocus={variant !== "danger" || undefined}
+            data-autofocus={!focusCancel || undefined}
           >
             {confirmLabel}
           </Button>

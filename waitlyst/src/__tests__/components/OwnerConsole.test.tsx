@@ -111,8 +111,9 @@ describe("OwnerConsole", () => {
   it("shows the owner's fee earnings with a link to settlement", async () => {
     render(<OwnerConsole {...baseProps} positions={[]} />)
     await waitFor(() => expect(screen.getByText(/\$5\.00 earned/)).toBeInTheDocument())
-    expect(screen.getByText(/\$2\.00 pending/)).toBeInTheDocument()
-    expect(screen.getByText(/Settlement/).closest("a")).toHaveAttribute("href", "/lines/line-1/settlement")
+    // Drop swaps are collected on the spot: an open fee failed, it isn't "pending"
+    expect(screen.getByText(/\$2\.00 not collected/)).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: /Settlement/ })).toHaveAttribute("href", "/lines/line-1/settlement")
   })
 
   it("offers payout setup only when Stripe is configured and the owner isn't connected", () => {
@@ -254,7 +255,7 @@ describe("OwnerConsole", () => {
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/lines/line-1/remove-position",
         // The call the host saw goes along, so a stale no-show is refused
-        expect.objectContaining({ body: JSON.stringify({ positionId: "p3", action: "payout", noShow: true, calledAt, graceMinutes: 0 }) })
+        expect.objectContaining({ body: JSON.stringify({ positionId: "p3", action: "payout", noShow: true, calledAt, graceMinutes: 0, response: "ON_MY_WAY" }) })
       )
     )
   })

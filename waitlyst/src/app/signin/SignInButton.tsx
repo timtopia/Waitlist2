@@ -42,9 +42,13 @@ export function SignInButton({ callbackUrl }: { callbackUrl: string }) {
         >
           {copied ? "Link copied" : "Copy link"}
         </button>
+        {/* Always mounted, so the result of the tap is read out */}
+        <p className="sr-only" aria-live="polite">
+          {copied ? "Link copied" : copyFailed ? "Couldn't copy. The link is shown below to copy by hand." : ""}
+        </p>
         {copyFailed && (
           <>
-            <p className="mt-2 text-xs text-ink/70" role="status">Couldn&apos;t copy. Press and hold the link to copy it:</p>
+            <p className="mt-2 text-xs text-ink/70">Couldn&apos;t copy. Press and hold the link to copy it:</p>
             <input
               readOnly
               aria-label="Link to open in your browser"

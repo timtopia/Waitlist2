@@ -103,7 +103,9 @@ export function OwnerConsole({
   const [earnings, setEarnings] = useState<Earnings | null>(null)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   // Seating a party that was never called can't be undone: confirm it
-  const [seatUncalledConfirm, setSeatUncalledConfirm] = useState(false)
+  // The party the host confirmed, kept fixed: a refresh behind the dialog can
+  // change who's up next, and that party was never checked or called
+  const [seatUncalledTarget, setSeatUncalledTarget] = useState<ConsolePosition | null>(null)
   // Whoever the host tapped No-show on: the party up next or one also called
   const [noShowTarget, setNoShowTarget] = useState<ConsolePosition | null>(null)
   const [closeChoice, setCloseChoice] = useState(false)
@@ -305,16 +307,16 @@ export function OwnerConsole({
     }
   }
 
-  async function handleServe(callNext: boolean) {
-    if (!upNext) return
+  async function handleServe(callNext: boolean, target: ConsolePosition | null = upNext) {
+    if (!target) return
     setBusy(callNext ? "serve-next" : "serve")
     try {
-      const fulfilled = await post("fulfill", { positionId: upNext.id })
+      const fulfilled = await post("fulfill", { positionId: target.id })
       if (!fulfilled.ok) {
         addToast(fulfilled.data.error || `Failed to mark as ${servedWord}`, "error")
         return
       }
-      const name = upNext.user.name || "Guest"
+      const name = target.user.name || "Guest"
       warnPayoutsFailed(fulfilled.data)
       if (callNext && afterNext?.calledAt) {
         // Already called out of order: calling again would wipe their
@@ -361,6 +363,8 @@ export function OwnerConsole({
         // The call they saw: refused if another device acted on it since
         calledAt: target.calledAt ?? undefined,
         graceMinutes: target.graceMinutes ?? 0,
+        // Refused too if they've just replied "on my way"
+        response: target.response ?? null,
       })
       if (ok) addToast(`Marked ${target.user.name || "them"} as a no-show`, "success")
       else {
@@ -515,7 +519,9 @@ export function OwnerConsole({
   /** Someone at the stand with no account or phone gets a place too */
   async function handleAddWalkIn(e: React.FormEvent) {
     e.preventDefault()
-    if (!walkInName.trim()) return
+    // One action at a time: finishing this one would re-enable the rest
+    // while another is still in flight
+    if (!walkInName.trim() || busy) return
     setBusy("walk-in")
     try {
       const { ok, data } = await post("walk-in", {
@@ -604,16 +610,18 @@ export function OwnerConsole({
         onCancel={() => setShowClearConfirm(false)}
       />
       <ConfirmModal
-        open={seatUncalledConfirm && !!upNext}
+        open={!!seatUncalledTarget}
         title={isRestaurant ? "Seat without calling?" : "Mark as served?"}
-        message={`${isRestaurant ? "Seat" : "Mark"} ${upNext?.user.name || (isRestaurant ? "this party" : "this person")}${isRestaurant && upNext ? ` (party of ${upNext.partySize ?? 1})` : ""}${isRestaurant ? "" : " as served"}? They haven't been called yet.${heldPayments ? " Any swap payment of theirs on hold is collected now." : ""} This can't be undone.`}
+        message={`${isRestaurant ? "Seat" : "Mark"} ${seatUncalledTarget?.user.name || (isRestaurant ? "this party" : "this person")}${isRestaurant && seatUncalledTarget ? ` (party of ${seatUncalledTarget.partySize ?? 1})` : ""}${isRestaurant ? "" : " as served"}?${seatUncalledTarget?.calledAt ? "" : " They haven't been called yet."}${heldPayments ? " Any swap payment of theirs on hold is collected now." : ""} This can't be undone.`}
         confirmLabel={markServedLabel}
         isLoading={busy === "serve"}
+        initialFocus="cancel"
         onConfirm={() => {
-          setSeatUncalledConfirm(false)
-          handleServe(false)
+          const target = seatUncalledTarget
+          setSeatUncalledTarget(null)
+          handleServe(false, target)
         }}
-        onCancel={() => setSeatUncalledConfirm(false)}
+        onCancel={() => setSeatUncalledTarget(null)}
       />
       <ConfirmModal
         open={!!noShowTarget}
@@ -723,11 +731,11 @@ export function OwnerConsole({
           </span>
         </div>
         <div className="flex items-center gap-1">
-          <Button size="sm" variant="ghost" onClick={handleTogglePause} isLoading={busy === "pause"}>
+          <Button size="sm" variant="ghost" onClick={handleTogglePause} isLoading={busy === "pause"} disabled={!!busy && busy !== "pause"}>
             {isActive ? "Pause" : "Resume"}
           </Button>
           {(isActive || positions.length > 0) && (
-            <Button size="sm" variant="ghost" onClick={() => setCloseChoice(true)} isLoading={busy === "close"}>
+            <Button size="sm" variant="ghost" onClick={() => setCloseChoice(true)} isLoading={busy === "close"} disabled={!!busy && busy !== "close"}>
               {isRestaurant ? "Close for the night" : "Close"}
             </Button>
           )}
@@ -853,7 +861,7 @@ export function OwnerConsole({
                     size="sm"
                     variant="ghost"
                     // A walk-in is already standing at the stand: no call to skip
-                    onClick={() => (upNext.user.isWalkIn ? handleServe(false) : setSeatUncalledConfirm(true))}
+                    onClick={() => (upNext.user.isWalkIn ? handleServe(false) : setSeatUncalledTarget(upNext))}
                     isLoading={busy === "serve"}
                     disabled={!!busy}
                   >
@@ -990,7 +998,7 @@ export function OwnerConsole({
                 </label>
               </>
             )}
-            <Button size="sm" type="submit" isLoading={busy === "walk-in"} disabled={!walkInName.trim() || roomLeft === 0}>
+            <Button size="sm" type="submit" isLoading={busy === "walk-in"} disabled={!walkInName.trim() || roomLeft === 0 || (!!busy && busy !== "walk-in")}>
               Add to line
             </Button>
             {roomLeft === 0 && (
@@ -1047,7 +1055,11 @@ export function OwnerConsole({
                 ? `${earnings?.swaps ?? 0} paid ${(earnings?.swaps ?? 0) === 1 ? "swap" : "swaps"} · no fee`
                 : `${formatCurrency(earnings?.earned ?? 0)} earned`}
               {(earnings?.pending ?? 0) > 0 && (
-                <span className="text-amber-700"> + {formatCurrency(earnings?.pending ?? 0)} pending</span>
+                <span className="text-amber-700">
+                  {" "}+ {formatCurrency(earnings?.pending ?? 0)}{" "}
+                  {/* Drop swaps are collected on the spot: anything open failed */}
+                  {isRestaurant ? "pending" : "not collected -- see Settlement"}
+                </span>
               )}
             </p>
           </div>

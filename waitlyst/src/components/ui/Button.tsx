@@ -10,14 +10,25 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className = "", variant = "primary", size = "md", isLoading, children, disabled, ...props }, ref) => {
+  ({ className = "", variant = "primary", size = "md", isLoading, children, disabled, onClick, ...props }, ref) => {
     return (
       <button
         ref={ref}
-        className={buttonClasses({ variant, size, className })}
-        disabled={disabled || isLoading}
+        // Loading stays focusable: disabling the focused button would drop
+        // keyboard focus to the top of the page, and it wouldn't come back.
+        // Clicks are ignored instead, and it looks disabled.
+        className={buttonClasses({ variant, size, className: `${isLoading && !disabled ? "opacity-50 cursor-wait " : ""}${className}` })}
+        disabled={disabled}
+        aria-disabled={(isLoading && !disabled) || undefined}
         aria-busy={isLoading || undefined}
         {...props}
+        onClick={(e) => {
+          if (isLoading) {
+            e.preventDefault()
+            return
+          }
+          onClick?.(e)
+        }}
       >
         {isLoading && (
           <svg className="animate-spin -ml-1 mr-2 h-4 w-4" aria-hidden="true" fill="none" viewBox="0 0 24 24">

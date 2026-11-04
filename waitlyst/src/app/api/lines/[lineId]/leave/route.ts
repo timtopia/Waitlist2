@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 import { exitQueue, lockLine } from "@/lib/queue-exit"
 import { expireCheckoutSession, releaseAndSettle } from "@/lib/stripe"
+import { emailNewlyOnDeck } from "@/lib/on-deck"
 
 export async function DELETE(
   req: Request,
@@ -15,7 +16,7 @@ export async function DELETE(
   const userId = result.userId
 
   try {
-    const { abandonedSessionId, purchases } = await prisma.$transaction(async (tx) => {
+    const { abandonedSessionId, purchases, departed } = await prisma.$transaction(async (tx) => {
       // Lock before reading: another exit ahead could shift this position
       await lockLine(tx, lineId)
       const position = await tx.linePosition.findUnique({
@@ -28,7 +29,11 @@ export async function DELETE(
       const purchases = await tx.transaction.findMany({
         where: { lineId, buyerId: userId, status: "COMPLETED", settledAt: null },
       })
-      return { abandonedSessionId, purchases }
+      return {
+        abandonedSessionId,
+        purchases,
+        departed: { position: position.position, calledAt: position.calledAt, fulfilled: position.fulfilled },
+      }
     })
 
     // The other party may still have the payment page open; kill it so
@@ -42,6 +47,9 @@ export async function DELETE(
     for (const purchase of purchases) {
       if (await releaseAndSettle(purchase)) purchasesCollected++
     }
+
+    // They were next and hadn't been called: the party behind is next now
+    if (!departed.fulfilled) await emailNewlyOnDeck(lineId, departed, false)
 
     return NextResponse.json({ success: true, purchasesCollected })
   } catch (error) {

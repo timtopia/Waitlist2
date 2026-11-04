@@ -15,6 +15,7 @@ import { OFFER_COOLDOWN_MS } from "@/lib/offers"
 import { formatWaitTime } from "@/lib/wait-time"
 import { MAX_PARTY_SIZE } from "@/lib/capacity"
 import { useNotifications } from "@/hooks/useNotifications"
+import { timeoutSignal } from "@/lib/timeout-signal"
 
 interface Position {
   id: string
@@ -110,6 +111,8 @@ interface RemovalModal {
   /** The call shown when the dialog opened, so a No-show can't act on a stale one */
   calledAt?: string | null
   graceMinutes?: number
+  /** Their reply as shown when it opened: "on my way" since means they're coming */
+  response?: "ON_MY_WAY" | "RUNNING_LATE" | null
 }
 
 interface FeeInfo {
@@ -163,6 +166,8 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
   // Withdrawing starts a cooldown, and backing out of an accepted offer
   // counts toward the walk-away limit, so the buyer confirms first.
   const [withdrawConfirm, setWithdrawConfirm] = useState<{ offerId: string; accepted: boolean } | null>(null)
+  // Accepting locks both spots and can't be taken back: ask first
+  const [acceptConfirm, setAcceptConfirm] = useState<SwapOffer | null>(null)
   const [waitTimeData, setWaitTimeData] = useState<{ estimatedMinutesPerPerson: number | null; basedOn: number } | null>(null)
   const [connectLoading, setConnectLoading] = useState(false)
 
@@ -235,10 +240,22 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
     maxPriceRef.current = maxAskingPrice
   }, [maxAskingPrice])
 
+  // On a slow link checks would overlap, and an older reply landing after a
+  // newer one rewinds the statuses below and repeats an alert
+  const offersInFlight = useRef(false)
+  // Back from Stripe restores this page from the back/forward cache with the
+  // Buy or Pay spinner still going: let them try again
+  useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => { if (e.persisted) setLoadingAction(null) }
+    window.addEventListener("pageshow", onShow)
+    return () => window.removeEventListener("pageshow", onShow)
+  }, [])
+
   const fetchOffers = useCallback(async () => {
-    if (!session?.user?.id) return
+    if (!session?.user?.id || offersInFlight.current) return
+    offersInFlight.current = true
     try {
-      const res = await fetch(`/api/lines/${lineId}/offer`)
+      const res = await fetch(`/api/lines/${lineId}/offer`, { signal: timeoutSignal(10_000) })
       if (res.ok) {
         const data = await res.json().catch(() => ({}))
         setSentOffers(data.sent)
@@ -254,6 +271,16 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
               offerAlert(`Offer raised to ${formatCurrency(o.amount)}. See your spot in the line below.`, "info")
             }
           }
+        } else if (pending.length > 0) {
+          // Opened from the offer email, or back later: the offer card sits
+          // in their own row, which can be far down the list
+          const best = Math.max(...pending.map((o) => o.amount))
+          offerAlert(
+            pending.length === 1
+              ? `You have a ${formatCurrency(best)} swap offer waiting. See your spot in the line below.`
+              : `You have ${pending.length} swap offers waiting (up to ${formatCurrency(best)}). See your spot in the line below.`,
+            "info"
+          )
         }
         // Only offers still pending: a re-sent offer after a decline reuses the
         // same row, and a stale amount made it silent (or "raised")
@@ -324,6 +351,8 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
       }
     } catch {
       // Silently fail
+    } finally {
+      offersInFlight.current = false
     }
   }, [lineId, session?.user?.id, offerAlert])
 
@@ -647,6 +676,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
    * queue shift between viewing and clicking is rejected, not charged.
    */
   async function handleBuyPosition(confirm: BuyConfirm) {
+    let redirecting = false
     setBuyConfirm(null)
     setLoadingAction(`buy-${confirm.positionId}`)
     try {
@@ -662,6 +692,8 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
       const data = await res.json().catch(() => ({}))
       if (res.ok) {
         if (data.url) {
+          // Stay busy while Stripe loads: a second tap only hits "already locked"
+          redirecting = true
           window.location.href = data.url
           return
         }
@@ -674,7 +706,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
     } catch {
       lostConnection()
     } finally {
-      setLoadingAction(null)
+      if (!redirecting) setLoadingAction(null)
     }
   }
 
@@ -703,11 +735,13 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
 
   /** Once the person in front has accepted your offer, fetch the payment link that's actually yours to use. */
   async function handleCompletePayment(offerId: string) {
+    let redirecting = false
     setLoadingAction(`pay-${offerId}`)
     try {
       const res = await fetch(`/api/lines/${lineId}/offer/${offerId}/checkout`)
       const data = await res.json().catch(() => ({}))
       if (res.ok && data.checkoutUrl) {
+        redirecting = true
         window.location.href = data.checkoutUrl
         return
       }
@@ -723,7 +757,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
     } catch {
       lostConnection()
     } finally {
-      setLoadingAction(null)
+      if (!redirecting) setLoadingAction(null)
     }
   }
 
@@ -830,7 +864,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
     userId: string,
     userName: string | null,
     canNoShow: boolean,
-    opts: { isWalkIn?: boolean; partySize?: number; fulfilled?: boolean; calledAt?: string | null; graceMinutes?: number } = {}
+    opts: { isWalkIn?: boolean; partySize?: number; fulfilled?: boolean; calledAt?: string | null; graceMinutes?: number; response?: RemovalModal["response"] } = {}
   ) {
     // A walk-in has no account to have paid with: skip the spinner and the
     // "$0.00 (0 purchases)" panel, which only reads as a money problem
@@ -847,6 +881,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
       fulfilled: opts.fulfilled,
       calledAt: opts.calledAt,
       graceMinutes: opts.graceMinutes,
+      response: opts.response ?? null,
     })
     if (skipFetch) return
 
@@ -878,7 +913,12 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
         body: JSON.stringify({
           positionId: removalModal.positionId,
           action,
-          ...(noShow && { noShow: true, calledAt: removalModal.calledAt ?? undefined, graceMinutes: removalModal.graceMinutes ?? 0 }),
+          ...(noShow && {
+            noShow: true,
+            calledAt: removalModal.calledAt ?? undefined,
+            graceMinutes: removalModal.graceMinutes ?? 0,
+            response: removalModal.response ?? null,
+          }),
         }),
       })
       if (res.ok) {
@@ -948,8 +988,9 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
         await onRefresh()
       } else {
         addToast(data.error || "Failed to call this party", "error")
-        // Usually another device acted: show what really happened
-        if (res.status === 409) await onRefresh()
+        // Usually another device acted, or the party left: show what really
+        // happened instead of leaving a Call button that only errors again
+        if (res.status === 409 || res.status === 404 || res.status === 400) await onRefresh()
       }
     } catch {
       addToast(NO_CONNECTION, "error")
@@ -1374,6 +1415,8 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
               } This can't be undone.`
           : ""}
         confirmLabel={isRestaurant ? "Seated" : "Served"}
+        // Can't be undone: a reflexive Enter shouldn't seat anyone
+        initialFocus="cancel"
         isLoading={!!fulfillConfirm && loadingAction === `fulfill-${fulfillConfirm.positionId}`}
         onConfirm={async () => {
           if (!fulfillConfirm) return
@@ -1413,6 +1456,24 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
         onCancel={() => setCancelCheckoutConfirm(false)}
       />
 
+      {/* Accept-offer confirmation */}
+      <ConfirmModal
+        open={!!acceptConfirm}
+        title="Accept this swap offer?"
+        message={acceptConfirm
+          ? `You'll move back one spot once they pay ${formatCurrency(acceptConfirm.amount)}${isRestaurant ? ", and you're paid when they're seated" : ""}. Both spots are held for up to 30 minutes while they pay, and you can't cancel once you accept.`
+          : ""}
+        confirmLabel="Accept"
+        initialFocus="cancel"
+        isLoading={!!acceptConfirm && loadingAction === `offer-${acceptConfirm.id}-accept`}
+        onConfirm={async () => {
+          if (!acceptConfirm) return
+          await handleRespondToOffer(acceptConfirm, "accept")
+          setAcceptConfirm(null)
+        }}
+        onCancel={() => setAcceptConfirm(null)}
+      />
+
       {/* Withdraw / back-out confirmation */}
       <ConfirmModal
         open={!!withdrawConfirm}
@@ -1449,7 +1510,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
           // Guests whose plans changed often only need a different party
           // size; leaving and rejoining would cost them their place
           + (isRestaurant && currentUserPosition && !currentUserPosition.calledAt && !currentUserPosition.fulfilled
-            ? " Party size changed? Cancel and update it next to your name instead -- you keep your place."
+            ? " Party size changed or running late? Cancel and update your size or add a note for the host next to your name instead -- you keep your place."
             : "")}
         confirmLabel="Leave Line"
         variant="danger"
@@ -1900,26 +1961,27 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                             const name = pos.user.name || (isRestaurant ? "this party" : "this person")
                             // Same as the console: someone already called (or a walk-in at the
                             // stand) is seated in one tap; only an uncalled online party asks first
-                            if (isRestaurant && (pos.calledAt || pos.user.isWalkIn)) handleFulfill(pos.id, name)
+                            // The row's controls go away once seated: keep keyboard focus in the list
+                            if (isRestaurant && (pos.calledAt || pos.user.isWalkIn)) void handleFulfill(pos.id, name).then(focusListSoon)
                             else setFulfillConfirm({ positionId: pos.id, name })
                           }}
                           // A swap in progress is called off by seating (the buyer isn't charged)
                           disabled={loadingAction === `fulfill-${pos.id}`}
                           className="inline-flex items-center gap-1.5 px-3 py-2 min-h-11 pointer-fine:min-h-[2.25rem] font-mono text-xs uppercase tracking-widest text-green-700 border border-rule hover:border-green-700 transition-colors disabled:opacity-50"
-                          title={isLocked ? `A swap for this spot is in progress -- ${isRestaurant ? "seating" : "serving"} cancels it` : isRestaurant ? "Mark as seated" : "Mark as fulfilled"}
-                          aria-label={`${isRestaurant ? "Mark seated:" : "Fulfill"} ${pos.user.name || (isRestaurant ? "this party" : "this person")}`}
+                          title={isLocked ? `A swap for this spot is in progress -- ${isRestaurant ? "seating" : "serving"} cancels it` : isRestaurant ? "Mark as seated" : "Mark as served"}
+                          aria-label={`${isRestaurant ? "Mark seated:" : "Mark served:"} ${pos.user.name || (isRestaurant ? "this party" : "this person")}`}
                         >
                           {loadingAction === `fulfill-${pos.id}` && (
                             <div className="w-3 h-3 border-2 border-green-700 border-t-transparent rounded-full animate-spin" />
                           )}
-                          {isRestaurant ? "Seated" : "Fulfill"}
+                          {isRestaurant ? "Seated" : "Served"}
                         </button>
                       )}
                       {isCreator && !isCurrentUser && (
                         <Button
                           size="sm"
                           variant="danger"
-                          onClick={() => openRemovalModal(pos.id, pos.user.id, pos.user.name, !!pos.calledAt && !pos.fulfilled, { isWalkIn: pos.user.isWalkIn, partySize: pos.partySize, fulfilled: !!pos.fulfilled, calledAt: pos.calledAt, graceMinutes: pos.graceMinutes })}
+                          onClick={() => openRemovalModal(pos.id, pos.user.id, pos.user.name, !!pos.calledAt && !pos.fulfilled, { isWalkIn: pos.user.isWalkIn, partySize: pos.partySize, fulfilled: !!pos.fulfilled, calledAt: pos.calledAt, graceMinutes: pos.graceMinutes, response: pos.response })}
                           aria-label={`Remove ${pos.user.name || (isRestaurant ? "this party" : "this person")}`}
                           isLoading={loadingAction === `remove-${pos.id}`}
                         >
@@ -1940,7 +2002,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                       </p>
                       <p className="text-xs text-ink/60 mt-0.5">
                         You&apos;d receive {formatCurrency(offer.amount)} and move back one spot.
-                        {isRestaurant && " You're paid once the buyer is seated."}
+                        {isRestaurant && " You're paid once the buyer is seated. If the host releases their card instead, you aren't paid."}
                         {offer.expiresAt && ` Expires in ${formatTimeLeft(offer.expiresAt)}.`}
                       </p>
                       {allowResale && !isPaused && !offMarket(pos) && pos.askingPrice == null && (
@@ -1973,7 +2035,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                         <div className="flex items-center gap-2 mt-2">
                           <Button
                             size="sm"
-                            onClick={() => handleRespondToOffer(offer, "accept")}
+                            onClick={() => setAcceptConfirm(offer)}
                             isLoading={loadingAction === `offer-${offer.id}-accept`}
                             disabled={loadingAction === `offer-${offer.id}-decline`}
                           >
@@ -2317,7 +2379,7 @@ export function QueueDisplay({ lineId, positions, roomLeft = null, hasCapacityLi
                             ? `You withdrew your ${formatCurrency(sentOfferToFront.amount)} offer.`
                             : `Your ${formatCurrency(sentOfferToFront.amount)} offer ${sentOfferToFront.status === "DECLINED" ? "was declined" : "expired"}.`}
                           {sentOfferToFront.status === "DECLINED" && pos.askingPrice != null &&
-                            ` They listed their spot at ${formatCurrency(pos.askingPrice)} instead, so you can buy it outright.`}
+                            ` They listed their spot at ${formatCurrency(pos.askingPrice)}${buyerTotal(pos.askingPrice) !== pos.askingPrice ? ` (${formatCurrency(buyerTotal(pos.askingPrice))} incl. fees)` : ""} instead, so you can buy it outright.`}
                           {cooldownLeft > 0 && ` You can make a new one in ${Math.ceil(cooldownLeft / 60_000)} min.`}
                         </p>
                         {cooldownLeft <= 0 && (

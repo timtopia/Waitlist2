@@ -267,7 +267,8 @@ export async function POST(
       select: { name: true, email: true, emailNotifications: true },
     })
     if (toUser?.email && toUser.emailNotifications && emailWorthy) {
-      const lineUrl = `${getBaseUrl()}/lines/${lineId}`
+      // Straight to their own row, where the offer card is
+      const lineUrl = `${getBaseUrl()}/lines/${lineId}#my-spot`
       const { subject, html } = swapOfferEmail(
         toUser.name || "there",
         line.name,
