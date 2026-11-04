@@ -15,8 +15,9 @@ import { createHash } from "crypto"
 import { emailEnabled, sendEmail } from "@/lib/email"
 import { lineDeletedEmail } from "@/lib/email-templates"
 
-// Per IP: a venue's guests often share one Wi-Fi address, and each open
-// line page polls
+// Per signed-in viewer, else per IP: a venue's guests often share one Wi-Fi
+// address (and drop crowds a carrier's), and 50 phones polling every 10s
+// used up a shared IP budget -- locking out every guest and the host's tablet
 const getLimiter = rateLimit({ interval: 60_000, limit: 300 })
 
 /** Only check for unsent "it's open" emails this long after a line opens */
@@ -29,7 +30,13 @@ export async function GET(
   { params }: { params: Promise<{ lineId: string }> }
 ) {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "anonymous"
-  const { success: allowed } = getLimiter.check(ip)
+  let viewerId: string | null = null
+  try {
+    viewerId = (await auth())?.user?.id ?? null
+  } catch {
+    // Treated as signed out
+  }
+  const { success: allowed } = getLimiter.check(viewerId ? `u:${viewerId}` : `ip:${ip}`)
   if (!allowed) {
     return NextResponse.json(
       { error: "Too many requests. Please try again later." },
@@ -40,9 +47,6 @@ export async function GET(
   const { lineId } = await params
 
   try {
-    const session = await auth()
-    const viewerId = session?.user?.id ?? null
-
     // Pollers send back the ETag they last saw. Anything that changes the
     // response bumps the line's or a position's updatedAt (or the count, for
     // the last person leaving), so this cheap check lets an unchanged line

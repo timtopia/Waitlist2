@@ -201,7 +201,8 @@ export function describeMemberEvent(
       }
     case "removed":
       return event.wasServed
-        ? { title: "All done", body: `You've left ${lineName} after being ${isRestaurant ? "seated" : "served"}.`, toast: true, tone: "info" }
+        // The host cleared them (leaving from this tab never gets here)
+        ? { title: "All done", body: `${isRestaurant ? "The host" : "The organizer"} cleared your spot at ${lineName}. Thanks for waiting.`, toast: true, tone: "info" }
         // Leaving from this tab is handled by the caller; reaching here means
         // it happened elsewhere -- another device, or the organizer.
         : event.closed

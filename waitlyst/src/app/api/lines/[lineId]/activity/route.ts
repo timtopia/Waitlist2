@@ -119,8 +119,13 @@ export async function GET(
         activities.push({
           id: `refund-${tx.id}`,
           type: "refund",
-          description: `${buyerName} received a refund of ${formatCurrency(buyerTotal(tx))}`,
-          timestamp: tx.createdAt.toISOString(),
+          // A released hold never charged anyone: "refund" sent owners
+          // hunting Stripe for money that never moved
+          description: tx.capturedAt
+            ? `${buyerName} received a refund of ${formatCurrency(buyerTotal(tx))}`
+            : `${buyerName}'s card hold of ${formatCurrency(buyerTotal(tx))} was released`,
+          // Dated when it was closed out, not when the swap was bought
+          timestamp: (tx.settledAt ?? tx.createdAt).toISOString(),
         })
       } else if (tx.status === "COMPLETED") {
         // tx.amount is the seller's asking price (what they receive), not

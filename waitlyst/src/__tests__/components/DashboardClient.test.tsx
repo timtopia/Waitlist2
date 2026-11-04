@@ -372,7 +372,8 @@ describe("DashboardClient", () => {
       await waitFor(() => {
         expect(screen.getByText("Your Fee Earnings")).toBeInTheDocument()
         expect(screen.getByText("$12.50")).toBeInTheDocument()
-        expect(screen.getByText("+ $4.00 pending settlement")).toBeInTheDocument()
+        // Not a restaurant line: drop wording, as on the settlement page
+        expect(screen.getByText("+ $4.00 not yet collected")).toBeInTheDocument()
       })
     })
 

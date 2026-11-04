@@ -17,6 +17,9 @@ interface LineStatusBannerProps {
   kind?: "STANDARD" | "RESTAURANT"
   /** The viewer is already waiting: closing or filling up doesn't affect them */
   inLine?: boolean
+  /** The host paused it: the page's own paused banner covers that, so a
+   * green "Line is Open" under it contradicted it */
+  isPaused?: boolean
 }
 
 type LineStatus =
@@ -47,7 +50,7 @@ function getLineStatus(
   return { state: "open", closesAt: closesAt ? new Date(closesAt) : null }
 }
 
-export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount, isFull, hideCapacity = false, kind = "STANDARD", inLine = false }: LineStatusBannerProps) {
+export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount, isFull, hideCapacity = false, kind = "STANDARD", inLine = false, isPaused = false }: LineStatusBannerProps) {
   const [now, setNow] = useState(new Date())
 
   useEffect(() => {
@@ -57,8 +60,21 @@ export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount,
 
   const status = getLineStatus(opensAt, closesAt, isFull)
 
+  // The countdown ticks silently; a screen reader user waiting on a drop
+  // needs to hear the moment it opens, fills or closes (never the seconds)
+  const spokenState = isPaused
+    ? ""
+    : status.state === "open"
+      ? "The line is open."
+      : status.state === "full"
+        ? "The line is full."
+        : status.state === "closed"
+          ? "The line is closed."
+          : ""
+
   return (
     <div className="space-y-3">
+      <p className="sr-only" aria-live="polite">{spokenState}</p>
       {/* Status Banner */}
       {status.state === "not_yet_open" && (() => {
         const msLeft = status.opensAt.getTime() - now.getTime()
@@ -114,7 +130,7 @@ export function LineStatusBanner({ opensAt, closesAt, maxCapacity, currentCount,
         )
       })()}
 
-      {status.state === "open" && status.closesAt && (
+      {status.state === "open" && status.closesAt && !isPaused && (
         <div className="border border-rule border-l-2 border-l-green-700 bg-white px-4 py-3">
           <div className="flex items-center justify-between">
             <div>

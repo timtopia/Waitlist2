@@ -14,7 +14,8 @@ describe("BarChart", () => {
 
     const bar = screen.getByRole("img", { name: "11a: 7 joins" })
     fireEvent.focus(bar)
-    expect(screen.getByRole("status")).toHaveTextContent("11a · 7 joins")
+    // The tooltip is a visual copy of the bar's own name, hidden from screen readers
+    expect(screen.getByText("11a", { selector: "span" }).parentElement).toHaveTextContent("11a · 7 joins")
   })
 
   it("is one Tab stop, with arrow keys moving between bars", () => {

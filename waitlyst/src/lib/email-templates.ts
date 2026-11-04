@@ -94,7 +94,7 @@ export function positionCalledEmail(
     opts.windowMinutes ? ` -- arrive within ${opts.windowMinutes} min` : ""
   }`
   const deadline = opts.windowMinutes
-    ? `You have ${opts.windowMinutes} min to get there, or your place goes to the next ${opts.isRestaurant ? "party" : "person"}. Open the line and tap "On my way" if you need a little more time.`
+    ? `You have ${opts.windowMinutes} min to get there, or your place goes to the next ${opts.isRestaurant ? "party" : "person"}. Open the line and tap "On my way" when you set off -- your ${opts.windowMinutes} min restart from then.`
     : "Please come forward as soon as possible so you don't lose your spot."
   const recalled = opts.recall
     ? `<p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">The ${opts.isRestaurant ? "host" : "organizer"} called you again${opts.windowMinutes ? `, so your ${opts.windowMinutes} ${opts.windowMinutes === 1 ? "minute starts" : "minutes start"} now` : ""}.</p>`

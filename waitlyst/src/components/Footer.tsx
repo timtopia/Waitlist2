@@ -8,7 +8,7 @@ export function Footer() {
           <p className="font-mono text-xs uppercase tracking-widest text-ink/60">
             &copy; 2026 Waitlyst
           </p>
-          <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
+          <nav aria-label="Footer" className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
             <Link
               href="/browse"
               className="font-mono text-xs uppercase tracking-widest text-ink/60 hover:text-ink transition-colors"

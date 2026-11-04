@@ -1,3 +1,5 @@
+import { formatWaited } from "./format"
+
 const SAME_EVENT_WINDOW_MS = 5000
 const MAX_INTERVALS = 10
 /**
@@ -41,11 +43,11 @@ export function estimateMinutesPerPerson(
   return { minutes: Math.round((medianMs / 60000) * 10) / 10, basedOn: events.length }
 }
 
-/** "<1 min", "~12 min", "~1 hr", "~3 hrs" */
+/** "<1 min", "~12 min", "~1 hr 55 min", "~3 hr 20 min" */
 export function formatWaitTime(minutes: number): string {
   if (minutes < 1) return "<1 min"
   if (minutes < 60) return `~${Math.round(minutes)} min`
-  const hours = minutes / 60
-  if (hours < 2) return "~1 hr"
-  return `~${Math.round(hours)} hrs`
+  // To the nearest 5 min: "~1 hr" for 115 min sat next to "(around 9:55)" at
+  // 8:00, and the host's console already reads "1 hr 55 min"
+  return `~${formatWaited(Math.round(minutes / 5) * 5)}`
 }

@@ -11,8 +11,7 @@ import { Input } from "@/components/ui/Input"
 import { ConfirmModal } from "@/components/ui/ConfirmModal"
 import { DropdownMenu, DropdownMenuItem } from "@/components/ui/DropdownMenu"
 import { useToast } from "@/components/ui/Toast"
-import { timeAgo, formatCurrency, formatDateTime } from "@/lib/format"
-import { formatWaitTime } from "@/lib/wait-time"
+import { timeAgo, formatCurrency, formatDateTime, formatWaited } from "@/lib/format"
 import type { MemberPhase } from "@/lib/member-status"
 
 interface CreatedLine {
@@ -94,6 +93,7 @@ interface LineStats {
     waiting: number
     medianWaitMinutes: number | null
     servedLastHour: number
+    noShows?: number
   }
 }
 
@@ -163,8 +163,9 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
     return {
       all: searchFiltered.length,
       active: searchFiltered.filter(l => l.isActive && !isClosedBySchedule(l)).length,
-      paused: searchFiltered.filter(l => !l.isActive).length,
-      closed: searchFiltered.filter(l => l.isActive && isClosedBySchedule(l)).length,
+      // Same buckets as the card badges: past closing time reads Closed even if paused
+      paused: searchFiltered.filter(l => !l.isActive && !isClosedBySchedule(l)).length,
+      closed: searchFiltered.filter(l => isClosedBySchedule(l)).length,
     }
   }, [lines, searchText])
 
@@ -182,9 +183,9 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
     if (statusFilter === "active") {
       result = result.filter(l => l.isActive && !isClosedBySchedule(l))
     } else if (statusFilter === "paused") {
-      result = result.filter(l => !l.isActive)
+      result = result.filter(l => !l.isActive && !isClosedBySchedule(l))
     } else if (statusFilter === "closed") {
-      result = result.filter(l => l.isActive && isClosedBySchedule(l))
+      result = result.filter(l => isClosedBySchedule(l))
     }
 
     // Sort
@@ -601,13 +602,15 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
               <div className="space-y-4">
                 {statsModal.stats.service && (() => {
                   const s = statsModal.stats.service
+                  const seated = statsModal.stats.kind === "RESTAURANT"
                   return (
                     <>
-                      <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Service</p>
+                      {/* The console shows tonight; this is everyone since the line began */}
+                      <p className="font-mono text-xs uppercase tracking-widest text-ink/60">Service · all time</p>
                       <div className="grid grid-cols-3 divide-x divide-rule border border-rule">
                         <div className="p-3 text-center">
                           <p className="font-mono text-2xl tabular-nums">{s.served}</p>
-                          <p className="font-mono text-xs uppercase tracking-widest text-ink/60 mt-1">Served</p>
+                          <p className="font-mono text-xs uppercase tracking-widest text-ink/60 mt-1">{seated ? "Seated" : "Served"}</p>
                         </div>
                         <div className="p-3 text-center">
                           <p className="font-mono text-2xl tabular-nums">{s.waiting}</p>
@@ -615,13 +618,15 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                         </div>
                         <div className="p-3 text-center">
                           <p className="font-mono text-2xl tabular-nums">
-                            {s.medianWaitMinutes === null ? "--" : formatWaitTime(s.medianWaitMinutes)}
+                            {/* The host's measure, as on the console: "1 hr 59 min", not a guest's "~2 hr" */}
+                            {s.medianWaitMinutes === null ? "--" : formatWaited(Math.round(s.medianWaitMinutes))}
                           </p>
                           <p className="font-mono text-xs uppercase tracking-widest text-ink/60 mt-1">Typical wait</p>
                         </div>
                       </div>
                       <p className="text-xs text-ink/60 text-center">
-                        {s.servedLastHour} served in the last hour · {s.left} left on their own · {s.removed} removed
+                        {s.servedLastHour} {seated ? "seated" : "served"} in the last hour · {s.left} left on their own · {s.removed} removed
+                        {(s.noShows ?? 0) > 0 && ` · ${s.noShows} no-show${s.noShows === 1 ? "" : "s"}`}
                       </p>
                     </>
                   )
@@ -636,7 +641,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                   <p className="font-mono text-xs uppercase tracking-widest text-ink/60 mt-1">Your Fee Earnings</p>
                   {(statsModal.stats.ownerFeePending ?? 0) > 0 && (
                     <p className="text-xs text-amber-700 mt-1">
-                      + {formatCurrency(statsModal.stats.ownerFeePending ?? 0)} pending settlement
+                      + {formatCurrency(statsModal.stats.ownerFeePending ?? 0)} {statsModal.stats.kind === "RESTAURANT" ? "pending settlement" : "not yet collected"}
                     </p>
                   )}
                   {(statsModal.stats.ownerFeeAwaitingPayout ?? 0) > 0 && (
@@ -647,7 +652,8 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                 </div>
                 )}
 
-                <p className="font-mono text-xs uppercase tracking-widest text-ink/60 pt-2">Swap volume</p>
+                {/* Seller prices, before fees: analytics' "buyers paid" includes fees */}
+                <p className="font-mono text-xs uppercase tracking-widest text-ink/60 pt-2">Swap volume · seller prices</p>
                 <div className="grid grid-cols-2 divide-x divide-rule border border-rule">
                   <div className="p-4 text-center">
                     <p className="font-mono text-2xl tabular-nums text-green-700">

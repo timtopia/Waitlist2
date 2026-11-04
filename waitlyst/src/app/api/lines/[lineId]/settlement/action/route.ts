@@ -179,7 +179,7 @@ export async function POST(
         return NextResponse.json(
           { error: buyerWaiting
             ? "Couldn't collect this payment. The buyer is still in line: remove them with a refund from the line page, or try collecting again later."
-            : "Couldn't collect this payment -- the card hold may have expired. You can release it instead." },
+            : `Couldn't collect this payment -- the card hold may have expired. ${authResult.line.kind === "RESTAURANT" ? "You can release it instead." : "You can cancel the payment instead."}` },
           { status: 402 }
         )
       }

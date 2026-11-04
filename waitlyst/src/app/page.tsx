@@ -20,7 +20,7 @@ const steps = [
   {
     n: "03",
     title: "You call them in",
-    body: "Call the next person with one tap and they get a heads-up that it's their turn. If you allow it, people can buy or sell a spot with the person beside them, at a price you cap.",
+    body: "Call the next person with one tap and they get a heads-up that it's their turn. If you allow it, people can sell their spot to the person right behind them, at a price you can cap.",
   },
 ]
 

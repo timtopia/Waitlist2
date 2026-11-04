@@ -188,7 +188,7 @@ export default function BrowsePage() {
             className="w-full px-0 py-2 bg-transparent border-0 border-b border-rule text-base focus:outline-none focus:border-ink placeholder:text-ink/60"
           />
         </div>
-        <div className="flex gap-5">
+        <div className="flex gap-5" role="group" aria-label="Filter by status">
           {(["all", "open", "upcoming", "closed"] as FilterStatus[]).map((f) => (
             <button
               key={f}
@@ -197,18 +197,19 @@ export default function BrowsePage() {
               className={`min-h-11 pointer-fine:min-h-0 font-mono text-xs uppercase tracking-widest pb-1 border-b-2 transition-colors ${
                 filter === f
                   ? "border-accent text-ink"
-                  : "border-transparent text-ink/60 hover:text-ink"
+                  : "border-transparent text-ink/70 hover:text-ink"
               }`}
             >
-              {f}
+              {/* Its cards say "Full" too, and a full line can open up again */}
+              {f === "closed" ? "closed / full" : f}
             </button>
           ))}
         </div>
       </div>
 
       {/* Sort */}
-      <div className="flex items-center gap-5 mb-8">
-        <span className="font-mono text-xs uppercase tracking-widest text-ink/60">Sort</span>
+      <div className="flex items-center gap-5 mb-8" role="group" aria-labelledby="browse-sort-label">
+        <span id="browse-sort-label" className="font-mono text-xs uppercase tracking-widest text-ink/70">Sort</span>
         {(Object.keys(sortLabels) as SortOption[]).map((s) => (
           <button
             key={s}
@@ -217,7 +218,7 @@ export default function BrowsePage() {
             className={`min-h-11 pointer-fine:min-h-0 font-mono text-xs uppercase tracking-widest pb-1 border-b-2 transition-colors ${
               sortBy === s
                 ? "border-accent text-ink"
-                : "border-transparent text-ink/60 hover:text-ink"
+                : "border-transparent text-ink/70 hover:text-ink"
             }`}
           >
             {sortLabels[s]}

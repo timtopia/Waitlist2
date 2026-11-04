@@ -82,9 +82,15 @@ export async function sendEmail(
       text: htmlToText(html),
       ...(base && { headers: { "List-Unsubscribe": `<${base.replace(/\/$/, "")}/profile>` } }),
     }
-    const { error } = idempotencyKey
-      ? await resend.emails.send(payload, { idempotencyKey })
-      : await resend.emails.send(payload)
+    const send = () => (idempotencyKey ? resend!.emails.send(payload, { idempotencyKey }) : resend!.emails.send(payload))
+    let { error } = await send()
+    // Closing a 300-person line or a drop opening sends a burst; Resend
+    // refuses past a few a second, and those emails were simply lost. A
+    // refused send never went out, so retrying it can't double-send.
+    for (let attempt = 1; error?.name === "rate_limit_exceeded" && attempt <= 3; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 600 * attempt + Math.random() * 400))
+      ;({ error } = await send())
+    }
     if (error) {
       console.error("Resend refused email:", error)
       return false

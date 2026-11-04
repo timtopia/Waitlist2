@@ -9,6 +9,7 @@ import { useToast } from "./ui/Toast"
 import { formatCurrency, formatDateTime, formatWaited } from "@/lib/format"
 import { callDeadline, timeLeft } from "@/lib/call-deadline"
 import { MAX_PARTY_SIZE } from "@/lib/capacity"
+import { batchRemove } from "@/lib/batch-remove-client"
 
 interface ConsolePosition {
   id: string
@@ -192,7 +193,9 @@ export function OwnerConsole({
         })
       : []
     if (skipped.length > 0) {
-      const names = skipped.map((p) => p.user.name || "A party").join(", ")
+      // A burst of lapsed calls at a busy drop made a screen-tall toast
+      const named = skipped.map((p) => p.user.name || "A party")
+      const names = named.length > 3 ? `${named.slice(0, 2).join(", ")} and ${named.length - 2} others` : named.join(", ")
       // All we know is they're gone and their time had run out: the timer,
       // another device, the list below or the guest themselves may have done it
       addToast(
@@ -208,7 +211,7 @@ export function OwnerConsole({
       const res = await fetch(`/api/lines/${lineId}/stats`)
       if (res.ok) {
         const data = await res.json()
-        setEarnings({ earned: data.ownerFeeEarned ?? 0, pending: data.ownerFeePending ?? 0, swaps: data.completedCount ?? 0 })
+        setEarnings({ earned: data.ownerFeeEarned ?? 0, pending: data.ownerFeePending ?? 0, swaps: (data.completedCount ?? 0) + (data.pendingSettlementCount ?? 0) })
         if (data.service) {
           // The console is for right now: a typical wait over all time would
           // let a slow Tuesday drag down tonight's number
@@ -367,7 +370,7 @@ export function OwnerConsole({
     setBusy(`grace-${p.id}`)
     try {
       const { ok, data } = await post("grace", { positionId: p.id })
-      if (ok) addToast(`Gave them 5 more minutes${data.graceMinutes > 5 ? ` (${data.graceMinutes} extra in all)` : ""}`, "success")
+      if (ok) addToast(`Gave ${p.user.name || "them"} 5 more minutes${data.graceMinutes > 5 ? ` (${data.graceMinutes} extra in all)` : ""}`, "success")
       else addToast(data.error || "Couldn't give more time", "error")
     } finally {
       await onChanged()
@@ -423,10 +426,7 @@ export function OwnerConsole({
     setShowClearConfirm(false)
     setBusy("clear")
     try {
-      const { ok, data } = await post("batch-remove", {
-        positionIds: served.map((p) => p.id),
-        action: "payout",
-      })
+      const { ok, data } = await batchRemove(lineId, served.map((p) => p.id), { action: "payout" })
       if (ok) {
         // Another device may have cleared some already: that's done, not failed
         const gone: number = data.alreadyGone ?? 0
@@ -479,7 +479,7 @@ export function OwnerConsole({
       }
       if (ids.length > 0) {
         for (const id of ids) removedByHost.current.add(id)
-        const { ok, data } = await post("batch-remove", { positionIds: ids, action, reason: "closed" })
+        const { ok, data } = await batchRemove(lineId, ids, { action, reason: "closed" })
         if (!ok) {
           addToast(data.error || "The line is paused, but clearing it failed", "error")
           return
@@ -633,7 +633,7 @@ export function OwnerConsole({
                   still waiting
                 </>
               )}
-              . Everyone still waiting is told they&apos;re no longer in line.
+              .{waiting.length > 0 && " Everyone still waiting is told they're no longer in line."}
               {hasAnnouncement && " Your announcement is cleared too."}
               {" "}Export CSV from the ⋯ menu first if you want a copy of the list.
               {heldPayments && " Choose what happens to swap payments still on hold:"}
@@ -723,7 +723,9 @@ export function OwnerConsole({
             {positions.length === 0
               ? !isActive
                 ? "No one in line, and the line is paused -- tap Resume so people can join online."
-                : "No one in line yet. Share the link to get people in."
+                : closedBySchedule
+                  ? "No one in line, and it's past closing time -- change the closing time in Edit to take more guests."
+                  : "No one in line yet. Share the link to get people in."
               : `Everyone in line has been ${servedWord}.`}
           </p>
         ) : (
@@ -782,7 +784,7 @@ export function OwnerConsole({
                 <p className="text-xs text-ink/60">Limit {purchaseLimit} per person</p>
               )}
               {upNextLocked && (
-                <p className="text-xs text-amber-700">A swap for this spot is in progress -- wait for it to finish before serving.</p>
+                <p className="text-xs text-amber-700">A swap for this spot is in progress. Calling them now cancels it (the buyer isn&apos;t charged) -- wait for it to finish before {isRestaurant ? "seating" : "serving"}.</p>
               )}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -1020,7 +1022,7 @@ export function OwnerConsole({
             </p>
             <p className="font-mono tabular-nums text-green-700">
               {ownerFeePercent === 0 && !hasEarnings
-                ? `${earnings?.swaps ?? 0} completed ${(earnings?.swaps ?? 0) === 1 ? "swap" : "swaps"} · no fee`
+                ? `${earnings?.swaps ?? 0} paid ${(earnings?.swaps ?? 0) === 1 ? "swap" : "swaps"} · no fee`
                 : `${formatCurrency(earnings?.earned ?? 0)} earned`}
               {(earnings?.pending ?? 0) > 0 && (
                 <span className="text-amber-700"> + {formatCurrency(earnings?.pending ?? 0)} pending</span>

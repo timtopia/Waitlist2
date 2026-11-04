@@ -267,7 +267,7 @@ export function EmbedWidgetClient({
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-semibold text-amber-700">
-                    Opens Soon
+                    Opening
                   </p>
                   <p className="text-xs text-ink/60">
                     {status.opensAt.toLocaleDateString(undefined, {

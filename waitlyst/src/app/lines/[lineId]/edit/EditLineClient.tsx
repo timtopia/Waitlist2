@@ -416,12 +416,12 @@ export function EditLineClient({
                     onChange={(e) => setHideCapacity(e.target.checked)}
                     className="w-4 h-4 accent-ink border-rule"
                   />
-                  <span className="text-sm text-ink/70">Hide capacity from members</span>
+                  <span className="text-sm text-ink/70">Hide capacity from guests</span>
                 </label>
               )}
               {maxCapacity && hideCapacity && (
                 <p className="text-xs text-ink/60 mt-1">
-                  Members will see &quot;Limited spots available&quot; instead of the exact number
+                  Guests will see &quot;Limited spots available&quot; instead of the exact number
                 </p>
               )}
             </div>
@@ -678,7 +678,7 @@ export function EditLineClient({
                       )}
                       {line.allowResale && !allowResale && (
                         <p className="text-xs text-amber-700 mt-1">
-                          Saving takes down every spot listed for sale and cancels pending offers.
+                          Saving takes down every spot listed for sale, cancels pending offers, and calls off any swap checkout in progress.
                         </p>
                       )}
                     </div>
