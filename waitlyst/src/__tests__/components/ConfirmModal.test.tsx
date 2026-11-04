@@ -24,4 +24,11 @@ describe("ConfirmModal", () => {
     fireEvent.keyDown(document, { key: "Escape" })
     expect(onCancel).not.toHaveBeenCalled()
   })
+
+  it("can start on Cancel for a final, non-danger step", () => {
+    render(
+      <ConfirmModal open title="Seat Bob?" message="This can't be undone." initialFocus="cancel" onConfirm={vi.fn()} onCancel={vi.fn()} />
+    )
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus()
+  })
 })

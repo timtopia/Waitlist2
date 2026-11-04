@@ -47,6 +47,9 @@ export function useLineUpdates(
   { intervalMs = POLL_INTERVAL_MS, pollWhenHidden = false }: LineUpdateOptions = {}
 ) {
   const [stale, setStale] = useState(false)
+  // When the page last heard from the server, so an offline banner can say
+  // how old what's on screen is
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null)
   const lastSnapshotRef = useRef<string | null>(null)
   const deletedRef = useRef(false)
   const etagRef = useRef<string | null>(null)
@@ -69,7 +72,19 @@ export function useLineUpdates(
     // everyone limited and nobody sees their turn
     let skipUntil = 0
     let failures = 0
+    // A wait the server asked for (429) is kept on return to the tab; a wait
+    // from our own failure back-off isn't, since signal often comes back
+    // without the browser ever firing "online"
+    let rateLimited = false
+    const markOk = () => {
+      failures = 0
+      skipUntil = 0
+      rateLimited = false
+      setStale(false)
+      setLastUpdatedAt(Date.now())
+    }
     const backOff = () => {
+      rateLimited = false
       failures += 1
       if (failures >= 2) skipUntil = Date.now() + Math.min(60_000, intervalMs * 2 ** (failures - 1))
     }
@@ -93,6 +108,7 @@ export function useLineUpdates(
           setStale(true)
           const retryAfter = Number(res.headers.get("Retry-After"))
           skipUntil = Date.now() + (Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 60_000)
+          rateLimited = true
           return
         }
         if (res.status >= 500) {
@@ -100,13 +116,17 @@ export function useLineUpdates(
           backOff()
           return
         }
-        failures = 0
-        skipUntil = 0
-        setStale(false)
-        if (res.status === 304) return
+        // Only counted as back online once the body has arrived and parsed:
+        // on a weak signal the headers can land and the body stall, and a
+        // captive portal answers 200 with HTML
+        if (res.status === 304) {
+          markOk()
+          return
+        }
         // The line was there and now isn't: the organizer deleted it. Say so
         // once, rather than leaving the page frozen on its last snapshot.
         if (res.status === 404) {
+          markOk()
           if (lastSnapshotRef.current !== null && !deletedRef.current) {
             deletedRef.current = true
             stableOnUpdate({ type: "delete", lineId })
@@ -114,17 +134,19 @@ export function useLineUpdates(
           return
         }
         if (res.ok) {
-          etagRef.current = res.headers.get("ETag")
           const text = await res.text()
           // The first poll is always passed on: the page's own first load
           // happened before it, and anything that changed in between would
           // otherwise stay hidden until the line changed again. Callers diff
           // against what's on screen, so an unchanged line alerts no one.
-          if (lastSnapshotRef.current !== text) {
-            const parsed = JSON.parse(text)
-            stableOnUpdate({ type: "poll-update", data: parsed })
-          }
+          const parsed = lastSnapshotRef.current !== text ? JSON.parse(text) : null
+          etagRef.current = res.headers.get("ETag")
+          markOk()
+          if (parsed !== null) stableOnUpdate({ type: "poll-update", data: parsed })
           lastSnapshotRef.current = text
+        } else {
+          // Reached the server; the answer just isn't about the line
+          markOk()
         }
       } catch {
         setStale(true)
@@ -151,6 +173,7 @@ export function useLineUpdates(
 
     function handleVisibilityChange() {
       if (document.visibilityState === "visible") {
+        if (!rateLimited) skipUntil = 0
         if (pollWhenHidden) poll()
         else startPolling()
       } else if (!pollWhenHidden) {
@@ -193,5 +216,5 @@ export function useLineUpdates(
     lastSnapshotRef.current = null
   }, [lineId])
 
-  return { stale }
+  return { stale, lastUpdatedAt }
 }

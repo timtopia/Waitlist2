@@ -360,10 +360,14 @@ function CreateLineForm() {
 
   const ownerFeeNum = parseFloat(ownerFeePercent) || 0
   const exampleFees = calcFees(10, ownerFeeNum, platformFeePercent ?? 0)
+  // Until the platform fee is known, no example: a 0% guess understates
+  // what buyers pay
   const feeHint =
-    `Buyers pay this on top of the asking price${platformFeePercent ? `, plus a ${platformFeePercent}% platform fee` : ""}: ` +
-    `a $10 spot costs them $${exampleFees.total.toFixed(2)}` +
-    `${ownerFeeNum > 0 ? ` and you earn $${exampleFees.ownerFee.toFixed(2)}` : ""}.`
+    platformFeePercent === null
+      ? "Buyers pay this on top of the asking price, plus a platform fee."
+      : `Buyers pay this on top of the asking price${platformFeePercent ? `, plus a ${platformFeePercent}% platform fee` : ""}: ` +
+        `a $10 spot costs them $${exampleFees.total.toFixed(2)}` +
+        `${ownerFeeNum > 0 ? ` and you earn $${exampleFees.ownerFee.toFixed(2)}` : ""}.`
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-10 sm:py-14">
@@ -789,7 +793,7 @@ function CreateLineForm() {
                       </div>
                       <p className="text-xs text-ink/60 mt-1">
                         Cap the maximum swap price anyone can set for their position. Leave empty for no limit.
-                        {maxAskingPrice && parseFloat(maxAskingPrice) >= 1 &&
+                        {maxAskingPrice && parseFloat(maxAskingPrice) >= 1 && platformFeePercent !== null &&
                           ` Fees go on top: buyers pay at most $${calcFees(parseFloat(maxAskingPrice), ownerFeeNum, platformFeePercent ?? 0).total.toFixed(2)}.`}
                       </p>
                     </div>

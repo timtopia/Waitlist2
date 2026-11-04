@@ -12,6 +12,11 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic"
 
+/** Served spots older than this are history, not "where am I now" */
+function servedCutoff(): Date {
+  return new Date(Date.now() - 24 * 60 * 60 * 1000)
+}
+
 export default async function DashboardPage() {
   const session = await auth()
 
@@ -37,7 +42,13 @@ export default async function DashboardPage() {
       orderBy: { createdAt: "desc" },
     }),
     prisma.linePosition.findMany({
-      where: { userId: session.user.id },
+      // Served spots stay listed until the host clears them, which may be
+      // never: after a day they're history (kept in the activity feed), not
+      // "where am I now"
+      where: {
+        userId: session.user.id,
+        OR: [{ fulfilled: false }, { fulfilledAt: { gt: servedCutoff() } }],
+      },
       include: {
         line: {
           include: {

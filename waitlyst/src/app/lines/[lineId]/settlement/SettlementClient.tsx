@@ -533,6 +533,8 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
   const completedUnsettled = transactions.filter(
     (t) => t.status === "COMPLETED" && !t.settledAt
   )
+  // What the buyers' cards are charged (seller prices alone undercount it)
+  const bulkBuyerTotal = completedUnsettled.reduce((sum, t) => sum + (t.buyerTotal ?? t.amount), 0)
   const hasPendingActions = completedUnsettled.length > 0
   const releasableCount = completedUnsettled.filter(releasable).length
   const hasUnfulfilled = releasableCount > 0
@@ -544,8 +546,8 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
         open={bulkConfirm === "capture-all"}
         title={isDrop ? "Retry Collecting Payments" : "Capture All Payments"}
         message={isDrop
-          ? `Try again to collect the ${completedUnsettled.length} swap payment${completedUnsettled.length === 1 ? "" : "s"} that couldn't be collected automatically. Total: ${formatCurrency(summary.pendingAmount)}.`
-          : `This will collect ${completedUnsettled.length === 1 ? "the 1 payment" : `all ${completedUnsettled.length} payments`} still on hold, including buyers you haven't seated yet. Total: ${formatCurrency(summary.pendingAmount)}.`}
+          ? `Try again to collect the ${completedUnsettled.length} swap payment${completedUnsettled.length === 1 ? "" : "s"} that couldn't be collected automatically. Buyers pay ${formatCurrency(bulkBuyerTotal)} in all (incl. fees).`
+          : `This will collect ${completedUnsettled.length === 1 ? "the 1 payment" : `all ${completedUnsettled.length} payments`} still on hold, including buyers you haven't seated yet. Buyers pay ${formatCurrency(bulkBuyerTotal)} in all (incl. fees).`}
         confirmLabel={isDrop ? "Collect All" : "Capture All"}
         variant="primary"
         isLoading={actionLoading === "capture-all"}
@@ -559,7 +561,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
           cancelConfirm?.status === "PENDING"
             ? `Cancel ${cancelConfirm.buyerName}'s unfinished checkout for ${formatCurrency(cancelConfirm.buyerTotal ?? cancelConfirm.amount)}${cancelConfirm.buyerTotal != null && cancelConfirm.buyerTotal !== cancelConfirm.amount ? " (incl. fees)" : ""} (started ${formatDeadline(cancelConfirm.createdAt)})? If they're still on the payment page, their payment will fail and both spots unlock.`
             : cancelConfirm
-              ? `${isDrop ? `Cancel ${cancelConfirm.buyerName}'s uncollected payment of` : `Release the hold on ${cancelConfirm.buyerName}'s card for`} ${formatCurrency(cancelConfirm.amount)}? They won't be charged, ${cancelConfirm.sellerName} won't be paid for the spot${cancelConfirm.ownerFee > 0 ? `, and you give up your ${formatCurrency(cancelConfirm.ownerFee)} fee` : ""}. This can't be undone.`
+              ? `${isDrop ? `Cancel ${cancelConfirm.buyerName}'s uncollected payment of` : `Release the hold on ${cancelConfirm.buyerName}'s card for`} ${formatCurrency(cancelConfirm.buyerTotal ?? cancelConfirm.amount)}${cancelConfirm.buyerTotal != null && cancelConfirm.buyerTotal !== cancelConfirm.amount ? " (incl. fees)" : ""}? They won't be charged, ${cancelConfirm.sellerName} won't be paid for the spot${cancelConfirm.ownerFee > 0 ? `, and you give up your ${formatCurrency(cancelConfirm.ownerFee)} fee` : ""}. This can't be undone.`
               : ""
         }
         confirmLabel={cancelConfirm?.status === "PENDING" ? "Cancel Checkout" : isDrop ? "Cancel Payment" : "Release Hold"}
@@ -703,7 +705,7 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
                 <p className="font-mono text-lg tabular-nums text-green-700">
                   {formatCurrency(summary.ownerFeeCaptured)}
                   {summary.ownerFeePending > 0 && (
-                    <span className="text-amber-700"> + {formatCurrency(summary.ownerFeePending)} pending</span>
+                    <span className="text-amber-700"> + {formatCurrency(summary.ownerFeePending)} {isDrop ? "not collected" : "pending"}</span>
                   )}
                 </p>
               </div>
@@ -835,6 +837,10 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
                           {txn.ownerFee > 0 && (
                             <span className="block text-xs text-ink/60">Your fee {formatCurrency(txn.ownerFee)}</span>
                           )}
+                          {/* What Stripe shows as the charge, to match the two up */}
+                          {txn.buyerTotal != null && txn.buyerTotal !== txn.amount && (
+                            <span className="block text-xs text-ink/60">Buyer paid {formatCurrency(txn.buyerTotal)}</span>
+                          )}
                         </td>
                         <td className="px-6 py-4 text-center">
                           {txn.buyerPosition !== null ? (
@@ -893,6 +899,9 @@ export function SettlementClient({ lineId, lineName, stripeConnectOnboarded, str
                         </p>
                         {txn.ownerFee > 0 && (
                           <p className="font-mono text-xs tabular-nums text-ink/60">Your fee {formatCurrency(txn.ownerFee)}</p>
+                        )}
+                        {txn.buyerTotal != null && txn.buyerTotal !== txn.amount && (
+                          <p className="font-mono text-xs tabular-nums text-ink/60">Buyer paid {formatCurrency(txn.buyerTotal)}</p>
                         )}
                       </div>
                     </div>

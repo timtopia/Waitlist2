@@ -30,7 +30,7 @@ export async function GET() {
         where: { userId },
         include: {
           line: {
-            select: { id: true, name: true },
+            select: { id: true, name: true, kind: true },
           },
         },
         orderBy: { joinedAt: "desc" },
@@ -84,6 +84,18 @@ export async function GET() {
         lineName: pos.line.name,
         createdAt: pos.joinedAt.toISOString(),
       })
+      // Served but still listed (the host hasn't cleared them): the visit
+      // record only exists once they're gone, so say how it ended here
+      if (pos.fulfilled && pos.fulfilledAt) {
+        activities.push({
+          id: `served-${pos.id}`,
+          type: "served",
+          description: pos.line.kind === "RESTAURANT" ? `Seated at "${pos.line.name}"` : `Served in "${pos.line.name}"`,
+          lineId: pos.line.id,
+          lineName: pos.line.name,
+          createdAt: pos.fulfilledAt.toISOString(),
+        })
+      }
     }
 
     // Add finished visits: when they joined, and how it ended
@@ -164,7 +176,9 @@ export async function GET() {
           type: isBuyer ? "purchase" : "sale",
           description: isBuyer
             ? `Bought a spot${inLine} for ${formatCurrency(buyerPaid)}${tx.capturedAt || tx.settledAt ? "" : " (not charged yet)"}`
-            : `Sold a spot${inLine} for ${formatCurrency(tx.amount)}`,
+            // A hold the host can still release, or money not yet sent on:
+            // "sold" alone read as already paid
+            : `Sold a spot${inLine} for ${formatCurrency(tx.amount)}${tx.sellerPaidAt ? "" : " (payout pending)"}`,
           amount: isBuyer ? buyerPaid : tx.amount,
           ...link,
           createdAt: tx.createdAt.toISOString(),

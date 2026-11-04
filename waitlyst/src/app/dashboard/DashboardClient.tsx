@@ -203,6 +203,9 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
 
     // Sort
     result = [...result].sort((a, b) => {
+      // Last week's finished drop shouldn't sit above tonight's live line
+      const closedLast = Number(isClosedBySchedule(a)) - Number(isClosedBySchedule(b))
+      if (closedLast !== 0) return closedLast
       if (createdSort === "newest") return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       if (createdSort === "oldest") return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
       return b._count.positions - a._count.positions // most-members
@@ -221,13 +224,13 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
       result = result.filter(p => p.line.name.toLowerCase().includes(searchLower))
     }
 
-    // Sort, but always surface a line that's calling you right now
+    // Sort, but always surface a line that's calling you right now, then one
+    // where you're next; last week's ✓ shouldn't sit above a line they're
+    // waiting in now
+    const urgency = { called: 0, next: 1, waiting: 2, served: 3 } as const
     result = [...result].sort((a, b) => {
-      const calledFirst = Number(b.phase === "called") - Number(a.phase === "called")
-      if (calledFirst !== 0) return calledFirst
-      // Last week's ✓ shouldn't sit above a line they're waiting in now
-      const servedLast = Number(a.phase === "served") - Number(b.phase === "served")
-      if (servedLast !== 0) return servedLast
+      const byPhase = urgency[a.phase] - urgency[b.phase]
+      if (byPhase !== 0) return byPhase
       if (positionsSort === "newest") return new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime()
       if (positionsSort === "oldest") return new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime()
       return b.line._count.positions - a.line._count.positions // most-members
@@ -270,7 +273,10 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
     fetchActivities()
   }, [fetchActivities])
 
-  // Poll for dashboard updates — only when tab is visible, every 60 seconds
+  // Poll for dashboard updates — only when tab is visible, every 60 seconds,
+  // or every 10 while a line is calling them or they're next: a called party
+  // can be skipped within minutes
+  const urgent = positions.some((p) => p.phase === "called" || p.phase === "next")
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | null = null
 
@@ -281,7 +287,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
             router.refresh()
             fetchActivities()
           }
-        }, 60000)
+        }, urgent ? 10000 : 60000)
       }
     }
 
@@ -306,7 +312,7 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
       document.removeEventListener("visibilitychange", onVisibility)
       stop()
     }
-  }, [router, fetchActivities])
+  }, [router, fetchActivities, urgent])
 
   // Sync lines state when server data changes
   useEffect(() => {
@@ -407,7 +413,17 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
             body: JSON.stringify({ positionId }),
           })
       if (res.ok) {
-        addToast(noShow ? `${name} removed as a no-show` : `${name} removed from the line`, "success")
+        // Same as the line page: a refund or collection that failed must be seen
+        const data = await res.json().catch(() => ({}))
+        if (data.refundFailedCount > 0) {
+          addToast(`${name} removed, but ${data.refundFailedCount} refund(s) didn't go through. They're still open on the settlement page.`, "error")
+        } else if (data.collectFailedCount > 0) {
+          addToast(`${name} removed, but ${data.collectFailedCount} payment(s) couldn't be collected. Review them on the settlement page.`, "info")
+        } else if (data.refundedCount > 0) {
+          addToast(`${name} removed and ${formatCurrency(data.refundedAmount)} refunded to the buyer`, "success")
+        } else {
+          addToast(noShow ? `${name} removed as a no-show` : `${name} removed from the line`, "success")
+        }
         router.refresh()
       } else {
         const data = await res.json().catch(() => ({}))
@@ -920,10 +936,13 @@ export function DashboardClient({ createdLines: initialLines, positions, isNewUs
                         <span className={phaseLabel[pos.phase].className}>
                           {phaseLabel[pos.phase].text(pos.ahead, pos.line.kind === "RESTAURANT")}
                         </span>
-                        <span className="text-ink/60">
-                          {" · "}{pos.line._count.positions} in line
-                          {!pos.line.isActive && " · Paused"}
-                        </span>
+                        {/* Done with this line: its queue and pause state are no longer theirs */}
+                        {pos.phase !== "served" && (
+                          <span className="text-ink/60">
+                            {" · "}{pos.line._count.positions} in line
+                            {!pos.line.isActive && " · Paused"}
+                          </span>
+                        )}
                       </p>
                     </div>
                     <div className="text-right">

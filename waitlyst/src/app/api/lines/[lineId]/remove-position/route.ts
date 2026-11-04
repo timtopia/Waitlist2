@@ -18,6 +18,12 @@ export async function POST(
   // from that stale view would remove a party who's walking in.
   const seenCalledAt = typeof body.calledAt === "string" ? body.calledAt : null
   const seenGrace = typeof body.graceMinutes === "number" ? body.graceMinutes : 0
+  // Their reply as the host saw it: an "on my way" sent while the dialog was
+  // open means they're walking in. Older clients don't send it.
+  const seenResponse =
+    "response" in body && (body.response === null || body.response === "ON_MY_WAY" || body.response === "RUNNING_LATE")
+      ? (body.response as string | null)
+      : undefined
 
   if (!positionId || typeof positionId !== "string") {
     return NextResponse.json({ error: "Position ID is required" }, { status: 400 })
@@ -41,7 +47,8 @@ export async function POST(
       false,
       false,
       noShow === true && seenCalledAt
-        ? (c) => !c.fulfilled && c.calledAt?.toISOString() === seenCalledAt && (c.graceMinutes ?? 0) === seenGrace
+        ? (c) => !c.fulfilled && c.calledAt?.toISOString() === seenCalledAt && (c.graceMinutes ?? 0) === seenGrace &&
+            (seenResponse === undefined || (c.response ?? null) === seenResponse)
         : undefined
     )
 
@@ -51,7 +58,7 @@ export async function POST(
       const stillThere = await prisma.linePosition.findUnique({ where: { id: positionId, lineId }, select: { id: true } })
       if (stillThere) {
         return NextResponse.json(
-          { error: "They were just called again, given more time or seated on another device, so they weren't marked as a no-show." },
+          { error: "They were just called again, given more time, seated on another device or said they're on the way, so they weren't marked as a no-show." },
           { status: 409 }
         )
       }

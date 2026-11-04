@@ -166,7 +166,7 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ returnTo: "/profile" }),
       })
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
       if (res.ok && data.url) {
         window.location.href = data.url
       } else {
@@ -184,9 +184,11 @@ export function ProfileClient({ user, stats, recentTransactions, stripeConnectOn
     setConnectError(null)
     try {
       const res = await fetch("/api/stripe/connect/dashboard", { method: "POST" })
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
       if (res.ok && data.url) {
-        window.open(data.url, "_blank")
+        // Not window.open: after an await, iPhone Safari blocks it as a pop-up
+        // and the tap silently does nothing
+        window.location.href = data.url
       } else {
         setConnectError(data.error || "Failed to open Stripe dashboard")
       }

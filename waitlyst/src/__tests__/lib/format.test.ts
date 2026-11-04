@@ -129,6 +129,18 @@ describe("formatDateTime", () => {
     // The time portion should be present — check for a colon from the time
     expect(result).toMatch(/\d+:\d+/)
   })
+
+  it("adds the year only for another year, so last December isn't read as next month", () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-11-04T12:00:00Z"))
+    try {
+      expect(formatDateTime("2025-12-05T14:30:00Z")).toMatch(/2025/)
+      expect(formatDateTime("2026-10-05T14:30:00Z")).not.toMatch(/2026/)
+      expect(timeAgo("2025-12-05T14:30:00Z")).toMatch(/2025/)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
 
 describe("formatCurrency", () => {
